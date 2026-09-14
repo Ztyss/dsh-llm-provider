@@ -1,0 +1,19 @@
+# dsh-provider 的 bundle patch 层。
+# 1) 禁用内置 llm-pi-ai 行：ctx.llm.registerAdapter 对同名路由直接抛 DUPLICATE_ADAPTER，
+#    没有遮蔽机制，所以桥接要接手路由只能在这一层禁用官方行。
+# 2) 把本插件插进 profile 插件树；本插件内部的桥接副本完全接管 llm-pi-ai 的
+#    行为（settings 段、模型发现、模型选择器目录），对用户不可见地换到了新版 pi-ai。
+#
+# 注意模型选择器这里**没有**禁用官方 ui-model-selection 行：slot 座位支持 priority
+# 遮蔽（single/keyed/list 都是「同 priority 才冲突，不同 priority 遮蔽，最小者渲染」），
+# 本插件用 priority: -10 遮蔽 conversation.input.model 座位即可，官方插件其余部分
+# （含它的 /model 命令）保持原样。只有想让 /model 命令也带上余额时才需要在这里
+# 加上：
+#   - id: ui-model-selection
+#     disabled: true
+- id: llm-pi-ai
+  disabled: true
+
+- insert:
+    - id: dsh-provider
+      name: dsh-provider

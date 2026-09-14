@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dsh 插件机制图解 — Cordis 给插件提供了什么</title>
+<style>
+  :root {
+    --ink: #1a2233; --sub: #5a6478; --line: #d8dde8;
+    --host: #eef2ff; --host-b: #4d6bfe; --host-d: #2b3fa8;
+    --client: #ecfdf5; --client-b: #10b981; --client-d: #047857;
+    --core: #fff7ed; --core-b: #f59e0b; --core-d: #b45309;
+    --wire: #8b5cf6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+         color: var(--ink); background: #f7f8fb; line-height: 1.7; }
+  .page { max-width: 1080px; margin: 0 auto; padding: 48px 28px 96px; }
+  h1 { font-size: 30px; letter-spacing: .5px; margin-bottom: 8px; }
+  .lead { color: var(--sub); font-size: 15px; max-width: 860px; margin-bottom: 40px; }
+  h2 { font-size: 20px; margin: 56px 0 6px; padding-top: 24px; border-top: 1px solid var(--line); }
+  h2 .no { color: var(--host-b); font-family: ui-monospace, monospace; margin-right: 8px; }
+  .why { background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--host-b);
+         border-radius: 8px; padding: 14px 18px; font-size: 14.5px; margin: 14px 0 18px; color: #333d52; }
+  .why b { color: var(--ink); }
+  .figure { background: #fff; border: 1px solid var(--line); border-radius: 12px;
+            padding: 18px; overflow-x: auto; margin-bottom: 10px; }
+  svg { display: block; min-width: 900px; width: 100%; height: auto; }
+  .cap { font-size: 13px; color: var(--sub); padding: 0 6px; margin-bottom: 8px; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .92em;
+         background: #eef1f7; padding: 1px 5px; border-radius: 4px; color: #2b3fa8; }
+  .foot { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line);
+          color: var(--sub); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>dsh 插件机制图解</h1>
+<p class="lead">一个问题：如果插件机制非常底层，那和"起一堆进程"有什么区别？
+答案是 Cordis 内核给每个插件提供了四样进程没有的基础设施：<b>服务板 · 依赖等待 · 可逆生命周期 · 拦截式事件总线</b>，外加一个负责组装的 Loader。本页由浅入深逐层拆开。</p>
+
+<!-- ============ 1. 全景 ============ -->
+<h2><span class="no">01</span>全景：两棵同构的插件树</h2>
+<div class="why"><b>先看格局。</b>dsh 是两棵组织方式完全相同的插件树（host / 浏览器），各自挂在薄薄的启动壳之下，中间用三条类型化的"电话线"相连。插件机制负责：树内组合、树交付、跨树连线。</div>
+<div class="figure">
+<svg viewBox="0 0 960 430" font-family="inherit">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8b5cf6"/></marker>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker>
+  </defs>
+
+  <!-- Host tree panel -->
+  <rect x="20" y="20" width="380" height="360" rx="12" fill="#eef2ff" stroke="#4d6bfe" stroke-width="1.5"/>
+  <text x="40" y="50" font-size="15" font-weight="700" fill="#2b3fa8">Host 插件树（Node.js 进程）</text>
+  <rect x="40" y="66" width="150" height="30" rx="6" fill="#fff" stroke="#4d6bfe"/>
+  <text x="58" y="86" font-size="13" fill="#2b3fa8">启动壳：dsh CLI</text>
+  <line x1="115" y1="96" x2="115" y2="116" stroke="#4d6bfe" stroke-width="1.5" marker-end="url(#g)"/>
+  <rect x="60" y="118" width="300" height="34" rx="6" fill="#fff" stroke="#4d6bfe" stroke-dasharray="4 3"/>
+  <text x="75" y="140" font-size="13" fill="#2b3fa8">根 Context（公共板 ctx）</text>
+
+  <g font-size="12.5">
+    <rect x="60" y="168" width="140" height="30" rx="6" fill="#fff" stroke="#4d6bfe"/><text x="72" y="188">插件：agent-loop</text>
+    <rect x="220" y="168" width="140" height="30" rx="6" fill="#fff" stroke="#4d6bfe"/><text x="232" y="188">插件：tools 注册表</text>
+    <rect x="60" y="210" width="140" height="30" rx="6" fill="#fff" stroke="#4d6bfe"/><text x="72" y="230">插件：llm 适配器</text>
+    <rect x="220" y="210" width="140" height="30" rx="6" fill="#fff" stroke="#4d6bfe"/><text x="232" y="230">插件：settings</text>
+    <rect x="60" y="252" width="140" height="30" rx="6" fill="#dbe4ff" stroke="#4d6bfe" stroke-width="2"/><text x="72" y="272">插件：你的后端插件</text>
+    <rect x="220" y="252" width="140" height="30" rx="6" fill="#fff" stroke="#4d6bfe"/><text x="232" y="272">插件：webserver</text>
+  </g>
+  <text x="40" y="330" font-size="12" fill="#5a6478">每个插件 = 一个 fiber（子 Context）</text>
+  <text x="40" y="350" font-size="12" fill="#5a6478">挂载 / 卸载 / 热替换都走同一生命周期</text>
+  <text x="40" y="370" font-size="12" fill="#5a6478">官方插件与你写的插件：地位完全平等</text>
+
+  <!-- Client tree panel -->
+  <rect x="560" y="20" width="380" height="360" rx="12" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/>
+  <text x="580" y="50" font-size="15" font-weight="700" fill="#047857">Client 插件树（浏览器进程）</text>
+  <rect x="580" y="66" width="150" height="30" rx="6" fill="#fff" stroke="#10b981"/>
+  <text x="590" y="86" font-size="13" fill="#047857">启动壳：boot 内核</text>
+  <line x1="655" y1="96" x2="655" y2="116" stroke="#10b981" stroke-width="1.5" marker-end="url(#g)"/>
+  <rect x="600" y="118" width="300" height="34" rx="6" fill="#fff" stroke="#10b981" stroke-dasharray="4 3"/>
+  <text x="615" y="140" font-size="13" fill="#047857">根 Context（同一块公共板 ctx）</text>
+
+  <g font-size="12.5">
+    <rect x="600" y="168" width="140" height="30" rx="6" fill="#fff" stroke="#10b981"/><text x="612" y="188">插件：ui-layout</text>
+    <rect x="760" y="168" width="140" height="30" rx="6" fill="#fff" stroke="#10b981"/><text x="772" y="188">插件：ui-chat</text>
+    <rect x="600" y="210" width="140" height="30" rx="6" fill="#fff" stroke="#10b981"/><text x="612" y="230">插件：slots 渲染器</text>
+    <rect x="760" y="210" width="140" height="30" rx="6" fill="#fff" stroke="#10b981"/><text x="772" y="230">插件：locale</text>
+    <rect x="600" y="252" width="140" height="30" rx="6" fill="#d1fae5" stroke="#10b981" stroke-width="2"/><text x="612" y="272">插件：你的前端插件</text>
+    <rect x="760" y="252" width="140" height="30" rx="6" fill="#fff" stroke="#10b981"/><text x="772" y="272">插件：api-remotes</text>
+  </g>
+  <text x="580" y="330" font-size="12" fill="#5a6478">同一套 Cordis Loader、同一套 effect 生命周期</text>
+  <text x="580" y="350" font-size="12" fill="#5a6478">清单由 host 写进 HTML（__DSH_BOOT__）</text>
+  <text x="580" y="370" font-size="12" fill="#5a6478">插件代码按需下载、逐个挂载</text>
+
+  <!-- Wires -->
+  <path d="M400 150 C 460 150, 500 120, 560 120" fill="none" stroke="#8b5cf6" stroke-width="2" marker-end="url(#a)"/>
+  <text x="436" y="108" font-size="12" fill="#7c3aed">① 你问我答（Remote RPC）</text>
+  <path d="M560 200 C 500 200, 460 230, 400 230" fill="none" stroke="#8b5cf6" stroke-width="2" marker-end="url(#a)"/>
+  <text x="428" y="252" font-size="12" fill="#7c3aed">② 你推给我（projection 流）</text>
+  <line x1="400" y1="310" x2="560" y2="310" stroke="#8b5cf6" stroke-width="2" marker-end="url(#a)"/>
+  <text x="446" y="330" font-size="12" fill="#7c3aed">③ 敲门（裸 HTTP）</text>
+</svg>
+</div>
+<p class="cap">图 1 · 两棵树的组织方式一模一样：启动壳 → 根 Context → 一堆平等插件。跨树只有三条有名字的线。</p>
+
+<!-- ============ 2. 服务板 ============ -->
+<h2><span class="no">02</span>基础设施 ①：服务板 —— 按名字找能力，而不是 import 文件</h2>
+<div class="why"><b>进程间通信要序列化，插件间通信只是"从板上拿一个对象引用"。</b>插件不互相 import；一个插件把自己的能力以一个稳定名字放到板上（<code>ctx.tools</code>、<code>ctx.llm</code>…），别的插件按名字来取。名字表是全局唯一的，官方维护 74 个服务的地图。</div>
+<div class="figure">
+<svg viewBox="0 0 960 330" font-family="inherit">
+  <!-- the board -->
+  <rect x="330" y="30" width="300" height="270" rx="12" fill="#fff7ed" stroke="#f59e0b" stroke-width="2"/>
+  <text x="480" y="58" font-size="15" font-weight="700" fill="#b45309" text-anchor="middle">公共板（Context / ctx）</text>
+  <g font-size="12.5" fill="#7c4a03">
+    <rect x="355" y="76" width="120" height="30" rx="6" fill="#fff" stroke="#f59e0b"/><text x="368" y="96">ctx.tools</text>
+    <rect x="490" y="76" width="120" height="30" rx="6" fill="#fff" stroke="#f59e0b"/><text x="503" y="96">ctx.llm</text>
+    <rect x="355" y="118" width="120" height="30" rx="6" fill="#fff" stroke="#f59e0b"/><text x="368" y="138">ctx.sessions</text>
+    <rect x="490" y="118" width="120" height="30" rx="6" fill="#fff" stroke="#f59e0b"/><text x="503" y="138">ctx.settings</text>
+    <rect x="355" y="160" width="120" height="30" rx="6" fill="#fff" stroke="#f59e0b"/><text x="368" y="180">ctx.credentials</text>
+    <rect x="490" y="160" width="120" height="30" rx="6" fill="#fff" stroke="#f59e0b"/><text x="503" y="180">ctx.slots（前端）</text>
+    <rect x="355" y="202" width="255" height="30" rx="6" fill="#ffedd5" stroke="#f59e0b" stroke-dasharray="4 3"/><text x="375" y="222">…… 以及你的插件放上去的名字</text>
+  </g>
+  <text x="480" y="272" font-size="12" fill="#b45309" text-anchor="middle">板上挂的是内存对象引用 —— 传参零序列化</text>
+  <text x="480" y="290" font-size="12" fill="#b45309" text-anchor="middle">一个名字同时只允许一个服务认领（重复即报错）</text>
+
+  <!-- plugin left: provider -->
+  <rect x="40" y="90" width="200" height="120" rx="10" fill="#eef2ff" stroke="#4d6bfe" stroke-width="1.5"/>
+  <text x="140" y="118" font-size="13.5" font-weight="700" fill="#2b3fa8" text-anchor="middle">插件 A（提供者）</text>
+  <text x="140" y="146" font-size="12" fill="#37415c" text-anchor="middle">apply(ctx) 里：</text>
+  <text x="140" y="168" font-size="12" fill="#37415c" text-anchor="middle">ctx.provide('notes', myService)</text>
+  <text x="140" y="190" font-size="12" fill="#5a6478" text-anchor="middle">"我把服务挂到板上"</text>
+  <path d="M240 150 L 330 150" stroke="#4d6bfe" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- plugin right: consumer -->
+  <rect x="720" y="90" width="200" height="120" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/>
+  <text x="820" y="118" font-size="13.5" font-weight="700" fill="#047857" text-anchor="middle">插件 B（使用者）</text>
+  <text x="820" y="146" font-size="12" fill="#1f3d33" text-anchor="middle">声明 inject = ['notes']</text>
+  <text x="820" y="168" font-size="12" fill="#1f3d33" text-anchor="middle">ctx.notes.list()</text>
+  <text x="820" y="190" font-size="12" fill="#5a6478" text-anchor="middle">"我按名字取来用"</text>
+  <path d="M720 150 L 630 150" stroke="#10b981" stroke-width="2" marker-end="url(#a)"/>
+</svg>
+</div>
+<p class="cap">图 2 · 服务板：插件之间唯一的互相发现方式。这是"插件"和"进程"的第一道分野——进程靠端口/协议，插件靠名字/引用。</p>
+
+<!-- ============ 3. 依赖等待 ============ -->
+<h2><span class="no">03</span>基础设施 ②：依赖等待 —— 顺序不用你管，缺什么就等</h2>
+<div class="why"><b>清单里第几行不决定启动顺序。</b>插件声明 <code>inject = ['tools', 'llm']</code> 意思是"我需要这两样"。板上没有？它就处于 pending，<b>不报错</b>；谁把服务放上来，它那一刻自动激活。激活顺序是从依赖图推导出来的，这也是为什么插件列表可以随意叠层重排。</div>
+<div class="figure">
+<svg viewBox="0 0 960 250" font-family="inherit">
+  <g font-size="12.5">
+    <rect x="60" y="60" width="150" height="44" rx="8" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+    <text x="135" y="87" text-anchor="middle" fill="#334155">tools（已挂载）</text>
+    <rect x="260" y="60" width="150" height="44" rx="8" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+    <text x="335" y="80" text-anchor="middle" fill="#334155">llm</text><text x="335" y="96" text-anchor="middle" font-size="11" fill="#94a3b8">（还没来…）</text>
+    <rect x="480" y="46" width="200" height="72" rx="8" fill="#fff7ed" stroke="#f59e0b" stroke-width="2"/>
+    <text x="580" y="72" text-anchor="middle" font-size="13" font-weight="700" fill="#b45309">你的插件</text>
+    <text x="580" y="92" text-anchor="middle" fill="#7c4a03">inject = ['tools', 'llm']</text>
+    <text x="580" y="108" text-anchor="middle" font-size="11.5" fill="#b45309">⏳ pending（等待中，不报错）</text>
+  </g>
+  <path d="M210 82 L 260 82" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#g)"/>
+  <path d="M410 82 L 480 82" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#g)"/>
+  <text x="180" y="180" font-size="12.5" fill="#5a6478">t₁：tools 先来了 → 还差一个，继续等</text>
+  <text x="180" y="205" font-size="12.5" fill="#5a6478">t₂：llm 被别的插件挂上来 → <tspan font-weight="700" fill="#047857">你的插件自动激活，apply(ctx) 此刻才执行</tspan></text>
+  <text x="180" y="230" font-size="12.5" fill="#5a6478">t₃：llm 后来被卸载/替换 → 你的插件自动回到等待，或随依赖一起级联卸载</text>
+</svg>
+</div>
+<p class="cap">图 3 · inject 是"声明需求"而非"指定顺序"。系统替你解依赖、等依赖、并在依赖消失时收拾残局。</p>
+
+<!-- ============ 4. 可逆生命周期 ============ -->
+<h2><span class="no">04</span>基础设施 ③：可逆生命周期 —— 注册即留收据，卸载级联撤销</h2>
+<div class="why"><b>这是插件和进程的第二道分野。</b>进程没有"半开"状态；插件的每一个注册动作（挂服务、注册工具、订阅事件）都通过 <code>ctx.effect()</code> 进行，系统记下一张<b>收据</b>。插件被卸载/热替换时，按相反顺序把收据全部兑现——注册的东西全部消失，不留残渣。所以热重载、按会话组装、按需拆装，都是安全的。</div>
+<div class="figure">
+<svg viewBox="0 0 960 300" font-family="inherit">
+  <g font-size="12.5">
+    <rect x="60" y="40" width="240" height="200" rx="10" fill="#eef2ff" stroke="#4d6bfe" stroke-width="1.5"/>
+    <text x="180" y="68" text-anchor="middle" font-weight="700" fill="#2b3fa8">插件 A（父）</text>
+    <text x="80" y="96" fill="#37415c">effect ① 挂服务 notes</text>
+    <text x="80" y="120" fill="#37415c">effect ② 注册工具</text>
+    <text x="80" y="144" fill="#37415c">effect ③ 子插件 B</text>
+    <text x="80" y="176" font-size="11.5" fill="#5a6478">每张"收据" = 一个撤销函数</text>
+    <text x="80" y="194" font-size="11.5" fill="#5a6478">插件消失 → 全部自动反向执行</text>
+
+    <rect x="380" y="110" width="220" height="90" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/>
+    <text x="490" y="140" text-anchor="middle" font-weight="700" fill="#047857">插件 B（A 的子插件）</text>
+    <text x="400" y="166" fill="#1f3d33">effect ① 监听事件</text>
+    <text x="400" y="186" fill="#1f3d33">effect ② 注册路由</text>
+
+    <rect x="680" y="40" width="240" height="200" rx="10" fill="#f1f5f9" stroke="#94a3b8" stroke-dasharray="5 4"/>
+    <text x="800" y="70" text-anchor="middle" font-weight="700" fill="#475569">卸载 A 之后</text>
+    <text x="700" y="104" fill="#64748b">✗ 服务 notes 已撤下板</text>
+    <text x="700" y="128" fill="#64748b">✗ 工具已注销</text>
+    <text x="700" y="152" fill="#64748b">✗ 子插件 B 已卸载</text>
+    <text x="700" y="176" fill="#64748b">✗ B 的事件监听、路由全撤</text>
+    <text x="700" y="208" font-size="11.5" fill="#94a3b8">系统回到"A 从没存在过"的状态</text>
+  </g>
+  <path d="M300 150 L 380 155" stroke="#4d6bfe" stroke-width="1.5" marker-end="url(#g)"/>
+  <path d="M600 155 L 680 150" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#g)"/>
+  <text x="330" y="138" font-size="11.5" fill="#4d6bfe">挂载</text>
+  <text x="620" y="138" font-size="11.5" fill="#94a3b8">dispose 级联</text>
+</svg>
+</div>
+<p class="cap">图 4 · 效果（effect）是可逆的。这使热替换、按会话临时组装、失败回退都成为框架级能力而不是应用自己操心的事。</p>
+
+<!-- ============ 5. 事件总线 ============ -->
+<h2><span class="no">05</span>基础设施 ④：事件总线 —— 而且带"拦截"（这是和进程模型的本质不同）</h2>
+<div class="why"><b>普通事件是"广播"：发生了，大家各自反应。Cordis 的事件有五种派发模式</b>，其中 <b>waterfall（瀑布）</b> 是 around-中间件：监听器拿到 <code>(参数, next)</code>，可以改参数再 <code>next()</code> 传下去、可以包一层计时、也可以<b>直接短路</b>替所有人做决定。工具的权限审批、请求改写、超时包装，全是这一条机制。拦截是一等公民，不是事后打补丁。</div>
+<div class="figure">
+<svg viewBox="0 0 960 320" font-family="inherit">
+  <text x="60" y="40" font-size="13.5" font-weight="700" fill="#334155">左：emit（观察型）—— 广播，无人能否决</text>
+  <g font-size="12">
+    <rect x="60" y="60" width="130" height="36" rx="8" fill="#eef2ff" stroke="#4d6bfe"/><text x="125" y="83" text-anchor="middle" fill="#2b3fa8">事件发生</text>
+    <line x1="190" y1="78" x2="240" y2="78" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#g)"/>
+    <rect x="245" y="52" width="140" height="30" rx="6" fill="#fff" stroke="#94a3b8"/><text x="315" y="72" text-anchor="middle">监听器 ① 记日志</text>
+    <rect x="245" y="92" width="140" height="30" rx="6" fill="#fff" stroke="#94a3b8"/><text x="315" y="112" text-anchor="middle">监听器 ② 刷 UI</text>
+    <rect x="245" y="132" width="140" height="30" rx="6" fill="#fff" stroke="#94a3b8"/><text x="315" y="152" text-anchor="middle">监听器 ③ 你的插件</text>
+  </g>
+
+  <text x="560" y="40" font-size="13.5" font-weight="700" fill="#334155">右：waterfall（拦截型）—— 排队过闸，能改能挡</text>
+  <g font-size="12">
+    <rect x="560" y="60" width="110" height="36" rx="8" fill="#fff7ed" stroke="#f59e0b"/><text x="615" y="83" text-anchor="middle" fill="#b45309">工具调用</text>
+    <line x1="670" y1="78" x2="700" y2="78" stroke="#8b5cf6" stroke-width="2" marker-end="url(#a)"/>
+    <rect x="705" y="60" width="200" height="34" rx="6" fill="#fff" stroke="#8b5cf6"/>
+    <text x="805" y="81" text-anchor="middle">① 权限插件：检查 → next()</text>
+    <line x1="805" y1="94" x2="805" y2="112" stroke="#8b5cf6" stroke-width="2" marker-end="url(#a)"/>
+    <rect x="705" y="116" width="200" height="34" rx="6" fill="#fff" stroke="#8b5cf6"/>
+    <text x="805" y="137" text-anchor="middle">② 你的插件：改参数 → next()</text>
+    <line x1="805" y1="150" x2="805" y2="168" stroke="#8b5cf6" stroke-width="2" marker-end="url(#a)"/>
+    <rect x="705" y="172" width="200" height="34" rx="6" fill="#fff" stroke="#8b5cf6"/>
+    <text x="805" y="193" text-anchor="middle">③ 计时插件：包一层 → next()</text>
+    <line x1="805" y1="206" x2="805" y2="224" stroke="#8b5cf6" stroke-width="2" marker-end="url(#a)"/>
+    <rect x="705" y="228" width="200" height="34" rx="6" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
+    <text x="805" y="249" text-anchor="middle" fill="#047857">真正执行工具</text>
+  </g>
+  <text x="560" y="290" font-size="12" fill="#7c3aed">任何一环 return 而不调 next() = 短路：决定被它接管（deny / 替换结果）</text>
+</svg>
+</div>
+<p class="cap">图 5 · 事件即扩展点。dsh 的"官方扩展点地图"本质就是一张事件/服务清单：每个功能都是某事件上的一串瀑布监听器。</p>
+
+<!-- ============ 6. Loader 组装 ============ -->
+<h2><span class="no">06</span>组装者：Loader —— 把"叠层补丁"变成一棵活的树</h2>
+<div class="why"><b>以上四样是插件运行时的生态；Loader 负责"谁上场"。</b>它读插件清单（YAML 数组），把各层补丁叠成一个最终列表，逐个 import、逐个挂成 fiber，解 inject 依赖、处理 <code>!!js</code> 配置表达式、失败即响亮报错。补丁层序：官方基础包 → 界面包 → 你装的插件包 → 你的个人补丁 → 命令行 overlay，<b>后写的赢</b>。</div>
+<div class="figure">
+<svg viewBox="0 0 960 300" font-family="inherit">
+  <g font-size="12">
+    <rect x="40" y="40" width="200" height="36" rx="6" fill="#eef2ff" stroke="#4d6bfe"/><text x="140" y="63" text-anchor="middle">层 1：dsh-base（官方基础）</text>
+    <rect x="40" y="86" width="200" height="36" rx="6" fill="#eef2ff" stroke="#4d6bfe"/><text x="140" y="109" text-anchor="middle">层 2：dsh-web-app（官方界面）</text>
+    <rect x="40" y="132" width="200" height="36" rx="6" fill="#d1fae5" stroke="#10b981" stroke-width="2"/><text x="140" y="155" text-anchor="middle">层 3：你的插件包</text>
+    <rect x="40" y="178" width="200" height="36" rx="6" fill="#fff7ed" stroke="#f59e0b"/><text x="140" y="201" text-anchor="middle">层 4：你的 cordis.patch.yml</text>
+  </g>
+  <text x="140" y="245" font-size="12" fill="#5a6478" text-anchor="middle">每层就是"加几行 / 改几行 / 禁几行"</text>
+
+  <path d="M240 130 L 310 130" stroke="#94a3b8" stroke-width="2" marker-end="url(#g)"/>
+  <text x="252" y="118" font-size="11.5" fill="#94a3b8">applyEntryPatches</text>
+
+  <g font-size="12">
+    <rect x="315" y="60" width="280" height="150" rx="10" fill="#fff" stroke="#94a3b8" stroke-width="1.5"/>
+    <text x="455" y="84" text-anchor="middle" font-weight="700" fill="#334155">最终插件清单（一个数组）</text>
+    <text x="335" y="112" fill="#37415c">- agent-loop      （来自层 1）</text>
+    <text x="335" y="136" fill="#37415c">- tools           （来自层 1）</text>
+    <text x="335" y="160" fill="#047857">- my-plugin       ← 层 3 插进来的</text>
+    <text x="335" y="184" fill="#b45309">- llm-pi-ai  config: 你改过的 ← 层 4</text>
+  </g>
+
+  <path d="M595 130 L 665 130" stroke="#94a3b8" stroke-width="2" marker-end="url(#g)"/>
+  <text x="605" y="118" font-size="11.5" fill="#94a3b8">Loader 逐个挂载</text>
+
+  <g font-size="12">
+    <rect x="670" y="50" width="250" height="170" rx="10" fill="#f8fafc" stroke="#4d6bfe" stroke-width="1.5"/>
+    <text x="795" y="76" text-anchor="middle" font-weight="700" fill="#2b3fa8">插件树（运行时）</text>
+    <text x="690" y="104" fill="#37415c">fiber：agent-loop</text>
+    <text x="690" y="128" fill="#37415c">fiber：tools</text>
+    <text x="690" y="152" fill="#047857">fiber：my-plugin ✓ active</text>
+    <text x="690" y="176" fill="#37415c">fiber：llm-pi-ai ✓ active</text>
+    <text x="690" y="200" font-size="11" fill="#94a3b8">每个 fiber = 一个子 Context</text>
+  </g>
+</svg>
+</div>
+<p class="cap">图 6 · 组装是纯文本运算 + 动态挂载：任何人不用改别人的代码，就能往系统里插东西、改配置、关功能。</p>
+
+<!-- ============ 7. 总结对比 ============ -->
+<h2><span class="no">07</span>所以，和"一堆进程"到底差在哪</h2>
+<div class="figure">
+<svg viewBox="0 0 960 240" font-family="inherit">
+  <g font-size="12.5">
+    <rect x="60" y="40" width="400" height="170" rx="10" fill="#f1f5f9" stroke="#94a3b8"/>
+    <text x="260" y="70" text-anchor="middle" font-weight="700" fill="#475569">进程模型</text>
+    <text x="85" y="102" fill="#64748b">发现：端口 / 服务发现，要自己设计</text>
+    <text x="85" y="128" fill="#64748b">通信：序列化协议，边界成本高</text>
+    <text x="85" y="154" fill="#64748b">生命周期：整生整死，没有可逆半开态</text>
+    <text x="85" y="180" fill="#64748b">拦截：代理/旁路，框架不管</text>
+
+    <rect x="500" y="40" width="400" height="170" rx="10" fill="#eef2ff" stroke="#4d6bfe" stroke-width="2"/>
+    <text x="700" y="70" text-anchor="middle" font-weight="700" fill="#2b3fa8">Cordis 插件模型</text>
+    <text x="525" y="102" fill="#2b3fa8">发现：服务板按名字取（板子替你管唯一性）</text>
+    <text x="525" y="128" fill="#2b3fa8">通信：内存引用；跨树才走类型化 wire</text>
+    <text x="525" y="154" fill="#2b3fa8">生命周期：注册即收据，卸载级联撤销</text>
+    <text x="525" y="180" fill="#2b3fa8">拦截：waterfall 中间件是一等公民</text>
+  </g>
+</svg>
+</div>
+<p class="cap">图 7 · 插件系统卖的正是这四样"进程不给"的东西。Loader + 补丁层解决"谁来上场"，四样基础设施解决"上场之后怎么共处"。</p>
+
+<div class="foot">
+dsh 插件机制图解 · 依据源码树 dsh-src 研究（见 research/dsh-plugin-mechanism-source-review.md）· Cordis 为 vendored 微内核，五个派发模式：emit / parallel / serial / bail / waterfall
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,6 @@
+# Bundle patch layer for dsh-demo-plugin.
+# Inserted into the profile tree; `name` is the module specifier the Loader
+# imports (bare names resolve from the profile directory).
+- insert:
+    - id: dsh-demo-plugin
+      name: dsh-demo-plugin

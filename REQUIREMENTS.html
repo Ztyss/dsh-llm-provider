@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dsh-provider · 系统需求与方案</title>
+<style>
+  :root {
+    --ink: #1c2433; --ink2: #5a6472; --line: #e3e7ee;
+    --bg: #f5f6f8; --card: #ffffff;
+    --accent: #3b5bdb; --accent-soft: #e7ecfb;
+    --ok: #2f9e44; --ok-soft: #e6f4ea;
+    --warn: #e8890c; --warn-soft: #fdf1e0;
+    --bad: #e03131; --bad-soft: #fdecec;
+    --gap: #b05cc0; --gap-soft: #f6eafa;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.75 -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px 96px; }
+
+  /* ---------- header ---------- */
+  header.hero {
+    background: linear-gradient(160deg, #232c3f 0%, #2c3a63 55%, #3b5bdb 130%);
+    color: #fff; padding: 64px 0 56px;
+  }
+  header.hero .wrap { padding-bottom: 0; }
+  .hero h1 { font-size: 34px; margin: 0 0 6px; letter-spacing: .5px; }
+  .hero .sub { opacity: .82; font-size: 15px; max-width: 720px; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px;
+    border-radius: 999px; font-size: 12.5px; background: rgba(255,255,255,.14);
+    border: 1px solid rgba(255,255,255,.22);
+  }
+  .pill b { font-weight: 600; }
+
+  /* ---------- stepper ---------- */
+  nav.stepper {
+    position: sticky; top: 0; z-index: 50; background: rgba(255,255,255,.92);
+    backdrop-filter: saturate(1.4) blur(8px); border-bottom: 1px solid var(--line);
+  }
+  nav.stepper .wrap { padding: 0 24px; display: flex; gap: 4px; overflow-x: auto; }
+  nav.stepper a {
+    display: inline-flex; align-items: center; gap: 8px; padding: 12px 14px;
+    text-decoration: none; color: var(--ink2); font-size: 13.5px; white-space: nowrap;
+    border-bottom: 2px solid transparent;
+  }
+  nav.stepper a:hover { color: var(--ink); }
+  nav.stepper a .n {
+    width: 20px; height: 20px; border-radius: 50%; background: var(--accent-soft);
+    color: var(--accent); display: inline-flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; flex: none;
+  }
+
+  /* ---------- act headings ---------- */
+  section.act { margin-top: 72px; }
+  .act-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 8px; }
+  .act-head .no {
+    font-family: var(--mono); font-size: 13px; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 6px; padding: 2px 8px; flex: none;
+  }
+  .act-head h2 { font-size: 26px; margin: 0; }
+  .act-lead { color: var(--ink2); margin: 0 0 28px; max-width: 780px; }
+  h3.block { font-size: 18px; margin: 40px 0 14px; padding-left: 10px; border-left: 4px solid var(--accent); }
+
+  /* ---------- cards ---------- */
+  .cards { display: grid; gap: 16px; }
+  .cards.c3 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 22px; position: relative;
+  }
+  .card .kicker { font-size: 12px; font-weight: 600; letter-spacing: .8px; margin-bottom: 6px; }
+  .card h4 { margin: 0 0 8px; font-size: 16.5px; }
+  .card p { margin: 0; color: var(--ink2); font-size: 14px; }
+  .card .evi { margin-top: 12px; font-size: 12px; color: #8a93a1; font-family: var(--mono); }
+  .card.p1 { border-top: 3px solid var(--bad); } .card.p1 .kicker { color: var(--bad); }
+  .card.p2 { border-top: 3px solid var(--warn); } .card.p2 .kicker { color: var(--warn); }
+  .card.p3 { border-top: 3px solid var(--gap); } .card.p3 .kicker { color: var(--gap); }
+  .num {
+    position: absolute; top: 16px; right: 18px; font-family: var(--mono);
+    font-size: 26px; font-weight: 700; color: var(--line);
+  }
+
+  /* ---------- badges & chips ---------- */
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px; padding: 1.5px 9px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+  }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); }
+  .badge.gap { background: var(--gap-soft); color: var(--gap); }
+  .badge.bug { background: var(--bad-soft); color: var(--bad); }
+  .badge.info { background: var(--accent-soft); color: var(--accent); }
+  .badge.muted { background: #eef0f3; color: var(--ink2); }
+  .fr {
+    font-family: var(--mono); font-size: 12px; color: var(--accent);
+    background: var(--accent-soft); border-radius: 5px; padding: 1px 7px; white-space: nowrap;
+  }
+  code { font-family: var(--mono); font-size: .86em; background: #eef1f5; padding: 1.5px 6px; border-radius: 5px; }
+
+  /* ---------- flow / mapping ---------- */
+  .flow { display: flex; align-items: stretch; gap: 12px; flex-wrap: wrap; margin: 8px 0 4px; }
+  .flow .node {
+    flex: 1 1 220px; background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .flow .node .t { font-weight: 700; font-size: 14.5px; margin-bottom: 4px; }
+  .flow .node .d { color: var(--ink2); font-size: 13px; }
+  .flow .arr { align-self: center; color: #aab2bf; font-size: 20px; flex: none; }
+
+  /* ---------- tables ---------- */
+  .tbl-wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 14px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.8px; min-width: 640px; }
+  th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #fafbfc; font-size: 12.5px; color: var(--ink2); font-weight: 600; white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  td.id { white-space: nowrap; }
+
+  /* ---------- figures ---------- */
+  figure { margin: 20px 0; }
+  figure .frame {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px;
+  }
+  figure svg { width: 100%; height: auto; display: block; }
+  figure img { width: 100%; border-radius: 10px; border: 1px solid var(--line); display: block; }
+  figcaption { margin-top: 10px; font-size: 12.8px; color: var(--ink2); }
+  figcaption b { color: var(--ink); }
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+
+  /* ---------- lists ---------- */
+  ul.tight { margin: 8px 0; padding-left: 22px; }
+  ul.tight li { margin: 5px 0; }
+  .note {
+    background: var(--warn-soft); border: 1px solid #f3d9ae; border-radius: 12px;
+    padding: 14px 18px; font-size: 14px; margin: 16px 0;
+  }
+  .note.bugbox { background: var(--bad-soft); border-color: #f2c1c1; }
+  .note b { color: var(--ink); }
+
+  footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--ink2); font-size: 13px; }
+  footer .docs { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+  footer .docs a {
+    color: var(--accent); text-decoration: none; background: var(--accent-soft);
+    padding: 4px 12px; border-radius: 8px; font-family: var(--mono); font-size: 12.5px;
+  }
+  .svg-label { font: 12px -apple-system, "PingFang SC", sans-serif; fill: #5a6472; }
+  .svg-label-strong { font: 600 12.5px -apple-system, "PingFang SC", sans-serif; fill: #1c2433; }
+  .svg-mono { font: 11px ui-monospace, Menlo, monospace; fill: #5a6472; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <h1>dsh-provider · 系统需求与方案</h1>
+    <div class="sub">给 dsh 提供 LLM 服务的插件：自动跟进 pi-ai 上游让新模型立即可用、为各 provider 查额度/余额、
+      接管模型选择器并显示余额，以及让配置错误可诊断。本文按「问题 → 功能方案 → 技术方案 → 缺口」四幕组织，供核对方案与需求。</div>
+    <div class="meta-row">
+      <span class="pill">定位 <b>As-is 基线</b></span>
+      <span class="pill">版本 <b>v0.2.0</b></span>
+      <span class="pill">整理日期 <b>2026-09-13</b></span>
+      <span class="pill">配套 <b>REQUIREMENTS.md · README.md · research/</b></span>
+    </div>
+  </div>
+</header>
+
+<nav class="stepper">
+  <div class="wrap">
+    <a href="#act1"><span class="n">1</span>问题是什么</a>
+    <a href="#act2"><span class="n">2</span>功能上怎么解决</a>
+    <a href="#act3"><span class="n">3</span>技术上怎么解决</a>
+    <a href="#act4"><span class="n">4</span>缺口与已知缺陷</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<!-- ==================== ACT 1 · 问题 ==================== -->
+<section class="act" id="act1">
+  <div class="act-head"><span class="no">第一幕</span><h2>问题是什么</h2></div>
+  <p class="act-lead">三个问题分别来自两份调研的结论（额度 API 调研 2026-09-11、插件架构调研），它们共同定义了这个插件的存在理由。</p>
+
+  <div class="cards c3">
+    <div class="card p1">
+      <span class="num">P1</span>
+      <div class="kicker">模型目录滞后</div>
+      <h4>新模型要等 dsh 发版</h4>
+      <p>dsh 打包时固定了旧版 pi-ai（实测 0.84.4，上游已到 0.85.1，一次差 70 个模型）。
+        上游发了新模型，用户拿不到，只能等 dsh 下一次发版。</p>
+      <div class="evi">证据：README「原理：桥接层」；2026-09-12 实测</div>
+    </div>
+    <div class="card p2">
+      <span class="num">P2</span>
+      <div class="kicker">额度不可见</div>
+      <h4>「还剩多少」只能登控制台看</h4>
+      <p>dsh 没有任何额度/余额设施（调研结论：从零建）；五家 provider 无一返回 rate-limit 响应头；
+        各家额度端点散在各处，格式不一。用户选模型时看不到哪个 provider 快没额度了。</p>
+      <div class="evi">证据：dsh-plugin-architecture.md §7；provider-quota-apis.md §5</div>
+    </div>
+    <div class="card p3">
+      <span class="num">P3</span>
+      <div class="kicker">配置错误不可诊断</div>
+      <h4>填错 key 只剩「查询失败」</h4>
+      <p>浏览器端拿不到 key 值（credentials 单向流动），跨 provider 错配在界面上无迹可循。
+        实测案例：<code>KIMI_CODING_API_KEY</code> 被填成了 <code>DEEPSEEK_API_KEY</code> 的同值，
+        表现只是 kimi 一直查询失败。</p>
+      <div class="evi">证据：README「已知状态」2026-09-13；凭据体检一节</div>
+    </div>
+  </div>
+
+  <h3 class="block">P1 的直观样子：发布节奏错配</h3>
+  <figure>
+    <div class="frame">
+      <svg viewBox="0 0 960 220" role="img" aria-label="dsh 与 pi-ai 发布节奏错配">
+        <!-- dsh track -->
+        <text x="16" y="34" class="svg-label-strong">dsh 发版线（pi-ai 版本被冻结在打包时刻）</text>
+        <line x1="150" y1="70" x2="930" y2="70" stroke="#c6cdd8" stroke-width="2"/>
+        <circle cx="200" cy="70" r="6" fill="#3b5bdb"/>
+        <text x="200" y="94" text-anchor="middle" class="svg-mono">dsh 打包</text>
+        <text x="200" y="108" text-anchor="middle" class="svg-mono">pi-ai 0.84.4</text>
+        <rect x="560" y="52" width="180" height="36" rx="8" fill="#fdecec" stroke="#e03131" stroke-dasharray="5 4"/>
+        <text x="650" y="75" text-anchor="middle" class="svg-label-strong" fill="#e03131">模型滞留区（70 个新模型）</text>
+        <circle cx="860" cy="70" r="6" fill="#94a0b0"/>
+        <text x="860" y="94" text-anchor="middle" class="svg-mono">下一次 dsh 发版?</text>
+        <!-- upstream track -->
+        <text x="16" y="148" class="svg-label-strong">pi-ai 上游线</text>
+        <line x1="150" y1="182" x2="930" y2="182" stroke="#c6cdd8" stroke-width="2"/>
+        <circle cx="200" cy="182" r="6" fill="#3b5bdb"/>
+        <text x="200" y="205" text-anchor="middle" class="svg-mono">0.84.4</text>
+        <circle cx="480" cy="182" r="6" fill="#2f9e44"/>
+        <text x="480" y="205" text-anchor="middle" class="svg-mono">0.85.0</text>
+        <circle cx="700" cy="182" r="6" fill="#2f9e44"/>
+        <text x="700" y="205" text-anchor="middle" class="svg-mono">0.85.1（+70 模型）</text>
+        <circle cx="880" cy="182" r="6" fill="#2f9e44"/>
+        <text x="880" y="205" text-anchor="middle" class="svg-mono">…持续发布</text>
+        <line x1="700" y1="150" x2="700" y2="40" stroke="#e8890c" stroke-dasharray="4 4"/>
+        <text x="710" y="44" class="svg-label" fill="#e8890c">上游已发布，dsh 侧仍滞留</text>
+      </svg>
+    </div>
+    <figcaption><b>图 1.</b> P1 的问题结构：pi-ai 上游持续发版，dsh 里的模型目录冻结在上次打包点，新模型要等下一次 dsh 发版才能到用户手里。</figcaption>
+  </figure>
+</section>
+
+<!-- ==================== ACT 2 · 功能方案 ==================== -->
+<section class="act" id="act2">
+  <div class="act-head"><span class="no">第二幕</span><h2>功能上怎么解决</h2></div>
+  <p class="act-lead">三大功能柱与三个问题一一对应。前两个落点已实现并真机验证（2026-09-13），
+    另两个落点是保留的正式需求（见第四幕）。</p>
+
+  <div class="flow">
+    <div class="node"><div class="t">P1 模型目录滞后</div><div class="d">→ <b>F1 pi-ai 桥接与自动更新</b>：上游发新版自动就位，重启即用上</div></div>
+    <span class="arr">⤳</span>
+    <div class="node"><div class="t">P2 额度不可见</div><div class="d">→ <b>F2 计费接口</b>：四家 provider 额度统一查询，余额进 GUI</div></div>
+    <span class="arr">⤳</span>
+    <div class="node"><div class="t">P3 配置不可诊断</div><div class="d">→ <b>F3 界面与诊断</b>：选择器带余额 + Provider 设置页 + 凭据体检</div></div>
+  </div>
+
+  <h3 class="block">用户场景</h3>
+  <div class="tbl-wrap"><table>
+    <tr><th style="width:56px">场景</th><th>用户要做什么</th><th>对应功能</th></tr>
+    <tr><td class="id"><b>S1</b></td><td>在模型座位打开选择器，按 provider 过滤或搜索，每行显示余额，一眼看出谁快没额度；点选即切换</td><td>FR-3.2</td></tr>
+    <tr><td class="id"><b>S2</b></td><td>composer 旁的徽标常显当前 provider 余量摘要，点开看各账户明细（余额/窗口/重置时间）</td><td>FR-3.1</td></tr>
+    <tr><td class="id"><b>S3</b></td><td>设置页 Provider 标签看桥接状态、版本、额度明细、凭据体检结论，手动触发上游检查</td><td>FR-3.4 / FR-1.4</td></tr>
+    <tr><td class="id"><b>S4</b></td><td>pi-ai 发新版后自动下载就位，重启生效；状态可查、可回滚</td><td>FR-1.1 ~ FR-1.3</td></tr>
+    <tr><td class="id"><b>S5</b></td><td>（本期需求，未实现）从会话事件流感知实时用量与额度耗尽失败，不必手动查</td><td>§7.2</td></tr>
+  </table></div>
+
+  <h3 class="block">界面落点：原始调研指定的四个位置</h3>
+  <figure>
+    <div class="frame">
+      <svg viewBox="0 0 960 560" role="img" aria-label="四个 UI 落点线框">
+        <!-- window -->
+        <rect x="8" y="8" width="944" height="544" rx="14" fill="#fbfcfd" stroke="#d5dbe3"/>
+        <rect x="8" y="8" width="944" height="36" rx="14" fill="#eef1f5"/>
+        <circle cx="34" cy="26" r="5" fill="#d0d6de"/><circle cx="54" cy="26" r="5" fill="#d0d6de"/><circle cx="74" cy="26" r="5" fill="#d0d6de"/>
+        <!-- sidebar -->
+        <rect x="8" y="44" width="190" height="508" fill="#f2f4f7"/>
+        <rect x="24" y="64" width="120" height="14" rx="7" fill="#dfe4ea"/>
+        <rect x="24" y="92" width="150" height="14" rx="7" fill="#e8ecf1"/>
+        <rect x="24" y="120" width="150" height="14" rx="7" fill="#e8ecf1"/>
+        <rect x="24" y="148" width="100" height="14" rx="7" fill="#e8ecf1"/>
+        <!-- sidebar footer action -->
+        <rect x="24" y="500" width="158" height="34" rx="9" fill="#fdf1e0" stroke="#e8890c" stroke-dasharray="5 4"/>
+        <text x="103" y="521" text-anchor="middle" class="svg-label" fill="#e8890c">sidebar.footer.action</text>
+        <text x="196" y="482" text-anchor="end" class="svg-label-strong"><tspan fill="#e8890c">❌ 缺口 §7.1</tspan></text>
+        <!-- top overlay -->
+        <rect x="700" y="60" width="230" height="30" rx="9" fill="#fdf1e0" stroke="#e8890c" stroke-dasharray="5 4"/>
+        <text x="815" y="79" text-anchor="middle" class="svg-label" fill="#e8890c">shell.overlay（全局徽标）</text>
+        <text x="940" y="52" text-anchor="end" class="svg-label-strong"><tspan fill="#e8890c">❌ 缺口 §7.1</tspan></text>
+        <!-- main area -->
+        <rect x="230" y="60" width="440" height="330" rx="10" fill="#fff" stroke="#e3e7ee"/>
+        <text x="450" y="225" text-anchor="middle" class="svg-label">对话区</text>
+        <!-- composer -->
+        <rect x="230" y="410" width="700" height="130" rx="14" fill="#fff" stroke="#d5dbe3"/>
+        <rect x="250" y="428" width="500" height="40" rx="9" fill="#f2f4f7"/>
+        <text x="266" y="453" class="svg-label">描述你想要构建的内容…</text>
+        <!-- badge (input.right) -->
+        <rect x="636" y="486" width="128" height="32" rx="8" fill="#e6f4ea" stroke="#2f9e44"/>
+        <circle cx="652" cy="502" r="4" fill="#2f9e44"/>
+        <text x="662" y="506" class="svg-label-strong" font-size="11">Kimi K3 · 余 99%</text>
+        <text x="770" y="506" class="svg-label-strong"><tspan fill="#2f9e44">✅ FR-3.1</tspan></text>
+        <!-- model seat (input.model) -->
+        <rect x="480" y="486" width="140" height="32" rx="8" fill="#e6f4ea" stroke="#2f9e44"/>
+        <text x="494" y="506" class="svg-label-strong" font-size="11">⚡ DeepSeek-V4-Flash ▾</text>
+        <text x="440" y="506" text-anchor="end" class="svg-label-strong"><tspan fill="#2f9e44">✅ FR-3.2</tspan></text>
+        <!-- settings tab -->
+        <rect x="230" y="60" width="200" height="24" rx="6" fill="#e6f4ea" stroke="#2f9e44"/>
+        <text x="244" y="77" class="svg-label-strong" font-size="11">设置 · Provider 标签</text>
+        <text x="440" y="77" class="svg-label-strong"><tspan fill="#2f9e44">✅ FR-3.4</tspan></text>
+      </svg>
+    </div>
+    <figcaption><b>图 2.</b> 四个落点的位置与状态。绿色 = 已实现并真机验证；橙色虚线 = 正式需求但尚未实现（原始调研指定，保留在需求内）。
+      模型座位（FR-3.2）是后加的需求，不在原始四点之列。</figcaption>
+  </figure>
+
+  <h3 class="block">真机验证截图（2026-09-13）</h3>
+  <div class="shots">
+    <figure>
+      <img src="research/shot-badge.png" alt="额度徽标真机截图">
+      <figcaption><b>图 3.</b> FR-3.1 徽标常显：composer 右侧「● 4 个账户」，旁边是模型座位「DeepSeek-V4-Flash High」。dsh web 真机。</figcaption>
+    </figure>
+    <figure>
+      <img src="research/shot-menu.png" alt="账户面板真机截图">
+      <figcaption><b>图 4.</b> 徽标点开后的账户面板（更新于 / 刷新），同一真机会话。</figcaption>
+    </figure>
+    <figure>
+      <img src="research/demo-widget-proof.png" alt="shell.overlay 可行性验证">
+      <figcaption><b>图 5.</b> 调研阶段的 demo 插件证明 <code>shell.overlay</code> 座位可用——这是 §7.1 缺口的可行性依据。</figcaption>
+    </figure>
+  </div>
+
+  <h3 class="block">功能需求一览（as-is 基线）</h3>
+  <div class="tbl-wrap"><table>
+    <tr><th>编号</th><th>需求</th><th style="width:150px">验收要点</th><th style="width:110px">状态</th></tr>
+    <tr><td class="id"><span class="fr">FR-1.1</span></td><td>自动跟进上游：监视 npm registry，启动时检查一次、6h 节流，新版本自动下载装依赖就位</td><td>新版出现在 <code>vendor/pi-ai/&lt;v&gt;/</code>；<code>DSH_PROVIDER_UPDATE=off</code> 可关</td><td><span class="badge ok">✅ 已实现</span></td></tr>
+    <tr><td class="id"><span class="fr">FR-1.2</span></td><td>桥接装载：官方 llm-pi-ai bundle 拷贝跑在我们维护的新版 pi-ai 上；失败退化为纯计费模式</td><td>重启后目录含上游新模型；失败不拖垮启动</td><td><span class="badge ok">✅ 已实现</span></td></tr>
+    <tr><td class="id"><span class="fr">FR-1.3</span></td><td>升级与回滚：换软链 + 重启生效；回滚 = 软链指回旧版本目录</td><td><code>/provider/status</code> 报版本/needsRestart</td><td><span class="badge ok">✅ 已实现</span></td></tr>
+    <tr><td class="id"><span class="fr">FR-1.4</span></td><td>桥接状态可诊断：版本、上游最新版、已发现路由表（含凭据名、不含值）</td><td>JSON 可见</td><td><span class="badge ok">✅ 已实现</span> <span class="badge bug">🐞 字段断链</span></td></tr>
+    <tr><td class="id"><span class="fr">FR-2.1</span></td><td>provider 路由发现：合并 settings 的 <code>llm-pi-ai.providers</code> 与原生适配器路由（deepseek-official）；未配置的 catalog provider 不进面板</td><td><code>node test/routes.mjs</code> 通过</td><td><span class="badge ok">✅ 已实现</span></td></tr>
+    <tr><td class="id"><span class="fr">FR-2.2</span></td><td>额度查询适配器：DeepSeek / Kimi Coding / GLM / Moonshot 用各家 key 免费 GET；Qwen 只显示说明</td><td><code>node lib/adapters/run.js all</code> 可跑测</td><td><span class="badge ok">✅ 已实现</span></td></tr>
+    <tr><td class="id"><span class="fr">FR-2.3</span></td><td>统一账户快照：<code>GET /plan/status</code>，60s 缓存，<code>?refresh=1</code> 绕过，上游故障结构化报错</td><td>浏览器同源 fetch 可用</td><td><span class="badge ok">✅ 已实现</span></td></tr>
+    <tr><td class="id"><span class="fr">FR-2.4</span></td><td>凭据体检：多个 provider 同一把 key 时报警；key 值只在宿主进程内比对，绝不下发</td><td><code>node test/credential-check.mjs</code> 通过</td><td><span class="badge ok">✅ 已实现</span></td></tr>
+    <tr><td class="id"><span class="fr">FR-2.5</span></td><td>凭据解析：按 <code>apiKeyEnv</code> 经 credentials 服务解析（env → 凭据文件 → .env）</td><td>与官方 llm-pi-ai 同通路</td><td><span class="badge ok">✅ 已实现</span></td></tr>
+    <tr><td class="id"><span class="fr">FR-3.1</span></td><td>额度徽标 + 账户面板（落点：conversation.input.right）</td><td>真机验证 2026-09-13</td><td><span class="badge ok">✅ 已实现</span></td></tr>
+    <tr><td class="id"><span class="fr">FR-3.2</span></td><td>模型座位接管：搜索 / provider 过滤 / 每行余额 / 点选即切（落点：conversation.input.model，priority -10 遮蔽）</td><td>真机验证</td><td><span class="badge ok">✅ 已实现</span></td></tr>
+    <tr><td class="id"><span class="fr">FR-3.3</span></td><td>/model 命令带余额：官方行禁用时接管，官方在时静默让位</td><td>让位路径已验；接管路径待验</td><td><span class="badge ok">✅ 已实现</span></td></tr>
+    <tr><td class="id"><span class="fr">FR-3.4</span></td><td>设置页 Provider 标签：桥接状态 / 版本 / 额度明细 / 凭据体检（落点：settings.section）</td><td>真机验证</td><td><span class="badge ok">✅ 已实现</span></td></tr>
+    <tr><td class="id"><span class="fr">FR-3.5</span></td><td>数据面与官方同路：目录走 session/modelCatalog、切换走 session/selectModel、优先官方 modelDirectories 服务</td><td>—</td><td><span class="badge ok">✅ 已实现</span></td></tr>
+    <tr><td class="id"><span class="fr">FR-3.6</span></td><td>接线可诊断：<code>window.__dshProvider</code> 暴露 applied / modelDirectories / face / seat</td><td>—</td><td><span class="badge ok">✅ 已实现</span></td></tr>
+  </table></div>
+</section>
+
+<!-- ==================== ACT 3 · 技术方案 ==================== -->
+<section class="act" id="act3">
+  <div class="act-head"><span class="no">第三幕</span><h2>技术上怎么解决</h2></div>
+  <p class="act-lead">一条主线：宿主半区代持密钥、代查额度、代管桥接；浏览器半区只做呈现与交互。
+    两半区之间只走同源 HTTP，这条边界同时决定了安全模型。</p>
+
+  <h3 class="block">总架构：宿主半区 / 浏览器半区 / 同源 HTTP 边界</h3>
+  <figure>
+    <div class="frame">
+      <svg viewBox="0 0 960 560" role="img" aria-label="总体架构">
+        <defs>
+          <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="#8a93a1"/>
+          </marker>
+          <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="#3b5bdb"/>
+          </marker>
+        </defs>
+        <!-- host half -->
+        <rect x="16" y="16" width="560" height="440" rx="16" fill="#f6f8ff" stroke="#b9c6ef"/>
+        <text x="40" y="46" class="svg-label-strong" font-size="14">宿主半区（Node，dsh 进程内）</text>
+        <!-- dsh-provider box -->
+        <rect x="36" y="60" width="520" height="300" rx="12" fill="#fff" stroke="#3b5bdb"/>
+        <text x="52" y="86" class="svg-label-strong" fill="#3b5bdb">dsh-provider 插件</text>
+        <!-- bridge -->
+        <rect x="52" y="100" width="240" height="120" rx="10" fill="#e7ecfb"/>
+        <text x="66" y="122" class="svg-label-strong">桥接层 bridge.js</text>
+        <text x="66" y="142" class="svg-mono">vendor/llm-bridge/</text>
+        <text x="66" y="158" class="svg-mono">├─ lib/index.js（官方 bundle 拷贝）</text>
+        <text x="66" y="174" class="svg-mono">└─ node_modules/@earendil-works/pi-ai</text>
+        <text x="66" y="190" class="svg-mono">    ↳ 软链 → vendor/pi-ai/&lt;版本&gt;/</text>
+        <text x="66" y="210" class="svg-label">完全接管官方 llm-pi-ai 行为</text>
+        <!-- updater -->
+        <rect x="52" y="232" width="240" height="52" rx="10" fill="#e7ecfb"/>
+        <text x="66" y="254" class="svg-label-strong">updater.js</text>
+        <text x="66" y="272" class="svg-label">盯 npm registry，6h 节流自动下载</text>
+        <line x1="172" y1="232" x2="172" y2="220" stroke="#3b5bdb" marker-end="url(#arrA)"/>
+        <!-- routes + credential -->
+        <rect x="308" y="100" width="232" height="86" rx="10" fill="#eefaf0" stroke="#bfe3c8"/>
+        <text x="322" y="122" class="svg-label-strong">routes.js 路由发现</text>
+        <text x="322" y="140" class="svg-label">settings 的 llm-pi-ai.providers</text>
+        <text x="322" y="156" class="svg-label">+ 原生适配器（deepseek-official）</text>
+        <text x="322" y="174" class="svg-label">settings.yaml 直读兜底</text>
+        <rect x="308" y="198" width="232" height="86" rx="10" fill="#fff6e9" stroke="#eed3a8"/>
+        <text x="322" y="220" class="svg-label-strong">credential-check.js 凭据体检</text>
+        <text x="322" y="238" class="svg-label">sha256 比对各 provider 的 key</text>
+        <text x="322" y="254" class="svg-label">只输出结论，值不出宿主进程</text>
+        <text x="322" y="272" class="svg-label">（P3 的解法）</text>
+        <!-- adapters -->
+        <rect x="52" y="296" width="488" height="52" rx="10" fill="#f6eafa" stroke="#dbbfe6"/>
+        <text x="66" y="318" class="svg-label-strong">adapters/ 计费适配器（每家一个文件，互不依赖）</text>
+        <text x="66" y="336" class="svg-mono">deepseek · kimi-coding · glm · moonshot · qwen(只读说明)</text>
+        <!-- llm -->
+        <rect x="52" y="372" width="240" height="60" rx="10" fill="#fff" stroke="#d5dbe3"/>
+        <text x="66" y="394" class="svg-label-strong">官方服务（复用，不重造）</text>
+        <text x="66" y="412" class="svg-mono">ctx.llm · credentials · settings</text>
+        <text x="66" y="426" class="svg-mono">webServer（register 三条路由）</text>
+        <!-- provider apis -->
+        <rect x="360" y="372" width="180" height="60" rx="10" fill="#fff" stroke="#d5dbe3"/>
+        <text x="374" y="394" class="svg-label-strong">各家额度 API</text>
+        <text x="374" y="412" class="svg-mono">deepseek.com · kimi.com</text>
+        <text x="374" y="426" class="svg-mono">bigmodel.cn · moonshot.cn</text>
+        <line x1="292" y1="402" x2="360" y2="402" stroke="#8a93a1" marker-end="url(#arrB)"/>
+        <text x="326" y="394" text-anchor="middle" class="svg-mono">免费 GET</text>
+        <!-- browser half -->
+        <rect x="616" y="16" width="328" height="440" rx="16" fill="#f4fbf5" stroke="#bfe3c8"/>
+        <text x="640" y="46" class="svg-label-strong" font-size="14">浏览器半区（dsh web GUI）</text>
+        <rect x="636" y="60" width="288" height="180" rx="12" fill="#fff" stroke="#2f9e44"/>
+        <text x="652" y="84" class="svg-label-strong" fill="#2f9e44">dsh-provider client（classic script）</text>
+        <text x="652" y="106" class="svg-label">PlanBadge（FR-3.1）</text>
+        <text x="652" y="124" class="svg-label">ModelSwitchSeat（FR-3.2）</text>
+        <text x="652" y="142" class="svg-label">ProviderSettingsSection（FR-3.4）</text>
+        <text x="652" y="164" class="svg-mono">window.__ModuleLoader__.load</text>
+        <text x="652" y="182" class="svg-mono">inject: slots / sessions / remote</text>
+        <text x="652" y="204" class="svg-label-strong">三个座位</text>
+        <text x="652" y="222" class="svg-mono">conversation.input.right (list)</text>
+        <text x="652" y="238" class="svg-mono">conversation.input.model (single, -10)</text>
+        <rect x="636" y="252" width="288" height="0" fill="none"/>
+        <text x="652" y="258" class="svg-mono">settings.section (list) · /model 让位</text>
+        <rect x="636" y="268" width="288" height="88" rx="10" fill="#fff" stroke="#d5dbe3"/>
+        <text x="652" y="290" class="svg-label-strong">官方 modelDirectories 服务</text>
+        <text x="652" y="308" class="svg-label">目录 / 当前选择 / 切换提交</text>
+        <text x="652" y="326" class="svg-mono">缺席时退回同源 HTTP/RPC</text>
+        <text x="652" y="344" class="svg-mono">session/modelCatalog · selectModel</text>
+        <!-- boundary -->
+        <line x1="596" y1="16" x2="596" y2="456" stroke="#c6cdd8" stroke-dasharray="6 5"/>
+        <text x="596" y="480" text-anchor="middle" class="svg-label-strong">同源 HTTP 边界（唯一的通信面）</text>
+        <rect x="330" y="492" width="300" height="52" rx="10" fill="#eef1f5"/>
+        <text x="480" y="514" text-anchor="middle" class="svg-mono">GET /plan/status · GET /provider/status</text>
+        <text x="480" y="532" text-anchor="middle" class="svg-mono">POST /provider/update · /api/session/*（官方）</text>
+        <line x1="420" y1="492" x2="470" y2="456" stroke="#8a93a1" marker-end="url(#arrB)"/>
+        <line x1="540" y1="492" x2="700" y2="456" stroke="#8a93a1" marker-end="url(#arrB)"/>
+      </svg>
+    </div>
+    <figcaption><b>图 6.</b> 总体架构。左：宿主半区——桥接层把官方 llm-pi-ai bundle 拷贝接到我们维护的新版 pi-ai（软链），
+      updater 自动跟进上游；计费链 = 路由发现 → credentials 解析 key → 适配器查各家免费 GET；凭据体检在宿主内比对 key 摘要。
+      右：浏览器半区只做呈现与交互，数据全部经同源 HTTP 或官方客户端服务。两半区之间没有第二条通道。</figcaption>
+  </figure>
+
+  <h3 class="block">桥接机制放大：拷贝 + 软链，升级 = 换软链 + 重启</h3>
+  <figure>
+    <div class="frame">
+      <svg viewBox="0 0 960 330" role="img" aria-label="桥接文件系统机制">
+        <!-- source bundle -->
+        <rect x="24" y="40" width="250" height="96" rx="10" fill="#fff" stroke="#d5dbe3"/>
+        <text x="40" y="64" class="svg-label-strong">profile node_modules（官方）</text>
+        <text x="40" y="84" class="svg-mono">@deepseek-ai/dsh-llm-pi-ai</text>
+        <text x="40" y="102" class="svg-mono">└─ lib/index.js（单文件 bundle）</text>
+        <text x="40" y="122" class="svg-label">打包时固定，pi-ai 依赖全走 bare specifier</text>
+        <!-- copy arrow -->
+        <line x1="274" y1="88" x2="330" y2="88" stroke="#3b5bdb" marker-end="url(#arrA)"/>
+        <text x="302" y="76" text-anchor="middle" class="svg-label" fill="#3b5bdb">拷贝</text>
+        <!-- bridge dir -->
+        <rect x="336" y="24" width="280" height="150" rx="10" fill="#e7ecfb" stroke="#3b5bdb"/>
+        <text x="352" y="48" class="svg-label-strong" fill="#3b5bdb">vendor/llm-bridge/（本插件）</text>
+        <text x="352" y="70" class="svg-mono">lib/index.js（bundle 拷贝，mtime 变就重拷）</text>
+        <text x="352" y="90" class="svg-mono">node_modules/@earendil-works/pi-ai ══╗</text>
+        <text x="352" y="110" class="svg-mono">package.json（固定）</text>
+        <text x="352" y="136" class="svg-label">Node 按 bare specifier 解析 → 拷贝接到新版 pi-ai</text>
+        <!-- symlink -->
+        <line x1="616" y1="88" x2="672" y2="88" stroke="#e8890c" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrA)"/>
+        <text x="644" y="76" text-anchor="middle" class="svg-label" fill="#e8890c">软链</text>
+        <!-- versions -->
+        <rect x="678" y="24" width="258" height="150" rx="10" fill="#fff" stroke="#d5dbe3"/>
+        <text x="694" y="48" class="svg-label-strong">vendor/pi-ai/（updater 维护）</text>
+        <rect x="694" y="62" width="120" height="34" rx="8" fill="#eef1f5"/>
+        <text x="754" y="84" text-anchor="middle" class="svg-mono">0.84.4/</text>
+        <rect x="824" y="62" width="100" height="34" rx="8" fill="#e6f4ea" stroke="#2f9e44"/>
+        <text x="874" y="84" text-anchor="middle" class="svg-mono">0.85.1/ ✓</text>
+        <text x="694" y="122" class="svg-label">已就位版本目录（含 node_modules）</text>
+        <text x="694" y="142" class="svg-label">下载 → tar 解压 → npm install --omit=dev</text>
+        <text x="694" y="162" class="svg-label">--ignore-scripts，本地 npm 缓存</text>
+        <!-- flow notes -->
+        <rect x="24" y="210" width="912" height="46" rx="10" fill="#e6f4ea" stroke="#2f9e44"/>
+        <text x="40" y="238" class="svg-label-strong"><tspan fill="#2f9e44">升级</tspan>：updater 下好新版 → 换软链指向 → 重启 dsh 生效（needsRestart 提示，可回滚 = 指回旧目录）</text>
+        <rect x="24" y="266" width="912" height="46" rx="10" fill="#fdecec" stroke="#e03131"/>
+        <text x="40" y="294" class="svg-label-strong"><tspan fill="#e03131">为什么禁用官方行</tspan>：registerAdapter 同名路由抛 DUPLICATE_ADAPTER，无遮蔽机制 → cordis.patch.yml 禁用 llm-pi-ai，本插件完全接管其 settings 段与模型目录</text>
+      </svg>
+    </div>
+    <figcaption><b>图 7.</b> 桥接层文件机制。官方 bundle 的 pi-ai 依赖全部以 bare specifier 外部导入，
+      所以拷贝旁边放一个指向新版 pi-ai 的软链，Node 解析自然把拷贝接到新版——dsh 的转换胶水层保持稳定，
+      模型目录与 wire 协议实现全部来自上游最新。</figcaption>
+  </figure>
+
+  <h3 class="block">额度查询链路：一次 /plan/status 的完整路径</h3>
+  <figure>
+    <div class="frame">
+      <svg viewBox="0 0 960 400" role="img" aria-label="额度查询时序">
+        <!-- lanes -->
+        <line x1="150" y1="30" x2="150" y2="360" stroke="#e3e7ee"/><line x1="340" y1="30" x2="340" y2="360" stroke="#e3e7ee"/>
+        <line x1="530" y1="30" x2="530" y2="360" stroke="#e3e7ee"/><line x1="720" y1="30" x2="720" y2="360" stroke="#e3e7ee"/>
+        <text x="150" y="20" text-anchor="middle" class="svg-label-strong">浏览器组件</text>
+        <text x="340" y="20" text-anchor="middle" class="svg-label-strong">webServer 路由</text>
+        <text x="530" y="20" text-anchor="middle" class="svg-label-strong">插件宿主逻辑</text>
+        <text x="720" y="20" text-anchor="middle" class="svg-label-strong">外部世界</text>
+        <!-- steps -->
+        <line x1="150" y1="56" x2="330" y2="56" stroke="#3b5bdb" marker-end="url(#arrA)"/>
+        <text x="240" y="48" text-anchor="middle" class="svg-mono">① GET /plan/status（60s 缓存）</text>
+        <line x1="340" y1="104" x2="520" y2="104" stroke="#3b5bdb" marker-end="url(#arrA)"/>
+        <text x="430" y="96" text-anchor="middle" class="svg-mono">② snapshot(force?)</text>
+        <rect x="360" y="120" width="350" height="120" rx="10" fill="#f6f8ff" stroke="#b9c6ef"/>
+        <text x="376" y="142" class="svg-label-strong">providerRoutes：settings ∪ 原生路由</text>
+        <text x="376" y="160" class="svg-mono">③ credentials.resolve(apiKeyEnv) → {value, source}</text>
+        <text x="376" y="178" class="svg-mono">④ 值留在宿主，sha256 摘要参与比对（凭据体检）</text>
+        <text x="376" y="196" class="svg-mono">⑤ findAdapter(providerId, baseURL) 选适配器</text>
+        <text x="376" y="214" class="svg-mono">⑥ adapter.query(key) → 标准化 AccountStatus</text>
+        <text x="376" y="232" class="svg-label">Qwen 无公开端点 → 直接返回说明文案，不发请求</text>
+        <line x1="530" y1="300" x2="718" y2="300" stroke="#8a93a1" marker-end="url(#arrB)"/>
+        <text x="624" y="292" text-anchor="middle" class="svg-mono">免费 GET + Bearer</text>
+        <rect x="726" y="252" width="210" height="96" rx="10" fill="#fff" stroke="#d5dbe3"/>
+        <text x="742" y="274" class="svg-label-strong">各家额度端点</text>
+        <text x="742" y="292" class="svg-mono">api.deepseek.com/user/balance</text>
+        <text x="742" y="308" class="svg-mono">api.kimi.com/coding/v1/usages</text>
+        <text x="742" y="324" class="svg-mono">open.bigmodel.cn/.../quota/limit</text>
+        <text x="742" y="340" class="svg-mono">api.moonshot.cn/.../me/balance</text>
+        <line x1="340" y1="300" x2="170" y2="300" stroke="#2f9e44" marker-end="url(#arrA)"/>
+        <text x="255" y="292" text-anchor="middle" class="svg-mono">⑦ accounts + credentialWarning（不含 key 值）</text>
+        <text x="150" y="336" class="svg-label">徽标 / 模型行 / Provider 标签各自轮询渲染；切换仍走官方 session/selectModel</text>
+      </svg>
+    </div>
+    <figcaption><b>图 8.</b> 一次额度快照的链路。关键安全性质：key 的明文只存在于 credentials.resolve 的返回里，
+      比对用的是 sha256 摘要，出宿主进程的 JSON 只有结论与元信息。</figcaption>
+  </figure>
+
+  <h3 class="block">座位接管：single 座位的 priority 遮蔽</h3>
+  <figure>
+    <div class="frame">
+      <svg viewBox="0 0 960 250" role="img" aria-label="priority 遮蔽机制">
+        <text x="30" y="36" class="svg-label-strong">conversation.input.model（single 座位，同一 cell）</text>
+        <!-- entries sorted -->
+        <rect x="30" y="56" width="620" height="64" rx="10" fill="#e6f4ea" stroke="#2f9e44" stroke-width="2"/>
+        <text x="48" y="82" class="svg-label-strong">① priority: −10 · dsh-provider ModelSwitchSeat（我们）</text>
+        <text x="48" y="104" class="svg-label" fill="#2f9e44">priority 最小 → 渲染 ✅</text>
+        <rect x="30" y="132" width="620" height="64" rx="10" fill="#f2f4f7" stroke="#d5dbe3"/>
+        <text x="48" y="158" class="svg-label-strong">② priority: 0 · 官方 ui-model-selection（默认）</text>
+        <text x="48" y="180" class="svg-label">被遮蔽，不渲染；同 priority 会注册期抛错</text>
+        <text x="700" y="92" class="svg-label-strong" fill="#2f9e44">← winner</text>
+        <rect x="700" y="120" width="230" height="88" rx="10" fill="#fff6e9" stroke="#eed3a8"/>
+        <text x="716" y="142" class="svg-label-strong">注册面规则不同</text>
+        <text x="716" y="160" class="svg-label">slot：可遮蔽（换 priority）</text>
+        <text x="716" y="178" class="svg-label">commandUi / registerAdapter：</text>
+        <text x="716" y="196" class="svg-label">同名即抛，只能禁用官方行</text>
+      </svg>
+    </div>
+    <figcaption><b>图 9.</b> 为什么模型座位用 −10 而 /model 命令只能「让位」：slot 座位支持 priority 遮蔽（最小者渲染），
+      commandUi 与 registerAdapter 没有遮蔽机制。这条差异决定了三个接管面的不同写法。</figcaption>
+  </figure>
+
+  <h3 class="block">关键决策与非目标</h3>
+  <div class="cards c3">
+    <div class="card"><div class="kicker" style="color:var(--accent)">决策 D1</div><h4>host↔client 走自建 HTTP（Route A）</h4>
+      <p>第三方插件拿不到 Typert 代码生成器，走不了 RPC 正规军；自建路由与 GUI 同源，浏览器裸 fetch 即可。代价：无鉴权层（见安全边界）。</p></div>
+    <div class="card"><div class="kicker" style="color:var(--accent)">决策 D2</div><h4>client 端手写 classic script，无构建</h4>
+      <p>浏览器包必须是固定 <code>window.__ModuleLoader__.load</code> 形状的 classic script；只内联不引依赖。开发时改完即生效。</p></div>
+    <div class="card"><div class="kicker" style="color:var(--accent)">决策 D3</div><h4>数据面与官方完全同路</h4>
+      <p>模型目录走 session/modelCatalog、切换走 session/selectModel、优先官方 modelDirectories 服务——官方行为不变，我们只做呈现层增强。</p></div>
+  </div>
+
+  <div class="tbl-wrap" style="margin-top:16px"><table>
+    <tr><th style="width:220px">非目标（明确不做）</th><th>理由（来源）</th></tr>
+    <tr><td>不依赖浏览器登录态 / token</td><td>额度查询只吃 API key（Tier 1 原则，provider-quota-apis.md）</td></tr>
+    <tr><td>Qwen Token Plan 不做轮询</td><td>无公开端点且 ToS 明示仅限官方工具交互使用</td></tr>
+    <tr><td>不基于 rate-limit 响应头推断额度</td><td>五家均不返回相关头，实测否定</td></tr>
+    <tr><td>不用 chat completion 当探针</td><td>烧 credit 且有 ToS 风险</td></tr>
+    <tr><td>不接入 Kimi 控制台 JWT 接口</td><td>依赖网页登录态，违反 Tier 1；逆向记录备查</td></tr>
+    <tr><td>key 值不出宿主进程</td><td>浏览器只拿结论与元信息</td></tr>
+    <tr><td>不改官方插件文件</td><td>接管只经 cordis.patch 禁用行 + slot 优先级遮蔽</td></tr>
+  </table></div>
+
+  <div class="note">
+    <b>安全边界：</b>dsh webserver 按设计无鉴权层，默认只绑 loopback，本插件的路由不做校验，前提即「仅本机可达」。
+    若宿主被配置为 <code>0.0.0.0</code> 暴露，<code>/plan/status</code>（余额、凭据名）与 <code>POST /provider/update</code>
+    （触发公网下载 + npm install）将无防护——部署时必须意识到这一点。
+  </div>
+</section>
+
+<!-- ==================== ACT 4 · 缺口与已知缺陷 ==================== -->
+<section class="act" id="act4">
+  <div class="act-head"><span class="no">第四幕</span><h2>缺口与已知缺陷</h2></div>
+  <p class="act-lead">基线之外的两类遗留：正式需求但未实现（用户确认保留在需求内），以及 review 发现的缺陷。
+    这一幕是「核对需求」时最需要对账的部分。</p>
+
+  <h3 class="block">需求缺口（正式需求，当前未实现）</h3>
+  <div class="tbl-wrap"><table>
+    <tr><th style="width:56px">编号</th><th>需求</th><th>说明与依赖</th><th style="width:96px">状态</th></tr>
+    <tr><td class="id"><b>G1</b></td><td>侧边栏 <code>sidebar.footer.action</code> 入口</td><td>形态待定：额度徽标或跳转 Provider 设置页</td><td><span class="badge gap">❌ 缺口</span></td></tr>
+    <tr><td class="id"><b>G2</b></td><td><code>shell.overlay</code> 全局额度徽标</td><td>可行性已被 demo 插件验证（图 5）；§G3 的实时用量数据是它的主要数据源</td><td><span class="badge gap">❌ 缺口</span></td></tr>
+    <tr><td class="id"><b>G3</b></td><td>用量统计与失败归因（原始调研 §7.3，本期需求）：监听 <code>llm/stream</code> 累计 token 用量；<code>session/event</code> 持久用量；<code>llm/retry</code> 的 QUOTA/RATE_LIMIT 归因；经 <code>sessionProjections</code> 推送浏览器</td><td>与现有额度轮询互补不替代：轮询回答「账户还剩多少」（小时级），G3 回答「这次会话用了多少、刚才为什么失败」（秒级/事件级）</td><td><span class="badge gap">❌ 缺口</span></td></tr>
+  </table></div>
+
+  <h3 class="block">已知缺陷（2026-09-13 review 发现，待修）</h3>
+  <div class="note bugbox">
+    <b>🐞 /provider/status 状态文件断链。</b><code>updater.js</code> 把 needsRestart / latestVersion 写进
+    <code>vendor/status.json</code>，而路由读的是 <code>vendor/updater-state.json</code>（只有 lastCheck/at），
+    且全库无任何读者读 status.json。后果：设置页「已下载待重启」提示、上游版本显示、needsRestart 横幅永不出现；
+    <code>catalogPatches</code> 字段宿主端从未产出，是死 UI。
+    <b>修法</b>：<code>readStateFile()</code> 合并两个状态文件。详见 REQUIREMENTS.md §8。
+  </div>
+  <div class="cards c3">
+    <div class="card"><h4>并发无锁</h4><p>后台自动检查与 POST /provider/update 可并发对同一版本目录 rmSync + 重装；/plan/status 无请求合并，缓存落定前的并发请求会重复打上游。影响小。</p></div>
+    <div class="card"><h4>rpcId 同毫秒碰撞</h4><p>client 的 rpcId 用 <code>Date.now()</code> 生成，同毫秒两请求会撞 id；HTTP 成对收发，仅 cosmetic。</p></div>
+    <div class="card"><h4>死代码分支</h4><p><code>resolveKey</code> 里 <code>typeof resolved === 'string'</code> 分支永远不会命中（credentials.resolve 只返回对象）。无害。</p></div>
+  </div>
+
+  <h3 class="block">验收标准速查</h3>
+  <ul class="tight">
+    <li>离线测试三条全绿：<code>node test/routes.mjs</code> · <code>node test/credential-check.mjs</code> · <code>node test/client-smoke.mjs</code></li>
+    <li>浏览器真机：模型座位显示当前模型 + 余额；搜索跨 provider 出结果；chips 过滤正常；切换生效且可切回；Provider 标签渲染正常</li>
+    <li>桥接：上游新版自动就位 → needsRestart 提示出现 → 重启后新模型可见 → 回滚后目录恢复</li>
+    <li>证据纪律（继承调研文档）：新结论必须可复验，拿不到的标 UNKNOWN，不当既成事实写</li>
+  </ul>
+</section>
+
+<footer>
+  文档族：本文是需求的呈现层，与下列文档保持一致，修改时同步。
+  <div class="docs">
+    <a href="REQUIREMENTS.md">REQUIREMENTS.md — 需求基线（源文本）</a>
+    <a href="README.md">README.md — 设计与实现细节</a>
+    <a href="research/dsh-plugin-architecture.md">research/ 插件架构调研</a>
+    <a href="research/provider-quota-apis.md">research/ 额度 API 调研</a>
+  </div>
+  <p style="margin-top:14px">dsh-provider v0.2.0 · 整理于 2026-09-13 · 截图来自 dsh web 真机（research/shot-*.png）</p>
+</footer>
+
+</div>
+</body>
+</html>

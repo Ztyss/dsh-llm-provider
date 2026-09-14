@@ -1,0 +1,16 @@
+# 依赖与运行时产物
+node_modules/
+
+# 第三方源码（各自有独立 git 仓库，仅本地参考）
+dsh-src/
+research/cc-switch/
+
+# 桥接与上游 pi-ai 的运行时产物（loadBridge/updater 自动生成，可随时重建）
+vendor/pi-ai/
+vendor/llm-bridge/
+vendor/.npm-cache/
+vendor/status.json
+vendor/updater-state.json
+
+# 系统文件
+.DS_Store
