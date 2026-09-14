@@ -3,31 +3,27 @@
 给 dsh 提供 LLM 服务的插件（由 dsh-plan 改造而来），三件事：
 
 1. **pi-ai 自动跟进**：盯着 `@earendil-works/pi-ai` 的 npm registry，上游发了新版本就自动下载、装依赖、切换桥接——新模型不用等 dsh 发版。
-2. **计费接口**：为各 provider 查额度/余额，Web GUI 输入框旁的额度徽标照旧可用。
-3. **模型选择器和设置页 Provider 标签**：选择器带搜索、provider 过滤和余额显示；设置页新增 Provider 标签显示桥接状态与额度明细。
+2. **计费接口**：为各 provider 查额度/余额（对齐 CC Switch 的口径），Provider 卡片和模型选择器里的余量指示都走这份数据。
+3. **模型选择器和设置页 Provider 标签**：选择器按官方 ui-model-selection 的两级层级（模型/推理等级）重写并增强 provider 过滤、余量指示；设置页新增 Provider 标签管理路由（添加/删除/测试连通/单卡刷新余量）。
 
-```
- composer:  [额度与余额]  [● Kimi Coding · 余 47%]  [模型 ▾  ⌕搜索]
-                                │
-                                └─ 点开模型：搜索框 + provider chips（带余额点）
-                                   gpt-6-astra       OpenAI · 余 82%
-                                   kimi-k2-0905      Kimi Coding · 余 47%  ← 当前
-                                   glm-5.3           GLM Coding · 额度已用尽（红）
-```
+**命名原则：一律用 pi-ai 注册表的名字**（`lib/pi-ai-names.js` 调 pi-ai 自己的 `*Provider()` 工厂拿 name），
+我们不另起显示名；pi-ai 目录外只保留一个 Custom Gateway 入口（协议可选 OpenAI / Anthropic）。
 
 ## 界面接管了什么
 
 | 位置 | 做法 |
 |---|---|
 | composer 模型座位 `conversation.input.model` | 用 **priority 遮蔽**接管：座位是 `single`，官方 `ui-model-selection` 用默认 priority 0 占着，我们注册 `priority: -10`（最小者渲染）。官方插件行保持启用 |
-| `/model` 命令 | 官方还在时静默让位（`commandUi` 同名即抛，没有遮蔽）；只有把 `ui-model-selection` 行 patch 禁用后才由我们接管（带余额渲染） |
+| `/model` 命令 | 官方还在时静默让位（`commandUi` 同名即抛，没有遮蔽）；只有把 `ui-model-selection` 行 patch 禁用后才由我们接管（带余量渲染） |
 | 设置页 Provider 标签 | 新增一个 `settings.section` 贡献（list 座位，**不影响**官方 Models 标签） |
-| composer 额度徽标 | 保留原有 `conversation.input.right` 座位 |
 
-座位的数据来自官方客户端服务 `ctx.modelDirectories`（目录、当前选择、切换提交、失效刷新都在它手里），
-用不了时退回同源 HTTP（`session/modelCatalog`）与会话投影。**注意模块级 `inject` 要一并声明
-`remote`、`remote.session`**：官方目录服务的方法绑定到调用方上下文，少声明就会在 `directoryFor()`
-里报 `cannot get property "remote.session" without inject`（踩过）。
+座位数据有两条来源，按序兜底：首选官方客户端服务 `ctx.modelDirectories`（目录、当前选择、切换提交
+都在它手里）；它缺席时（plan-test 禁用官方插件）退回同源 HTTP（`session/modelCatalog` RPC）+
+会话投影（`modelSelection`）+ `session/selectModel` RPC。inject 面必须把 `sessionId` 和 `sessions`
+都传给座位组件——座位靠它们读投影回显当前模型（**坑**：inject 工厂虽然收到 sessionId，不放进
+返回的 props 组件就拿不到；官方座位不需要，因为它绑在目录服务上）。**注意模块级 `inject` 要一并
+声明 `remote`、`remote.session`**：官方目录服务的方法绑定到调用方上下文，少声明就会在
+`directoryFor()` 里报 `cannot get property "remote.session" without inject`（踩过）。
 
 三条注册路径的规则不同，接管方式也只好不同：
 
@@ -80,7 +76,7 @@ profile 文件由脚本生成，要改测试配置改脚本里的 `ensure_profil
 
 ## 计费适配器（解耦设计）
 
-每个 provider 一个独立文件，互不依赖，契约统一：
+每个 provider 一个独立文件，互不依赖，契约统一。当前 9 家：
 
 | 文件 | 数据源 |
 |---|---|
@@ -88,10 +84,15 @@ profile 文件由脚本生成，要改测试配置改脚本里的 `ensure_profil
 | `lib/adapters/kimi-coding.js` | `GET api.kimi.com/coding/v1/usages`（sk- key） |
 | `lib/adapters/glm.js` | `GET open.bigmodel.cn/api/monitor/usage/quota/limit` |
 | `lib/adapters/moonshot.js` | `GET api.moonshot.cn/v1/users/me/balance` |
+| `lib/adapters/minimax.js` | MiniMax 余量接口 |
+| `lib/adapters/opencode-go.js` | OpenCode Go 订阅余量 |
+| `lib/adapters/zenmux.js` | OpenCode Zen 余量 |
+| `lib/adapters/openrouter.js` | OpenRouter 余额 |
 | `lib/adapters/qwen.js` | 无公开接口，只读说明 |
 
 全部只用各家的 API key，不依赖任何浏览器登录态/token。
 加新 provider = 照 `deepseek.js` 写一个文件 + 在 `registry.js` 注册一行。
+数值口径以 CC Switch 为准，不展示多余字段（Kimi 充值包余量已按用户要求移除——数据不准）。
 
 ### 路由发现（`lib/routes.js`）
 
@@ -142,6 +143,11 @@ node test/client-smoke.mjs              # 浏览器端接线冒烟（假 loader 
 | `GET /plan/status` | 各 provider 额度快照（60 秒缓存，`?refresh=1` 绕过） |
 | `GET /provider/status` | 桥接状态：当前 pi-ai 版本、上游最新版、是否需要重启 |
 | `POST /provider/update` | 手动触发一次上游检查 + 更新 |
+| `GET /provider/models` | pi-ai 模型全量元数据（60 秒缓存，悬浮详情/能力徽章用） |
+| `GET /provider/presets` | 可添加的供应商预设清单（含已配置标记） |
+| `POST /provider/refresh` | 单卡刷新余量（实查绕过缓存，同步全局快照） |
+| `POST /provider/remove` | 删除 provider（settings/mutate 清路由 + credentials 清密钥） |
+| `POST /provider/test` | 添加前测试连通（llm/discoverModels 实连探测模型） |
 
 ## 配置
 
@@ -189,21 +195,29 @@ id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启
 收益：Kimi 官方升级模型（如把 `kimi-for-coding` 升到 K2.8 Preview、上下文改为 1M）后，
 **不用等 pi-ai 发版、不用写静态补丁**，重启 dsh 就自动修正。
 
-## 已知状态（2026-09-14）
+## 已知状态（2026-09-15）
 
-- **Provider 标签页重写完成**（真机验证）：
-  - CC Switch 式卡片：头部直给余量摘要（coding plan 的 5小时/订阅窗口、API 的余额，绿黄红
-    配色 + 紧凑重置倒计时）、官网链接、单卡 ↻ 刷新（悬停显示上次更新时间，实查绕过缓存并同步全局快照）；
-  - 二级标签：Provider 卡片列表 / pi-ai 桥接（版本、目录补丁、检查更新收在这里）；
-  - 展开面板：掩码 key 提示（宿主派生前3+后4，值不出宿主，一眼认出是哪把 key）、端点、可折叠模型区；
-  - 模型列表：ID/名称两列 + 能力徽章（视觉/推理/视频，来自 pi-ai 数据文件）+ 上下文，
-    模糊过滤（`ds`/`deapseek` 这类缩写和错拼都能识别），悬浮显示 Cherry 式详情卡
-    （上下文窗口/最大输出/思维链档位）；
-  - Kimi 会员等级映射为官网套餐名（LEVEL_* → Andante/Moderato/Allegretto/Allegro）。
-- **计费适配器补齐到 13 家**（端点与解析对齐 CC Switch 源码调研）：新增 MiniMax / OpenCode Go /
-  ZenMux / StepFun / SiliconFlow / OpenRouter / Novita / 火山方舟（AK:SK），修正智谱鉴权头
-  （不带 Bearer）；数值口径以 CC Switch 为准，不展示多余字段（Kimi 加油包已移除）。
-- **Kimi 凭据错配已修好**（9-13）：凭据体检会对「多个 provider 同一把 key」直接报警。
+- **模型选择器按官方蓝本重写完成**（真机验证）：
+  - 交互与官方 ui-model-selection 完全一致：触发器胶囊（模型名 · 推理等级）→ 根面板
+    「模型/推理等级」两行 → 模型面板（搜索 + provider chips + 分组列表）→ 推理等级面板；
+  - 选模型后退回根面板可接着调档位（官方行为），选档位后关闭；刷新页面从会话投影
+    `modelSelection` 立即回显当前模型；
+  - 模型统一显示 `供应商/模型名`（供应商名 = pi-ai 注册名），推理等级显示原始档位首字母大写
+    （Low/High/Max）；
+  - 增强项：provider chips 带最小余量指示点（悬停看 5h/7d 明细）、模型行带能力徽章
+    （视觉/推理）和上下文标注；
+  - composer 的额度徽标座位已按用户要求撤下。
+- **Provider 标签页**（真机验证）：官方 PluginCard 蓝本 1:1 的卡片（两行布局：名称+绿点+官网链接 /
+  余量摘要+刷新时间+刷新+删除，贯穿分割线，官方 Chevron）；余量格式 `5h: 90% ◷ 4h34m ｜ 7d: …`，
+  刷新指示 `<1min`/`刚刚`；添加走 settings/mutate + credentials/set（先测试连通才能添加），
+  删除同理；余量不支持时该行不显示而不是报错。
+- **命名全面切到 pi-ai 注册表**（`lib/pi-ai-names.js`）：显示名一律调 pi-ai 自己的 `*Provider()`
+  工厂拿（41 家全量，带缓存）；`syncRouteDisplayNames()` 把 pi-ai 名补进 settings 的 displayName
+  （只补缺失，不覆盖用户自定义）；CURATED 表只剩排序优先级，不起名字。
+- **pi-ai 目录外只留 Custom Gateway**：添加时可路由 ID、端点、协议（OpenAI / Anthropic 下拉）全
+  自定义；stepfun/siliconflow/novita/volcengine-ark 四家预设连同适配器已删除。
+- **计费适配器收敛到 9 家**（对齐 CC Switch 源码调研）。
+- **Kimi 凭据错配检测**：多个 provider 共用同一把 key 直接报警（凭据名点名，key 值不出宿主）。
 - **测试环境**：`scripts/test-profile.sh` 一键起 plan-test profile（3081 端口、自动开浏览器、
   `DSH_PROVIDER_TEST=1` 打「测」角标）；三态 = 补位 / 裸基线（摘 dsh-provider）/ 官方完整（3080）。
   plan-test 的 patch 层禁用官方模型管理三件套（llm-pi-ai / ui-model-selection / ui-settings-models）。
@@ -213,14 +227,16 @@ id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启
 
 | 文件 | 作用 |
 |---|---|
-| `lib/index.js` | 宿主入口：挂桥接插件 + 计费/状态路由（/plan/status、/provider/status、/provider/update、/provider/models、/provider/test、/provider/refresh） |
+| `lib/index.js` | 宿主入口：挂桥接插件 + 计费/状态/预设/添加/删除路由 + 显示名对齐 pi-ai |
 | `lib/bridge.js` | 桥接装载：拷 bundle、管理 pi-ai 软链、目录补丁、require 副本 |
 | `lib/updater.js` | 上游更新器：registry 检查、下载、装依赖、切版本 |
-| `lib/routes.js` | provider 路由发现（settings + 原生适配器目录合并）+ 显示名/官网链接映射 |
+| `lib/routes.js` | provider 路由发现（settings + 原生适配器目录合并）+ 官网链接映射 + labelOf 兜底 |
+| `lib/pi-ai-names.js` | pi-ai 注册表名字读取（id → name，缓存；所有显示名的唯一来源） |
+| `lib/provider-presets.js` | 添加 Provider 的候选清单：pi-ai 目录动态生成 + Custom Gateway；排序优先级 |
 | `lib/model-details.js` | 模型详情：读生效 pi-ai 包的 providers 数据文件（上下文/能力/思维链） |
 | `lib/credential-check.js` | 凭据体检：多个 provider 共用同一把 key 时报警 |
-| `lib/adapters/*` | 计费适配器（13 家，每家一个文件 + 注册表 + CLI 跑测器） |
-| `lib/client.js` | 浏览器端：额度徽标 + 模型选择器 + 设置页 Provider 标签（卡片/模型列表/悬浮详情卡） |
+| `lib/adapters/*` | 计费适配器（9 家，每家一个文件 + 注册表 + CLI 跑测器） |
+| `lib/client.js` | 浏览器端：模型选择器（官方蓝本两级层级）+ 设置页 Provider 标签（卡片/添加/删除） |
 | `lib/settings-source.js` | 直读 settings.yaml 的 llm-pi-ai 段（兜底） |
 | `test/*.mjs` | 路由发现、凭据体检、客户端接线三个离线测试 |
 | `scripts/test-profile.sh` | plan-test 测试环境一键脚本（起服务 + 打开浏览器） |

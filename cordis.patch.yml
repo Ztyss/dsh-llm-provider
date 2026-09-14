@@ -1,7 +1,9 @@
 # dsh-provider 的 bundle patch 层。
 # 1) 禁用内置 llm-pi-ai 行：ctx.llm.registerAdapter 对同名路由直接抛 DUPLICATE_ADAPTER，
 #    没有遮蔽机制，所以桥接要接手路由只能在这一层禁用官方行。
-# 2) 把本插件插进 profile 插件树；本插件内部的桥接副本完全接管 llm-pi-ai 的
+# 2) 禁用内置 llm-deepseek 行：DeepSeek 统一走 pi-ai 的 deepseek 路由（见 lib/index.js
+#    的 ensureDeepseekRoute 自动迁移，复用 DEEPSEEK_API_KEY），全世界只留 pi-ai 一套 adapter。
+# 3) 把本插件插进 profile 插件树；本插件内部的桥接副本完全接管 llm-pi-ai 的
 #    行为（settings 段、模型发现、模型选择器目录），对用户不可见地换到了新版 pi-ai。
 #
 # 注意模型选择器这里**没有**禁用官方 ui-model-selection 行：slot 座位支持 priority
@@ -12,6 +14,9 @@
 #   - id: ui-model-selection
 #     disabled: true
 - id: llm-pi-ai
+  disabled: true
+
+- id: llm-deepseek
   disabled: true
 
 - insert:

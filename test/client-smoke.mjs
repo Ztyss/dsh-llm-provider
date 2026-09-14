@@ -121,7 +121,7 @@ for (const registration of registrations) {
   if (typeof registration.component !== 'function') throw new Error(`${name} 的组件不是函数`)
 }
 
-const expected = ['conversation.input.right', 'conversation.input.model', 'settings.section']
+const expected = ['conversation.input.model', 'settings.section']
 for (const name of expected) {
   if (!registrations.some((r) => r.options.name === name)) {
     throw new Error(`没有注册预期的座位：${name}`)
@@ -138,5 +138,5 @@ if (!(typeof seat.options.priority === 'number' && seat.options.priority < 0)) {
 if (duplicated.commandRegistered) throw new Error('官方 /model 还在时不该抢注册')
 if (!free.commandRegistered) throw new Error('官方行禁用后我们的 /model 应该注册成功')
 
-console.log('\n冒烟通过：三个座位都已注册，模型座位用负 priority 遮蔽官方占用者；' +
+console.log('\n冒烟通过：模型座位 + 设置页标签两个座位已注册，模型座位用负 priority 遮蔽官方占用者；' +
   '/model 在官方占用时让位、空闲时接管')

@@ -34,7 +34,7 @@ const merged = providerRoutes(piAiSettings, '/nonexistent', llm)
 check('配置过的 pi-ai 路由都在', [...merged.keys()].sort(), ['kimi-coding', 'zai-coding-cn', 'deepseek-official'].sort())
 check('未配置的 catalog provider 不进面板', merged.has('openai'), false)
 check('原生路由用已知默认凭据名', merged.get('deepseek-official').apiKeyEnv, 'DEEPSEEK_API_KEY')
-check('原生路由带友好名', merged.get('deepseek-official').label, 'DeepSeek 官方')
+check('原生路由带友好名', merged.get('deepseek-official').label, 'DeepSeek')
 check('settings 优先于文件兜底', merged.get('kimi-coding').apiKeyEnv, 'KIMI_CODING_API_KEY')
 
 // 场景：llm 服务不可用（老 dsh）→ 只靠 settings
@@ -49,7 +49,7 @@ check('settings 与文件都没有时仍能给出原生路由', [...fileFallback
 const throwing = providerRoutes({ get: () => { throw new Error('boom') } }, '/nonexistent-dsh-home', llm)
 check('settings 抛错被吞掉且不影响原生路由', [...throwing.keys()], ['deepseek-official'])
 
-check('labelOf 已知 provider 用中文名', labelOf('zai-coding-cn'), 'GLM Coding（智谱国内）')
+check('labelOf 已知 provider 用 pi-ai 名', labelOf('zai-coding-cn'), 'Z.AI Coding CN')
 check('labelOf 未知 provider 按 id 拼', labelOf('my-gateway'), 'My Gateway')
 
 console.log(failed ? '\n有失败用例' : '\n路由发现测试全部通过')

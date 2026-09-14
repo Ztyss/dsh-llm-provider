@@ -92,7 +92,7 @@ start() {
     sleep 1
   done
   if [ -z "$url" ]; then
-    echo "启动失败，最后日志（$LOG）：" >&2
+    echo "启动失败，最后日志($LOG):" >&2
     tail -20 "$LOG" >&2 || true
     exit 1
   fi
