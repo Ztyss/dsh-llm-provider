@@ -13,6 +13,7 @@ import opencodeGo from './opencode-go.js'
 import openrouter from './openrouter.js'
 import qwen from './qwen.js'
 import zenmux from './zenmux.js'
+import type { BillingAdapter } from './shared.js'
 
 export const adapters = [
   deepseek,
@@ -27,7 +28,7 @@ export const adapters = [
 ]
 
 /** 按 provider id（必要时兜 baseURL）找适配器。 */
-export function findAdapter(providerId, baseUrl) {
+export function findAdapter(providerId: string, baseUrl: string | undefined): BillingAdapter | undefined {
   for (const adapter of adapters) {
     try {
       if (adapter.match(providerId, baseUrl)) return adapter

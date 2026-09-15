@@ -10,14 +10,29 @@
  */
 import { createHash } from 'node:crypto'
 
+/** 一条已解析出来的凭据；`value` 只在本模块内参与比对，不外传。 */
+export interface ResolvedCredential {
+  provider: string
+  ref: string | undefined
+  value: string
+}
+
+/** 一条体检结论：某个 provider 和别人用了同一把 key。 */
+export interface SharedCredentialWarning {
+  provider: string
+  reason: 'shared-credential'
+  message: string
+  others: string[]
+}
+
 /**
  * 找出共用同一把 key 的 provider。
- * @param resolved - `[{ provider, ref, value }]`；value 只在函数内参与比对。
- * @returns 每个受影响 provider 一条 `{ provider, reason, message, others }`。
+ * @param resolved - 已解析的凭据列表；value 只在函数内参与比对。
+ * @returns 每个受影响 provider 一条结论。
  */
-export function findSharedCredentials(resolved) {
-  const byDigest = new Map()
-  const refByProvider = new Map()
+export function findSharedCredentials(resolved: readonly ResolvedCredential[]): SharedCredentialWarning[] {
+  const byDigest = new Map<string, string[]>()
+  const refByProvider = new Map<string, string | undefined>()
   for (const entry of resolved) {
     if (typeof entry?.value !== 'string' || entry.value === '') continue
     refByProvider.set(entry.provider, entry.ref)
@@ -27,7 +42,7 @@ export function findSharedCredentials(resolved) {
     else group.push(entry.provider)
   }
 
-  const warnings = []
+  const warnings: SharedCredentialWarning[] = []
   for (const providers of byDigest.values()) {
     if (providers.length < 2) continue
     for (const provider of providers) {

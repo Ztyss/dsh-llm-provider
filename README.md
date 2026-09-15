@@ -101,11 +101,32 @@ dsh 的模型目录来自打包时固定的旧版 pi-ai（实测装的是 0.84.4
 
 一次体检约 75ms，正常启动只体检一档。
 
+## 构建
+
+**源码是 TypeScript，在 `src/`；`lib/` 是构建产物，不入库。**
+
+```sh
+npm install        # 一次：装 typescript / tsdown / @types/node
+npm run build      # = tsdown，src/*.ts → lib/*.js
+npm run watch      # 改代码自动重建
+npm run typecheck  # = tsc --noEmit（构建不查类型，要单独跑）
+```
+
+两段构建，都在 `tsdown.config.ts` 里：
+
+| 产物 | 来源 | 说明 |
+|---|---|---|
+| `lib/*.js`、`lib/adapters/*.js` | `src/*.ts` | 宿主端。1:1 转译（`unbundle`），不打包，产物路径跟迁移前完全一样 |
+| `lib/client.js` | `src/client.ts` | 浏览器端。单文件 CJS + `window.__ModuleLoader__.load({...})` 外壳——**那三行外壳由构建的 `banner`/`footer`/`intro` 加上**，源码里不写（跟官方插件同一套做法，见官方的 `packages/client/tsdown.client.ts`） |
+
+插件是 profile 里 `link:` 进来的，跑的就是 `lib/`——**改完源码忘了构建，跑的还是旧代码**。
+
 ## 装法
 
 ```sh
 # profile 里以 dsh-provider 名字链接（已完成）：
 #   ~/.dsh/profiles/web/node_modules/dsh-provider -> /Users/cgeng/Workspaces/dsh-plan
+npm run build               # 先构建出 lib/
 dsh web                     # 重启生效（插件树变了必须重启）
 ```
 
@@ -128,15 +149,15 @@ profile 文件由脚本生成，要改测试配置改脚本里的 `ensure_profil
 
 | 文件 | 数据源 |
 |---|---|
-| `lib/adapters/deepseek.js` | `GET api.deepseek.com/user/balance`（官方文档） |
-| `lib/adapters/kimi-coding.js` | `GET api.kimi.com/coding/v1/usages`（sk- key） |
-| `lib/adapters/glm.js` | `GET open.bigmodel.cn/api/monitor/usage/quota/limit` |
-| `lib/adapters/moonshot.js` | `GET api.moonshot.cn/v1/users/me/balance` |
-| `lib/adapters/minimax.js` | MiniMax 余量接口 |
-| `lib/adapters/opencode-go.js` | OpenCode Go 订阅余量 |
-| `lib/adapters/zenmux.js` | OpenCode Zen 余量 |
-| `lib/adapters/openrouter.js` | OpenRouter 余额 |
-| `lib/adapters/qwen.js` | 无公开接口，只读说明 |
+| `src/adapters/deepseek.ts` | `GET api.deepseek.com/user/balance`（官方文档） |
+| `src/adapters/kimi-coding.ts` | `GET api.kimi.com/coding/v1/usages`（sk- key） |
+| `src/adapters/glm.ts` | `GET open.bigmodel.cn/api/monitor/usage/quota/limit` |
+| `src/adapters/moonshot.ts` | `GET api.moonshot.cn/v1/users/me/balance` |
+| `src/adapters/minimax.ts` | MiniMax 余量接口 |
+| `src/adapters/opencode-go.ts` | OpenCode Go 订阅余量 |
+| `src/adapters/zenmux.ts` | OpenCode Zen 余量 |
+| `src/adapters/openrouter.ts` | OpenRouter 余额 |
+| `src/adapters/qwen.ts` | 无公开接口，只读说明 |
 
 全部只用各家的 API key，不依赖任何浏览器登录态/token。
 加新 provider = 照 `deepseek.js` 写一个文件 + 在 `registry.js` 注册一行。
@@ -326,17 +347,17 @@ pi-ai 的目录数据是静态快照，上游模型升级后会滞后。插件�
 
 | 文件 | 作用 |
 |---|---|
-| `lib/index.js` | 宿主入口：挂桥接插件 + 计费/状态/预设/添加/删除路由 |
-| `lib/bridge.js` | 桥接装载：拷 bundle、体检挑 pi-ai、管理软链、require 副本 |
-| `lib/updater.js` | 上游更新器：registry 检查、下载、装依赖、切版本 |
-| `lib/routes.js` | provider 路由发现（settings + 原生适配器目录合并）+ 官网链接映射 + labelOf 兜底 |
-| `lib/pi-ai-names.js` | pi-ai 注册表名字读取（id → name，缓存；所有显示名的唯一来源） |
-| `lib/provider-presets.js` | 添加 Provider 的候选清单：pi-ai 目录动态生成 + Custom Gateway；排序优先级 |
-| `lib/model-details.js` | 模型详情：读生效 pi-ai 包的 providers 数据文件（上下文/能力/思维链） |
-| `lib/credential-check.js` | 凭据体检：多个 provider 共用同一把 key 时报警 |
-| `lib/adapters/*` | 计费适配器（9 家，每家一个文件 + 注册表 + CLI 跑测器） |
-| `lib/client.js` | 浏览器端：模型选择器（官方蓝本两级层级）+ 设置页 Provider 标签（卡片/添加/删除） |
-| `lib/dsh-home.js` | DSH 数据目录（`$DSH_HOME`）解析 |
+| `src/index.ts` | 宿主入口：挂桥接插件 + 计费/状态/预设/添加/删除路由 |
+| `src/bridge.ts` | 桥接装载：拷 bundle、体检挑 pi-ai、管理软链、require 副本 |
+| `src/updater.ts` | 上游更新器：registry 检查、下载、装依赖、切版本 |
+| `src/routes.ts` | provider 路由发现（settings + 原生适配器目录合并）+ 官网链接映射 + labelOf 兜底 |
+| `src/pi-ai-names.ts` | pi-ai 注册表名字读取（id → name，缓存；所有显示名的唯一来源） |
+| `src/provider-presets.ts` | 添加 Provider 的候选清单：pi-ai 目录动态生成 + Custom Gateway；排序优先级 |
+| `src/model-details.ts` | 模型详情：读生效 pi-ai 包的 providers 数据文件（上下文/能力/思维链） |
+| `src/credential-check.ts` | 凭据体检：多个 provider 共用同一把 key 时报警 |
+| `src/adapters/*.ts` | 计费适配器（9 家，每家一个文件 + 注册表 + CLI 跑测器） |
+| `src/client.ts` | 浏览器端：模型选择器（官方蓝本两级层级）+ 设置页 Provider 标签（卡片/添加/删除） |
+| `src/dsh-home.ts` | DSH 数据目录（`$DSH_HOME`）解析 |
 | `test/*.mjs` | 路由发现、凭据体检、patch 层、pi-ai 体检、候选清单、状态合并、客户端接线七个离线测试 |
 | `scripts/test-profile.sh` | plan-test 测试环境一键脚本（起服务 + 打开浏览器） |
 | `scripts/dev-*.sh` / `main-lock.sh` | worktree 并行开发流程：开任务分支、自测打标记、串行合入 main（见 `AGENTS.md`） |

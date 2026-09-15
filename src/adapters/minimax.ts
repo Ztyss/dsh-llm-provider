@@ -19,17 +19,19 @@ import {
   num,
   originOf,
 } from './shared.js'
+import { asRecord } from '../types.js'
+import type { AccountStatus, AdapterQueryInput, BillingAdapter, QuotaWindow } from './shared.js'
 
 export default {
   id: 'minimax',
   label: 'MiniMax 编程套餐',
-  match(providerId, baseUrl) {
+  match(providerId: string, baseUrl: string | undefined): boolean {
     if (/^minimax/i.test(providerId)) return true
     if (typeof baseUrl !== 'string') return false
     return baseUrl.includes('api.minimaxi.com') || baseUrl.includes('api.minimax.io')
   },
 
-  async query({ id, displayName, key, baseUrl }) {
+  async query({ id, displayName, key, baseUrl }: AdapterQueryInput): Promise<AccountStatus> {
     const origin = originOf(baseUrl) ?? 'https://api.minimaxi.com'
     const { status, body } = await getJson(`${origin}/v1/api/openplatform/coding_plan/remains`, {
       authorization: `Bearer ${key}`,
@@ -37,31 +39,34 @@ export default {
     if (status === 401 || status === 403) fail(authFailed(status))
     if (status !== 200) fail(describeHttpError(status, body))
 
-    const baseResp = body?.base_resp
-    if (baseResp !== undefined && baseResp !== null && num(baseResp?.status_code) !== 0) {
-      fail(`MiniMax 业务错误（code ${String(baseResp?.status_code)}）：${String(baseResp?.status_msg ?? '未知错误')}`)
+    const record = asRecord(body)
+    const baseRespRaw = record['base_resp']
+    const baseResp = asRecord(baseRespRaw)
+    if (baseRespRaw !== undefined && baseRespRaw !== null && num(baseResp['status_code']) !== 0) {
+      fail(`MiniMax 业务错误（code ${String(baseResp['status_code'])}）：${String(baseResp['status_msg'] ?? '未知错误')}`)
     }
 
-    const remains = Array.isArray(body?.model_remains) ? body.model_remains : []
-    const general = remains.find((item) => item?.model_name === 'general')
+    const remains: unknown[] = Array.isArray(record['model_remains']) ? record['model_remains'] : []
+    const generalRaw = remains.find((item) => asRecord(item)['model_name'] === 'general')
 
-    const windows = []
-    if (general !== undefined) {
-      const fiveLeft = clampPercent(general?.current_interval_remaining_percent)
+    const windows: QuotaWindow[] = []
+    if (generalRaw !== undefined) {
+      const general = asRecord(generalRaw)
+      const fiveLeft = clampPercent(general['current_interval_remaining_percent'])
       if (fiveLeft !== undefined) {
         windows.push({
           window: '5 小时窗口',
           percentLeft: fiveLeft,
-          resetAt: epochMsToIso(general?.end_time),
+          resetAt: epochMsToIso(general['end_time']),
         })
       }
-      if (num(general?.current_weekly_status) === 1) {
-        const weeklyLeft = clampPercent(general?.current_weekly_remaining_percent)
+      if (num(general['current_weekly_status']) === 1) {
+        const weeklyLeft = clampPercent(general['current_weekly_remaining_percent'])
         if (weeklyLeft !== undefined) {
           windows.push({
             window: '每周窗口',
             percentLeft: weeklyLeft,
-            resetAt: epochMsToIso(general?.weekly_end_time),
+            resetAt: epochMsToIso(general['weekly_end_time']),
           })
         }
       }
@@ -73,4 +78,4 @@ export default {
       ...(windows.length === 0 ? { note: '响应里没有可解析的套餐额度（可能未订阅编程套餐）' } : {}),
     })
   },
-}
+} satisfies BillingAdapter

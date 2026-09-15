@@ -3,7 +3,7 @@
  *
  * 清单主体**动态来自生效 pi-ai 包的 providers 数据文件**（上游发新版自动跟进），按名字排序；
  * pi-ai 目录没有的只有 EXTRA_PRESETS 里那一个自定义网关入口，固定排最后。名字一律取 pi-ai
- * 注册表（见 pi-ai-names.js），官网链接见 routes.js 的 KNOWN_WEBSITES。每家标记 billing =
+ * 注册表（见 pi-ai-names.ts），官网链接见 routes.ts 的 KNOWN_WEBSITES。每家标记 billing =
  * 有没有余额查询适配器（没有也能加，只是卡片不显示余量）。
  *
  * 契约与官方 Models 页完全一致（写进 settings 的 llm-pi-ai.providers 段）：
@@ -17,22 +17,49 @@ import { piAiName } from './pi-ai-names.js'
 import { labelOf, websiteOf } from './routes.js'
 import { findAdapter } from './adapters/registry.js'
 
+/** 预设里一条供应商。 */
+export interface ProviderPreset {
+  id: string
+  label: string
+  baseURL: string
+  api: string | undefined
+  apiKeyEnv: string
+  websiteUrl: string | undefined
+  models: number
+  billing: boolean
+  custom: boolean
+}
+
+/** 带"已配置"标记的预设（/provider/presets 的响应体）。 */
+export interface ProviderPresetWithMeta extends ProviderPreset {
+  configured: boolean
+}
+
+/** buildPresets 内部累积的每 provider 信息；目录来源和 EXTRA_PRESETS 都归到这个形状。 */
+interface PresetSource {
+  api?: string | undefined
+  baseURL?: string
+  models?: number
+  label?: string
+  custom?: boolean
+}
+
 /** pi-ai 目录外只保留一个任意网关入口：端点、协议、名字全由用户自定义。 */
-const EXTRA_PRESETS = [
+const EXTRA_PRESETS: (PresetSource & { id: string })[] = [
   { id: 'custom-gateway', label: 'Custom Gateway', baseURL: '', api: 'openai-completions', custom: true },
 ]
 
 /** 原生适配器已覆盖的厂商：目录里同厂商的预设视为已配置（deepseek 官方 ≠ 目录的 deepseek，但同为一家）。 */
-const NATIVE_EQUIVALENTS = {
+const NATIVE_EQUIVALENTS: Record<string, readonly string[]> = {
   deepseek: ['deepseek-official'],
 }
 
 /** 官方 deriveKeyRef 同款：路由键 → 凭据名（KIMI_CODING_API_KEY 这种）。 */
-export function keyEnvOf(routeId) {
+export function keyEnvOf(routeId: string): string {
   return String(routeId).toUpperCase().replace(/[^A-Z0-9]/g, '_') + '_API_KEY'
 }
 
-function makePreset(id, info) {
+function makePreset(id: string, info: PresetSource): ProviderPreset {
   const baseURL = typeof info.baseURL === 'string' ? info.baseURL : ''
   return {
     id,
@@ -48,20 +75,20 @@ function makePreset(id, info) {
   }
 }
 
-/** 全量预设：pi-ai 目录（动态）+ 补充预设，按策展优先级、模型数排序。 */
-export function buildPresets() {
-  const byProvider = new Map()
+/** 全量预设：pi-ai 目录（动态）+ 补充预设，自定义入口排最后、其余按名字。 */
+export function buildPresets(): ProviderPreset[] {
+  const byProvider = new Map<string, PresetSource>()
   for (const detail of loadModelDetails(activePiAiRoot())) {
     let current = byProvider.get(detail.provider)
     if (current === undefined) {
       current = { api: detail.api, baseURL: '', models: 0 }
       byProvider.set(detail.provider, current)
     }
-    current.models += 1
+    current.models = (current.models ?? 0) + 1
     if (current.baseURL === '' && typeof detail.baseUrl === 'string') current.baseURL = detail.baseUrl
   }
-  const presets = []
-  const seen = new Set()
+  const presets: ProviderPreset[] = []
+  const seen = new Set<string>()
   for (const [id, info] of byProvider) {
     seen.add(id)
     presets.push(makePreset(id, info))
@@ -80,8 +107,8 @@ export function buildPresets() {
 }
 
 /** 预设 + 已配置标记（供 /provider/presets 路由）。同厂商被原生适配器覆盖也算已配置。 */
-export function presetsWithMeta(configuredIds) {
-  const ids = configuredIds instanceof Set ? configuredIds : new Set()
+export function presetsWithMeta(configuredIds: ReadonlySet<string> | undefined): ProviderPresetWithMeta[] {
+  const ids = configuredIds instanceof Set ? configuredIds : new Set<string>()
   return buildPresets().map((preset) => ({
     ...preset,
     configured: ids.has(preset.id) || (NATIVE_EQUIVALENTS[preset.id] ?? []).some((route) => ids.has(route)),

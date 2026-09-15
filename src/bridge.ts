@@ -23,6 +23,7 @@ import { createRequire } from 'node:module'
 import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveDshHome } from './dsh-home.js'
+import { asRecord, readString, type AnyRecord } from './types.js'
 
 const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 export const vendorDir = join(pluginRoot, 'vendor')
@@ -39,8 +40,52 @@ const BRIDGE_PACKAGE_JSON = JSON.stringify({
   exports: { '.': './lib/index.js', './package.json': './package.json' },
 }, null, 2)
 
+/** 桥接副本模块（官方那份 bundle 的形状：我们用到的两样）。 */
+export interface BridgePluginModule {
+  apply: (ctx: unknown, config: unknown) => void
+  Config?: unknown
+  [key: string]: unknown
+}
+
+/** 一次体检里被跳过的候选。 */
+export interface RejectedCandidate {
+  version: string
+  error?: string
+}
+
+/** 体检结果。 */
+export interface ProbeResult {
+  ok: boolean
+  error?: string
+}
+
+/** loadBridge() 的结果：成功带模块，失败带原因。 */
+export type BridgeLoadResult =
+  | {
+      ok: true
+      plugin: BridgePluginModule
+      piAiVersion: string
+      piAiSource: string
+      rejected: RejectedCandidate[]
+    }
+  | { ok: false; error: string }
+
+/** 一份 pi-ai 候选。`link: false` 表示不建软链、靠自然解析落到它。 */
+export interface PiAiCandidate {
+  key: string
+  version: string
+  root: string
+  link: boolean
+}
+
+/** 从 bundle 源码里抠出来的一条 import 需求。 */
+export interface PiAiRequirement {
+  specifier: string
+  names: string[]
+}
+
 /** vendor/pi-ai/ 下已就位的版本目录（有 node_modules 的才算就位）。 */
-export function installedVersions() {
+export function installedVersions(): string[] {
   try {
     return readdirSync(piAiVersionsDir)
       .filter((name) => existsSync(join(piAiVersionsDir, name, 'package.json'))
@@ -52,7 +97,7 @@ export function installedVersions() {
 }
 
 /** semver 数字比较，够用即可（pi-ai 是 0.x.y 格式）。 */
-export function compareVersions(a, b) {
+export function compareVersions(a: string, b: string): number {
   const pa = a.split('.').map(Number)
   const pb = b.split('.').map(Number)
   for (let i = 0; i < 3; i++) {
@@ -72,7 +117,7 @@ export function compareVersions(a, b) {
  * 没放在插件根的 node_modules：那里有一条手工建的 `@deepseek-ai` 软链（桥接副本上的
  * dsh 包靠它解析），在根上跑 npm install 会被 npm 当成待处理的条目，实测直接 EPERM。
  */
-function pluginDependencyRoot() {
+function pluginDependencyRoot(): string {
   return join(vendorDir, 'node_modules', '@earendil-works', 'pi-ai')
 }
 
@@ -83,11 +128,12 @@ function pluginDependencyRoot() {
  * 而这个根目录下面那三个读 pi-ai 文件的模块（provider 名字、模型详情、候选清单）
  * 必须跟真正被加载的那份对上。没跑过 loadBridge 的场合退回静态推断。
  */
-let activeRoot
-export function activePiAiRoot() {
+let activeRoot: string | undefined
+export function activePiAiRoot(): string | undefined {
   if (activeRoot !== undefined) return activeRoot
   const versions = installedVersions()
-  if (versions.length > 0) return join(piAiVersionsDir, versions[versions.length - 1])
+  const newest = versions[versions.length - 1]
+  if (newest !== undefined) return join(piAiVersionsDir, newest)
   if (existsSync(pluginDependencyRoot())) return pluginDependencyRoot()
   try {
     return join(resolveDshHome(), 'profiles', 'node_modules', '@earendil-works', 'pi-ai')
@@ -97,9 +143,9 @@ export function activePiAiRoot() {
 }
 
 /** 读一个 pi-ai 包的版本号；读不到返回 undefined。 */
-function piAiVersionOf(root) {
+function piAiVersionOf(root: string): string | undefined {
   try {
-    return JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
+    return readString(asRecord(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')))['version'])
   } catch {
     return undefined
   }
@@ -111,24 +157,25 @@ function piAiVersionOf(root) {
  * 拷来的那份代码写的是 bare specifier；上游改了导出名或子路径，加载就会炸。
  * 这里把"它到底要什么"读出来，好在加载**之前**就能判断某份 pi-ai 合不合格。
  * @param source - bundle 源码。
- * @returns `[{ specifier, names }]`；解析不出来时返回空数组（调用方据此跳过体检）。
+ * @returns 需求列表；解析不出来时返回空数组（调用方据此跳过体检）。
  */
-export function piAiRequirements(source) {
-  const found = []
+export function piAiRequirements(source: string): PiAiRequirement[] {
+  const found: PiAiRequirement[] = []
   const pattern = /import\s*\{([^}]*)\}\s*from\s*["'](@earendil-works\/pi-ai[^"']*)["']/g
-  let match
+  let match: RegExpExecArray | null
   while ((match = pattern.exec(source)) !== null) {
-    const names = match[1]
+    const names = (match[1] ?? '')
       .split(',')
-      .map((part) => part.trim().split(/\s+as\s+/)[0].trim())
+      .map((part) => part.trim().split(/\s+as\s+/)[0]?.trim() ?? '')
       .filter((name) => name !== '')
-    if (names.length > 0) found.push({ specifier: match[2], names })
+    const specifier = match[2]
+    if (names.length > 0 && specifier !== undefined) found.push({ specifier, names })
   }
   return found
 }
 
 /** 读桥接副本，返回它对 pi-ai 的 import 需求（updater 装完新版本也拿它体检）。 */
-export function bridgeRequirements() {
+export function bridgeRequirements(): PiAiRequirement[] {
   try {
     return piAiRequirements(readFileSync(bridgeLib, 'utf8'))
   } catch {
@@ -149,9 +196,8 @@ export function bridgeRequirements() {
  * @param requirements - {@link piAiRequirements} 的结果。
  * @param root - 候选的 pi-ai 包目录。
  * @param key - 候选标识，用于区分探针目录。
- * @returns `{ ok: true }` 或 `{ ok: false, error }`。
  */
-export function probePiAi(requirements, root, key) {
+export function probePiAi(requirements: readonly PiAiRequirement[], root: string, key: string): ProbeResult {
   // 候选目录不在就直接判死，**且绝不能建断链**：探针目录在 vendor/llm-bridge/ 下面，
   // 断链会让 Node 继续往上找，一路找到主软链上那份能用的 pi-ai，把不合格的候选误判成通过
   // （实测踩过：内置依赖被移走后仍然"通过"，最后在真正加载时才炸）。
@@ -182,13 +228,13 @@ export function probePiAi(requirements, root, key) {
  *   1. `vendor/pi-ai/<版本>/`——updater 热更新下来的，新 → 旧
  *   2. 插件自己声明的依赖——package.json 里锁死的那个版本，验证过的兜底
  *   3. dsh 自己装的那份——裸克隆、依赖还没装时的最后一根稻草
- * @returns 每项 `{ key, version, root, link }`；`link: false` 表示不建软链、靠自然解析落到它。
  */
-export function piAiCandidates() {
-  const list = []
+export function piAiCandidates(): PiAiCandidate[] {
+  const list: PiAiCandidate[] = []
   const versions = installedVersions()
   for (let i = versions.length - 1; i >= 0; i -= 1) {
     const version = versions[i]
+    if (version === undefined) continue
     list.push({ key: version, version, root: join(piAiVersionsDir, version), link: true })
   }
   const dependency = pluginDependencyRoot()
@@ -200,9 +246,9 @@ export function piAiCandidates() {
   return list
 }
 
-function readStatus() {
+function readStatus(): AnyRecord {
   try {
-    return JSON.parse(readFileSync(statusFile, 'utf8'))
+    return asRecord(JSON.parse(readFileSync(statusFile, 'utf8')))
   } catch {
     return {}
   }
@@ -216,28 +262,27 @@ function readStatus() {
  * @param previous - 现有状态。
  * @param patch - 本次要写的字段。
  */
-export function mergeStatus(previous, patch) {
-  const merged = { ...previous, ...patch }
+export function mergeStatus(previous: AnyRecord, patch: AnyRecord): AnyRecord {
+  const merged: AnyRecord = { ...previous, ...patch }
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) delete merged[key]
   }
   return merged
 }
 
-function writeStatus(patch) {
+function writeStatus(patch: AnyRecord): void {
   mkdirSync(vendorDir, { recursive: true })
   writeFileSync(statusFile, JSON.stringify({ ...mergeStatus(readStatus(), patch), updatedAt: new Date().toISOString() }))
 }
 
-export function updateStatus(patch) {
+export function updateStatus(patch: AnyRecord): void {
   writeStatus(patch)
 }
 
 /**
  * 确保桥接目录就位（同步、幂等），返回加载好的 bridge 插件模块。
- * @returns {{ ok: true, plugin: any, piAiVersion: string, piAiSource: string, rejected: any[] } | { ok: false, error: string }}
  */
-export function loadBridge() {
+export function loadBridge(): BridgeLoadResult {
   try {
     const profileModules = join(resolveDshHome(), 'profiles', 'node_modules')
     const srcBundle = join(profileModules, '@deepseek-ai', 'dsh-llm-pi-ai', 'lib', 'index.js')
@@ -255,8 +300,8 @@ export function loadBridge() {
     //    逐个体检，第一个通过的就是这次用的。**体检必须在加载之前**——ESM 加载失败后
     //    同一个文件没法重试，所以不能"先试再退"。
     const requirements = piAiRequirements(readFileSync(bridgeLib, 'utf8'))
-    const rejected = []
-    let chosen
+    const rejected: RejectedCandidate[] = []
+    let chosen: PiAiCandidate | undefined
     for (const candidate of piAiCandidates()) {
       const probe = probePiAi(requirements, candidate.root, candidate.key)
       if (probe.ok) {
@@ -268,7 +313,7 @@ export function loadBridge() {
     if (chosen === undefined) {
       return {
         ok: false,
-        error: `没有能用的 pi-ai：${rejected.map((entry) => `${entry.version}（${entry.error}）`).join('；')}`,
+        error: `没有能用的 pi-ai：${rejected.map((entry) => `${entry.version}（${String(entry.error)}）`).join('；')}`,
       }
     }
 
@@ -279,7 +324,7 @@ export function loadBridge() {
     // 4. 同步 require 加载（Node 22.12+/24 支持 require ESM；bundle 无 TLA）
     const require = createRequire(import.meta.url)
     delete require.cache?.[bridgeLib]
-    const plugin = require(bridgeLib)
+    const plugin = require(bridgeLib) as BridgePluginModule
 
     activeRoot = chosen.root
     writeStatus({
@@ -295,12 +340,12 @@ export function loadBridge() {
 }
 
 /** 把桥接副本的 pi-ai 软链指向指定包目录（指向没变就不动，避免无谓的 mtime 抖动）。 */
-function setPiAiLink(target) {
+function setPiAiLink(target: string): void {
   const linkDir = join(bridgeDir, 'node_modules', '@earendil-works')
   mkdirSync(linkDir, { recursive: true })
   const linkPath = join(linkDir, 'pi-ai')
   const relTarget = relative(linkDir, target)
-  let current
+  let current: string | undefined
   try {
     current = readFileSync(linkPath, { encoding: 'utf8' })
   } catch { /* 还没有软链 */ }
@@ -314,12 +359,15 @@ function setPiAiLink(target) {
  *
  * 这就是"回退到内置依赖"的动作——不用另外指一条链过去，Node 会自己往上找。
  */
-function clearPiAiLink() {
+function clearPiAiLink(): void {
   rmSync(join(bridgeDir, 'node_modules', '@earendil-works', 'pi-ai'), { force: true, recursive: true })
 }
 
-/** 相对路径工具（避免额外 import）。 */
-function relative(from, to) {
+/**
+ * 相对路径（自写而不用 path.relative）：软链目标一律用正斜杠，
+ * 免得 Windows 上写出反斜杠的链接目标。
+ */
+function relative(from: string, to: string): string {
   const fromParts = from.split(sep)
   const toParts = to.split(sep)
   let i = 0

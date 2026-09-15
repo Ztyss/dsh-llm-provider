@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { bridgeRequirements, compareVersions, installedVersions, probePiAi, updateStatus, vendorDir } from './bridge.js'
+import { asRecord, readString, type AnyRecord, type Logger } from './types.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -24,35 +25,45 @@ const VERSIONS_DIR = join(vendorDir, 'pi-ai')
 const STATE_FILE = join(vendorDir, 'updater-state.json')
 const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 小时
 
+/** 一次检查 + 更新的结果（/provider/update 的响应体）。 */
+export interface UpdateResult {
+  checkedAt: string
+  latest: string | undefined
+  installed: string | undefined
+  applied: boolean
+  compatible: boolean | undefined
+  error: string | undefined
+}
+
 /** 上次检查时间等本地状态。 */
-function readState() {
+function readState(): AnyRecord {
   try {
-    return JSON.parse(readFileSync(STATE_FILE, 'utf8'))
+    return asRecord(JSON.parse(readFileSync(STATE_FILE, 'utf8')))
   } catch {
     return {}
   }
 }
 
-function writeState(patch) {
+function writeState(patch: AnyRecord): void {
   mkdirSync(vendorDir, { recursive: true })
   writeFileSync(STATE_FILE, JSON.stringify({ ...readState(), ...patch, at: new Date().toISOString() }))
 }
 
 /** registry 上最新版本号。 */
-export async function latestVersion() {
+export async function latestVersion(): Promise<string> {
   const response = await fetch(REGISTRY, {
     headers: { accept: 'application/vnd.npm.install-v1+json' },
     signal: AbortSignal.timeout(15_000),
   })
   if (!response.ok) throw new Error(`registry HTTP ${String(response.status)}`)
-  const doc = await response.json()
-  const latest = doc?.['dist-tags']?.latest
-  if (typeof latest !== 'string' || latest === '') throw new Error('registry 响应里没有 dist-tags.latest')
+  const doc = asRecord(await response.json())
+  const latest = readString(asRecord(doc['dist-tags'])['latest'])
+  if (latest === undefined) throw new Error('registry 响应里没有 dist-tags.latest')
   return latest
 }
 
 /** 下载并就位一个版本：tarball 解压到 vendor/pi-ai/<v>/，再补依赖闭包。已就位则跳过。 */
-export async function installVersion(version, log = () => {}) {
+export async function installVersion(version: string, log: (line: string) => void = () => {}): Promise<string> {
   const target = join(VERSIONS_DIR, version)
   if (existsSync(join(target, 'node_modules'))) {
     log(`${version} 已就位，跳过下载`)
@@ -87,14 +98,21 @@ export async function installVersion(version, log = () => {}) {
   return target
 }
 
-/** 一次性检查 + 更新。返回给 /provider/status 的结果对象。 */
-export async function checkAndUpdate(log = () => {}) {
-  const result = { checkedAt: new Date().toISOString(), latest: undefined, installed: undefined, applied: false, compatible: undefined, error: undefined }
+/** 一次性检查 + 更新。返回给 /provider/update 与 /provider/status。 */
+export async function checkAndUpdate(log: (line: string) => void = () => {}): Promise<UpdateResult> {
+  const result: UpdateResult = {
+    checkedAt: new Date().toISOString(),
+    latest: undefined,
+    installed: undefined,
+    applied: false,
+    compatible: undefined,
+    error: undefined,
+  }
   try {
     const latest = await latestVersion()
     result.latest = latest
     const have = installedVersions()
-    const newest = have.length > 0 ? have[have.length - 1] : undefined
+    const newest = have[have.length - 1]
     if (newest !== undefined && compareVersions(latest, newest) <= 0) {
       log(`已是最新（本地 ${newest}，上游 ${latest}）`)
       return result
@@ -112,7 +130,7 @@ export async function checkAndUpdate(log = () => {}) {
     } else {
       // 留着不删：下次启动还会体检一遍，结论一致；万一判断有误也能人工指定
       updateStatus({ latestVersion: latest, latestRejected: { version: latest, error: probe.error } })
-      log(`${latest} 与当前桥接不兼容，已跳过（不会切过去）：${probe.error}`)
+      log(`${latest} 与当前桥接不兼容，已跳过（不会切过去）：${String(probe.error)}`)
     }
   } catch (error) {
     result.error = error instanceof Error ? error.message : String(error)
@@ -124,9 +142,9 @@ export async function checkAndUpdate(log = () => {}) {
 }
 
 /** 插件启动时调：距上次检查超过间隔才真的发请求，绝不阻塞启动。 */
-export function startBackgroundCheck(logger) {
+export function startBackgroundCheck(logger: Logger | undefined): void {
   if (process.env.DSH_PROVIDER_UPDATE === 'off') return
-  const last = readState().lastCheck
-  if (typeof last === 'string' && Date.now() - Date.parse(last) < AUTO_CHECK_INTERVAL_MS) return
+  const last = readString(readState()['lastCheck'])
+  if (last !== undefined && Date.now() - Date.parse(last) < AUTO_CHECK_INTERVAL_MS) return
   void checkAndUpdate((line) => logger?.info?.(`[pi-ai updater] ${line}`))
 }

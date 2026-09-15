@@ -16,51 +16,57 @@ import {
   num,
   originOf,
 } from './shared.js'
+import { asRecord } from '../types.js'
+import type { AccountStatus, AdapterQueryInput, BillingAdapter, QuotaWindow } from './shared.js'
 
-function zenmuxWindow(label, data) {
+function zenmuxWindow(label: string, data: unknown): QuotaWindow | undefined {
   if (data === undefined || data === null) return undefined
-  const usedPct = clampPercent(num(data?.usage_percentage) !== undefined ? num(data.usage_percentage) * 100 : undefined)
+  const record = asRecord(data)
+  const usedPercentRaw = num(record['usage_percentage'])
+  const usedPct = clampPercent(usedPercentRaw !== undefined ? usedPercentRaw * 100 : undefined)
   if (usedPct === undefined) return undefined
-  const used = num(data?.used_value_usd)
-  const limit = num(data?.max_value_usd)
+  const used = num(record['used_value_usd'])
+  const limit = num(record['max_value_usd'])
   return {
     window: label,
     limit,
     used,
     remaining: limit !== undefined && used !== undefined ? Math.max(0, limit - used) : undefined,
     percentLeft: clampPercent(100 - usedPct),
-    resetAt: typeof data?.resets_at === 'string' && data.resets_at !== '' ? data.resets_at : undefined,
+    resetAt: typeof record['resets_at'] === 'string' && record['resets_at'] !== '' ? record['resets_at'] : undefined,
   }
 }
 
 export default {
   id: 'zenmux',
   label: 'ZenMux',
-  match(providerId, baseUrl) {
+  match(providerId: string, baseUrl: string | undefined): boolean {
     if (/^zenmux/i.test(providerId)) return true
     return typeof baseUrl === 'string' && baseUrl.includes('zenmux')
   },
 
-  async query({ id, displayName, key, baseUrl }) {
+  async query({ id, displayName, key, baseUrl }: AdapterQueryInput): Promise<AccountStatus> {
     if (typeof baseUrl !== 'string' || baseUrl === '') {
       fail('ZenMux 的查询端点就是 baseURL 本身，需要配置 baseURL 才能查额度')
     }
     const { status, body } = await getJson(baseUrl, { authorization: `Bearer ${key}` })
     if (status === 401 || status === 403) fail(authFailed(status))
     if (status !== 200) fail(describeHttpError(status, body))
-    if (body?.success !== true) {
-      fail(`ZenMux 业务错误：${String(body?.message ?? 'success 不为 true')}`)
+    const record = asRecord(body)
+    if (record['success'] !== true) {
+      fail(`ZenMux 业务错误：${String(record['message'] ?? 'success 不为 true')}`)
     }
-    if (body?.data === undefined || body?.data === null) fail('响应缺少 data 字段')
+    if (record['data'] === undefined || record['data'] === null) fail('响应缺少 data 字段')
 
-    const data = body.data
+    const data = asRecord(record['data'])
     const windows = [
-      zenmuxWindow('5 小时窗口', data?.quota_5_hour),
-      zenmuxWindow('7 天窗口', data?.quota_7_day),
+      zenmuxWindow('5 小时窗口', data['quota_5_hour']),
+      zenmuxWindow('7 天窗口', data['quota_7_day']),
     ].filter((w) => w !== undefined)
 
-    const tier = typeof data?.plan?.tier === 'string' ? data.plan.tier : ''
-    const accountStatus = typeof data?.account_status === 'string' ? data.account_status : ''
+    const plan = asRecord(data['plan'])
+    const tier = typeof plan['tier'] === 'string' ? plan['tier'] : ''
+    const accountStatus = typeof data['account_status'] === 'string' ? data['account_status'] : ''
     return account(id, displayName, 'quota', {
       baseUrl: originOf(baseUrl) ?? baseUrl,
       membership: [tier, accountStatus].filter((s) => s !== '').join(' · '),
@@ -68,4 +74,4 @@ export default {
       ...(windows.length === 0 ? { note: '响应里没有可解析的额度窗口' } : {}),
     })
   },
-}
+} satisfies BillingAdapter

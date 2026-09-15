@@ -2,8 +2,8 @@
 # 用法: scripts/dev-start.sh <任务名>
 # 开一个开发 worktree：.worktrees/<slug>（分支 agent/<slug>）。
 # 主线不开发，只负责测试、集成和合入（scripts/dev-merge.sh）。
-# 本仓库没有依赖安装步骤：package.json 里只有可选 peerDependencies，
-# 测试（npm test）只依赖 node 内置模块和仓库自身源码。
+# 本仓库是 TypeScript 项目：源码在 src/，lib/ 是构建产物（npm run build）。
+# worktree 里没有 node_modules，本脚本会顺手装一次依赖（装不上会提示怎么手动装）。
 set -euo pipefail
 
 TASK=""
@@ -33,12 +33,22 @@ fi
 
 WT=".worktrees/$SLUG"
 git worktree add "$WT" -b "$BRANCH"
+
+# TypeScript 项目：worktree 里没有 node_modules，先装依赖（装不上不致命，给出手动命令）
+if ! (cd "$WT" && npm install --no-audit --no-fund --loglevel=error); then
+  echo "" >&2
+  echo "依赖没装上——worktree 里没法 npm run build。" >&2
+  echo "手动装一次：cd $WT && npm install" >&2
+  echo "（若报 ~/.npm 权限问题：npm install --cache=<某个可写目录>）" >&2
+fi
+
 cat <<EOF
 
 worktree 就绪：${WT}（分支 ${BRANCH}）
 接下来：
   cd $WT
   ...开发，高频小提交（写完一段就提交，别攒到最后）...
+  改完 src/ 记得 npm run build（lib/ 是产物，不入库）
   scripts/dev-finish.sh        # 自测 + 打 done/<slug> 标记
 然后由主线执行合入：
   scripts/dev-merge.sh $SLUG

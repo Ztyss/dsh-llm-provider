@@ -14,7 +14,7 @@ import { join } from 'node:path'
  */
 
 /** DSH 数据目录：跟 dsh-home-paths 一致，DSH_HOME 优先。 */
-export function resolveDshHome() {
+export function resolveDshHome(): string {
   const fromEnv = process.env.DSH_HOME
   return fromEnv !== undefined && fromEnv !== '' ? fromEnv : join(homedir(), '.dsh')
 }
