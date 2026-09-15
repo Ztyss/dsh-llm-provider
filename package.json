@@ -1,6 +1,6 @@
 {
   "name": "@dsh-one/dsh-llm-provider",
-  "version": "0.1.0-alpha.5",
+  "version": "0.1.0",
   "description": "给 dsh 提供 LLM 服务的插件：把内置 llm-pi-ai / llm-deepseek / 模型选择器 / Models 设置页换成自维护版本，跟进 @earendil-works/pi-ai 上游新模型，并提供额度/余额查询与 Provider 配置界面",
   "keywords": [
     "dsh",
