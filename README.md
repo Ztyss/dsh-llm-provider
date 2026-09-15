@@ -1,247 +1,245 @@
 # @dsh-one/dsh-llm-provider
 
-给 dsh 提供 LLM 服务的第三方插件。它在 dsh 官方模型栈的四个位置接管：pi-ai 适配器（`llm-pi-ai`）、DeepSeek 原生适配器（`llm-deepseek`）、模型选择器（`ui-model-selection`）、官方 Models 设置页（`ui-settings-models`），并补齐官方没有的额度查询与 Provider 管理界面。
+[中文说明](https://github.com/imchangchang/dsh-llm-provider/blob/main/README.zh.md) · **English**
 
-四条能力：
+A dsh plugin for LLM providers. It takes over four rows of dsh's built-in model stack — the pi-ai adapter (`llm-pi-ai`), the native DeepSeek adapter (`llm-deepseek`), the model selector (`ui-model-selection`) and the official Models settings page (`ui-settings-models`) — and adds quota lookups and provider management on top.
 
-1. **跟进上游 pi-ai**：把 dsh 打包时固定的 pi-ai 换成插件自己维护的版本，上游发了新模型不用等 dsh 发版。
-2. **额度查询**：按 provider 查余额/用量窗口，数据同时给 Provider 卡片和模型选择器的余量指示。
-3. **模型选择器**：按官方两级层级（模型 / 推理等级）实现，增强 provider 过滤、余量指示、能力徽章与模型详情卡。
-4. **Provider 配置页**：添加/删除/测连通/单卡刷新余量，写的是官方同一套配置段与凭据服务。
+What you get:
 
-## 目录
+1. **pi-ai version follows upstream.** dsh pins pi-ai at build time; this plugin runs a copy it maintains itself, so new upstream models don't wait for a dsh release.
+2. **Quota lookups.** Balance and usage windows per provider, feeding the provider cards and the quota indicator in the model selector.
+3. **Model selector.** The official two-level structure (model / reasoning effort) plus provider filtering, quota indicator, capability badges and a model detail card.
+4. **Provider settings page.** Add, remove, test and refresh providers; writes to the same settings section and credential store the official page uses.
 
-- [使用](#使用)：[安装](#安装) · [配置](#配置) · [测试实例](#测试实例) · [命令行跑测](#命令行跑测)
-- [实现](#实现)：[桥接](#桥接pi-ai) · [三档候选](#三档候选) · [体检](#体检probe) · [模型选择器](#模型选择器) · [Provider 配置页](#provider-配置页) · [额度适配器](#额度适配器) · [路由发现](#路由发现) · [凭据体检](#凭据体检) · [HTTP 接口](#http-接口) · [构建](#构建)
-- [边界](#边界)
-- [模型视角](#模型视角)
-- [已知限制与后续工作](#已知限制与后续工作)
-- [源码布局](#源码布局)
+## Contents
 
-## 使用
+- [Usage](#usage): [Install](#install) · [Configuration](#configuration) · [Test instance](#test-instance) · [Command-line checks](#command-line-checks)
+- [Implementation](#implementation): [pi-ai bridge](#pi-ai-bridge) · [Candidate sources](#candidate-sources) · [Compatibility check](#compatibility-check) · [Model selector](#model-selector) · [Provider settings page](#provider-settings-page) · [Quota adapters](#quota-adapters) · [Route discovery](#route-discovery) · [Credential check](#credential-check) · [HTTP endpoints](#http-endpoints) · [Build](#build)
+- [Boundaries](#boundaries)
+- [What the model sees](#what-the-model-sees)
+- [Known gaps](#known-gaps)
+- [Source layout](#source-layout)
 
-### 安装
+## Usage
 
-从 npm 装（正式发布走这个）：
+### Install
+
+From npm:
 
 ```sh
 dsh plugin --profile web add @dsh-one/dsh-llm-provider
-dsh web     # 重启生效（插件树变了必须重启）
+dsh web     # restart required: the plugin tree changed
 ```
 
-刚发出去的版本会被 pnpm 的发布冷却挡住（它不会立刻选中几分钟前才发的版本）：把版本号写死即可，`dsh plugin --profile web add @dsh-one/dsh-llm-provider@0.1.0`。alpha 通道同理写 `@0.1.0-alpha.5` 这种具体版本。
+pnpm's release cooldown means a version published minutes ago is not picked up yet. Pin the version to install it right away: `dsh plugin --profile web add @dsh-one/dsh-llm-provider@0.1.0`. The same applies to alpha builds (`@0.1.0-alpha.5`).
 
-改本仓库代码时改用 link 形式挂进 profile：
+To work on this repository, link the checkout into the profile instead:
 
 ```sh
-# 1. 装依赖（本仓库是 TypeScript 项目）
-scripts/install-deps.sh
-# 2. 构建（lib/ 是产物，不入库）
-npm run build
-# 3. profile 里链接：~/.dsh/profiles/<profile>/node_modules/@dsh-one/dsh-llm-provider -> 本仓库路径
-#    并在 profile 的 package.json dependencies 里写 "@dsh-one/dsh-llm-provider": "link:<路径>"
-dsh web     # 重启生效（插件树变了必须重启）
+scripts/install-deps.sh   # install dev dependencies
+npm run build             # lib/ is build output and is not committed
+# link ~/.dsh/profiles/<profile>/node_modules/@dsh-one/dsh-llm-provider -> this checkout
+# and set "@dsh-one/dsh-llm-provider": "link:<path>" in the profile's package.json dependencies
+dsh web                   # restart required: the plugin tree changed
 ```
 
-`vendor/` 是可选的兜底 pi-ai（`cd vendor && npm install`，package-lock 在库里）。**不装也行**：候选列表会直接跳过没安装的档，落到 dsh 自带的那份 pi-ai，界面上不会出现任何「体检没通过」的提示——目录不存在是「这一档没装」，不是兼容性问题。
+`vendor/` holds an optional pinned pi-ai (`cd vendor && npm install`; the lockfile is committed). It is not required: a source that isn't installed is skipped and the plugin falls back to the pi-ai that ships with dsh, with no "check failed" notice in the UI — a missing directory means "not installed", not "incompatible".
 
-### 配置
+### Configuration
 
-计费与路由都不需要额外配置：provider 从 settings.yaml 的 `llm-pi-ai.providers` 自动发现，key 走 dsh 的 credentials 服务按 `apiKeyEnv` 解析。
+Quota lookups and routing need no configuration. Providers are discovered from `llm-pi-ai.providers` in `settings.yaml`, and keys are resolved by dsh's credentials service through each route's `apiKeyEnv`.
 
-pi-ai 更新有两条触发路径：插件启动时后台检查一次（6 小时节流，`DSH_PROVIDER_UPDATE=off` 可关），以及 Provider 设置页的「检查更新」（`POST /provider/update`）。
+pi-ai updates are triggered two ways: once in the background at plugin startup (throttled to 6 hours, `DSH_PROVIDER_UPDATE=off` disables it) and by the "Check for updates" button on the provider page (`POST /provider/update`).
 
-无论哪条，**验证通过才替换**：tarball 完整性（registry 的 `dist.integrity`）与兼容性体检两道都过，才标记待重启；当前已在同一版本时不会重复下载。换 pi-ai 版本要重启 dsh 才生效——桥接在进程启动时装载，这是机制本身决定的。
+Either way, **nothing is replaced before it passes both checks**: the tarball integrity from the registry (`dist.integrity`) and the compatibility check. Only then is the new version marked as pending a restart. A version you already run is not downloaded again. Switching pi-ai versions needs a dsh restart — the bridge is loaded at process start.
 
-### 测试实例
+### Test instance
 
 ```sh
-scripts/test-profile.sh        # 起 plan-test profile（3081 端口）并打开浏览器
-scripts/test-profile.sh stop   # 停掉
+scripts/test-profile.sh        # start the plan-test profile (port 3081) and open a browser
+scripts/test-profile.sh stop   # stop it
 ```
 
-测试实例用独立的 profile，可并行：`PORT=3082 PROFILE=plan-test-foo LOG=/tmp/dsh-plan-foo.log scripts/test-profile.sh`。启动时带 `DSH_PROVIDER_TEST=1`，浏览器端据此给标题加「· 测试」后缀并盖 favicon 角标。profile 文件由脚本幂等生成，要改就改脚本。
+The test instance uses a separate profile, so instances can run side by side: `PORT=3082 PROFILE=plan-test-foo LOG=/tmp/dsh-plan-foo.log scripts/test-profile.sh`. It sets `DSH_PROVIDER_TEST=1`, which makes the browser half append "· test" to the title and stamp the favicon. The script writes the profile files idempotently; change the script to change the profile.
 
-### 命令行跑测
+### Command-line checks
 
 ```sh
-node lib/adapters/run.js all            # 跑全部额度适配器（key 从环境变量或 ~/.dsh/.credentials.yaml 找）
+node lib/adapters/run.js all            # run every quota adapter (keys from env or ~/.dsh/.credentials.yaml)
 node lib/adapters/run.js kimi-coding --key sk-xx
 
-npm test                                # 构建 + 七个离线测试（自测与合入用的就是这条）
-npm run typecheck                       # tsc --noEmit（npm test 不含它）
+npm test                                # build + 7 offline tests; this is what finishing and merging run
+npm run typecheck                       # tsc --noEmit (npm test does not include it)
 ```
 
-七个测试各自盯一块：路由发现、凭据体检、patch 层、pi-ai 体检、供应商候选清单、vendor 状态合并语义、浏览器端接线冒烟。开发流程（主线不开发、全部走 worktree）见 `AGENTS.md`。
+The seven tests cover route discovery, the credential check, the patch layer, the pi-ai check, the provider preset list, the vendor state merge, and the browser half's wiring. `AGENTS.md` describes the development workflow (no coding on main, everything in a worktree).
 
-## 实现
+## Implementation
 
-### 桥接（pi-ai）
+### pi-ai bridge
 
-dsh 的模型目录来自打包时固定的 pi-ai。桥接让它跑在插件自己维护的版本上：
+dsh's model catalog comes from the pi-ai version it was built with. The bridge makes it run on a version the plugin maintains:
 
-- 把 dsh 已装的 `dsh-llm-pi-ai` bundle 拷进 `vendor/llm-bridge/`，旁边放一个软链指向 `vendor/pi-ai/<版本>/`。Node 按 bare specifier 解析，拷贝副本就接到了新版 pi-ai。
-- pi-ai 的模型目录与 wire 协议实现（`api/*.lazy`、`providers/all`）都是 lazy 导入，全部来自新版；dsh 那份 bundle 只承担稳定的转换胶水层。
-- 官方 `llm-pi-ai` 行由 `cordis.patch.yml` 禁用，插件接管它的 settings 段、模型发现与目录。
+- The installed `dsh-llm-pi-ai` bundle is copied to `vendor/llm-bridge/`, with a link next to it pointing at `vendor/pi-ai/<version>/`. Node resolves bare specifiers from there, so the copy picks up the newer pi-ai.
+- pi-ai's model catalog and wire protocol implementations (`api/*.lazy`, `providers/all`) are lazy imports and all come from the new version; the dsh bundle copy only provides the stable glue.
+- The official `llm-pi-ai` row is disabled in `cordis.patch.yml`; the plugin takes over its settings section, model discovery and catalog.
 
-用哪份 pi-ai 是**加载之前体检挑出来的**。升级生效需重启 dsh；回滚不需要改软链，删掉那份热更新版本即可，下次启动自动落回兜底档。
+Which pi-ai gets used is decided by the [compatibility check](#compatibility-check) before anything is loaded. A new version takes effect after a dsh restart. Rolling back needs no link edit: delete the downloaded version and the next start falls back to the next source.
 
-### 三档候选
+### Candidate sources
 
-`loadBridge()` 按优先级列候选，逐个体检，取第一个通过的：
+`loadBridge()` lists candidates in priority order, checks each one and takes the first that passes:
 
-| 档 | 目录 | 何时用到 |
+| Source | Directory | Used when |
 |---|---|---|
-| 已下载 | `vendor/pi-ai/<版本>/`（新 → 旧） | updater 下载并通过体检后 |
-| 兜底依赖 | `vendor/node_modules/@earendil-works/pi-ai` | 可选档，装了就在这一档接住（`cd vendor && npm install`） |
-| dsh 自带 | 沿官方 bundle 的 `node_modules` 链找到的那份（不写死路径） | 前两档都没装，或体检不合格 |
+| Downloaded | `vendor/pi-ai/<version>/` (newest first) | the updater downloaded it and it passed the check |
+| Pinned dependency | `vendor/node_modules/@earendil-works/pi-ai` | optional; used when installed (`cd vendor && npm install`) |
+| Bundled with dsh | found along the official bundle's `node_modules` chain (no hardcoded path) | neither of the above is installed, or fails the check |
 
-没安装的档会被直接跳过，只在**存在但体检不合格**时才列进「被跳过」并说明原因。dsh 自带的那份版本随 dsh 发布走，不一定比上游旧（实测 dsh 0.1.5-rc.1 就带着上游最新的 0.85.1）。
+Sources that are not installed are skipped silently. A source is only listed as skipped, with a reason, when it exists but fails the compatibility check. The pi-ai that ships with dsh follows dsh's own release cycle and is not necessarily older than upstream — dsh 0.1.5-rc.1 ships 0.85.1, which was the newest at the time.
 
-后两档的目录都不写死：官方 bundle 按「profile 的 node_modules → dsh 安装树（含嵌在 dsh 包内的 node_modules）→ 本插件」的顺序沿解析链找，pi-ai 则从找到的那份 bundle 位置继续沿解析链找。所以 dsh 换布局（把 bundle 放进自己的安装目录、把依赖提升到别处）都不会让某一档凭空消失。
+Neither of the last two directories is hardcoded. The official bundle is resolved along the module resolution chain in this order: the profile's `node_modules`, the dsh installation tree (including the `node_modules` nested inside the dsh package), then this plugin. pi-ai is resolved the same way, starting from the bundle that was found. A different dsh layout (bundle inside its own install directory, dependencies hoisted elsewhere) therefore does not make a source disappear.
 
-`vendor/package.json` 锁死兜底依赖的版本，与热更新目录互不覆盖（热更新只往 `vendor/pi-ai/<新版本>/` 写）。放在 `vendor/` 有两个原因：桥接副本在 `vendor/llm-bridge/`，向上解析先撞到 `vendor/node_modules`，所以中选兜底档时不用挂软链；而插件根的 `node_modules/@deepseek-ai` 是条手工软链（桥接副本上的 dsh 包靠它解析），在根目录跑 `npm install` 会被 npm 当成待处理条目而失败。
+`vendor/package.json` pins the version of the optional dependency, and the two do not overwrite each other (updates only ever write to `vendor/pi-ai/<new version>/`). Both live under `vendor/` for a reason: the bridge copy is at `vendor/llm-bridge/`, so resolving upwards hits `vendor/node_modules` first and no link is needed when that source is chosen; and `node_modules/@deepseek-ai` at the plugin root is a manual link (the dsh package inside the bridge copy resolves through it), which `npm install` would treat as an entry to reify and fail on.
 
-### 体检（probe）
+### Compatibility check
 
-从桥接副本源码里抠出它对 pi-ai 的 import 需求（子路径 + 具名导出），照着生成一份探针文件，放进插件自己的临时目录、配一条指向候选的软链，再 require 它。解析规则与拷贝完全一致，但模块 URL 不同，所以一个候选失败不影响下一个，也不污染真正的拷贝。
+The bridge copy's imports of pi-ai (subpaths and named exports) are extracted from its source, a probe file is generated from them in the plugin's own temporary directory with a link to the candidate, and that file is required. The resolution rules match the copy exactly, but the module URL differs, so one failing candidate does not affect the next and does not pollute the real copy.
 
-需求解析覆盖具名导入/re-export、动态 `import()`、副作用与 namespace 导入、`export *`。**必须"先体检再加载"**：Node 对加载失败的 ESM 会留下半初始化记录，同一个文件再 require 只会报 `not yet fully loaded`，所以"先加载、失败了再退回"这条路走不通。
+The extraction covers named imports and re-exports, dynamic `import()`, side-effect and namespace imports, and `export *`. **Checking before loading is required**: Node keeps a half-initialized record for an ESM file that failed to load, and requiring it again only reports `not yet fully loaded`. There is no "load first and fall back on failure" path.
 
-体检不过或没能执行体检（需求解析不出）的候选都列在 `/provider/status` 的 `bridge.rejected` / `probeUnverified` 里；updater 侧同样只在体检通过时才替换。
+Candidates that fail the check, or that could not be checked at all because their imports could not be extracted, are reported in `bridge.rejected` / `probeUnverified` from `/provider/status`. The updater likewise only replaces a version that passes the check.
 
-### 模型选择器
+### Model selector
 
-接管 composer 的 `conversation.input.model` 座位与 `/model` 命令（官方 `ui-model-selection` 行由 `cordis.patch.yml` 禁用）：
+Takes over the composer's `conversation.input.model` slot and the `/model` command (the official `ui-model-selection` row is disabled in `cordis.patch.yml`):
 
-- 交互与官方一致：触发器胶囊（`供应商id/模型id` · 推理等级）→ 根面板「模型 / 推理等级」两行 → 模型面板 → 推理等级面板；选模型或档位成功后关菜单。
-- 数据面与官方同路：目录走 `session/modelCatalog`，切换走 `session/selectModel`，余额走 `/plan/status`；优先用官方 `modelDirectories` 客户端服务（官方那行被重新启用时存在），缺席时用自己的 RPC + 会话投影 `modelSelection`。
-- 取数口径：当前选择取 `会话投影 next ?? 目录 default`；默认档只认目录声明的 `defaultEffort`，没有就显示官方的 `Default` 文案。
-- 增强：provider 过滤 chips（带余量指示点）、跨 provider 搜索（子串/缩写/编辑距离）、能力徽章、上下文标注、Cherry 式模型详情卡。
-- 触发器上的余量指示与设置页卡片同源同值；放不下时的让位顺序是「档位与余量不收缩 → provider 先让位 → 模型名最后截」，再不够就按 composer 行宽降级（行 ≤760px 隐藏 provider 段，≤620px 余量只留指示点），宽度上限 `min(560px, 60cqw)`。全名始终在触发器 `title` 里。
+- Interaction matches the official one: trigger pill (`provider-id/model-id` · reasoning effort) → root panel with "model / reasoning effort" rows → model panel → reasoning effort panel. Choosing a model or an effort closes the menu.
+- Same data path as the official one: the catalog comes from `session/modelCatalog`, switching from `session/selectModel`, quota from `/plan/status`. The official `modelDirectories` client service is used when present (that is, when the official row is enabled again); otherwise the plugin uses its own RPC and the `modelSelection` session projection.
+- Current selection is `session projection next ?? catalog default`. The default effort is only the `defaultEffort` the catalog declares; when it declares none, the official `Default` label is shown.
+- Extras: provider filter chips with quota dots, cross-provider search (substring, acronym, edit distance), capability badges, context labels, and a model detail card.
+- The quota indicator on the trigger shows the same value as the provider card. When space runs out, effort and quota never shrink, the provider segment gives way first, and the model name is truncated last; beyond that the layout degrades with the composer width (provider segment hidden at ≤760px, quota reduced to a dot at ≤620px). The maximum width is `min(560px, 60cqw)`. The full name is always in the trigger's `title`.
 
-### Provider 配置页
+### Provider settings page
 
-设置页新增 `Provider` 标签（官方 `ui-settings-models` 已禁用），二级标签为「服务商 / pi-ai 桥接」：
+Adds a `Provider` tab to the settings page (the official `ui-settings-models` row is disabled), with two sub-tabs: providers and pi-ai bridge.
 
-- 卡片按官方 PluginCard 蓝本：绿点 + 名称 + 官网链接，余量摘要一行（`5h: 84% ◷ 3h7m ｜ 7d: 30% ◷ 3d20h`），右侧刷新时间、单卡刷新、删除；展开体展示路由配置（路由 ID / 掩码密钥 / API 地址 / 协议 / 密钥存为）与该 provider 的模型列表（带过滤与详情卡）。
-- 添加供应商：选预设 → 填密钥/端点 → 实连测试通过才能写入；写的是 `settings/mutate` 的 `llm-pi-ai.providers` 段与 `credentials/set`，与官方同一套存储。
-- 补密钥：路由配好了但凭据没值时，卡片展开体里那一行直接是输入框（官方 Models 页已被本插件禁用，这里是唯一入口）；存完立刻实测一次余量。这种"配了一半"的库存在「添加供应商」里标「缺密钥」而不是「已配置」，不会被禁选堵住。
-- 删除：清路由 + 清凭据；内置原生路由不允许在这里删。
-- pi-ai 桥接标签：当前版本与来源档位、被跳过的候选及原因、上游版本与「检查更新」。
+- Cards follow the official PluginCard: status dot, name, website link, one line of quota summary (`5h: 84% ◷ 3h7m ｜ 7d: 30% ◷ 3d20h`), and refresh time, per-card refresh and delete on the right. The expanded body shows the route configuration (route ID, masked key, API base URL, protocol, credential name) and that provider's model list with filtering and a detail card.
+- Adding a provider: pick a preset → enter key and endpoint → a live test must pass before it is written. Writes go to `llm-pi-ai.providers` via `settings/mutate` and to the credential store via `credentials/set`, the same storage the official page uses.
+- Adding a key: when a route exists but has no credential, that row in the card body is an input field (the official Models page is disabled, so this is the only place to enter it). Saving it runs a live quota query immediately. Such half-configured providers are labelled "缺密钥" (key missing) in the add-provider list rather than "已配置" (configured), so they are not greyed out.
+- Removing: clears the route and the credential. Built-in native routes cannot be removed here.
+- The pi-ai bridge sub-tab shows the current version and source, skipped candidates with reasons, the upstream version and the update button.
 
-### 额度适配器
+### Quota adapters
 
-一家一个文件（`src/adapters/`），`registry.ts` 注册一行，`shared.ts` 定契约；`node lib/adapters/run.js` 可单独跑测。全部只用各家 API key，免费 GET，不依赖浏览器登录态。
+One file per provider under `src/adapters/`, one registration line in `registry.ts`, the contract in `shared.ts`; `node lib/adapters/run.js` runs them standalone. All of them use only the provider's API key and free GET endpoints, with no browser session.
 
-| 适配器 | 数据来源 |
+| Adapter | Data source |
 |---|---|
 | deepseek | `api.deepseek.com/user/balance` |
 | kimi-coding | `api.kimi.com/coding/v1/usages` |
 | glm | `open.bigmodel.cn/api/monitor/usage/quota/limit` |
 | moonshot | `api.moonshot.cn/v1/users/me/balance` |
-| minimax | MiniMax 余量接口 |
-| opencode-go | OpenCode Go 订阅余量 |
-| zenmux | OpenCode Zen 余量 |
-| openrouter | OpenRouter 余额 |
-| qwen | 无公开接口，只读说明文案 |
+| minimax | MiniMax usage endpoint |
+| opencode-go | OpenCode Go subscription usage |
+| zenmux | OpenCode Zen usage |
+| openrouter | OpenRouter balance |
+| qwen | no public endpoint; shows an explanatory note only |
 
-数值与展示口径对齐 CC Switch：它显示什么我们显示什么，不多加字段（Kimi 充值包余额不展示——口径与 CC Switch 不一致且数据存疑）。
+Numbers and presentation follow CC Switch: whatever it shows, this shows, with no extra fields. (The Kimi top-up balance is not shown: the figure disagrees with CC Switch and looks unreliable.)
 
-### 路由发现
+### Route discovery
 
-额度面板与预设清单列哪些 provider，由两处合并决定：
+Which providers appear in the quota panel and in the preset list comes from two sources:
 
-1. settings.yaml 的 `llm-pi-ai.providers`——用户配置的 pi-ai 路由；
-2. `ctx.llm.listConfigurableProviders()` 里的原生适配器路由（`deepseek-official` 这类）：它们不写 settings 段也带默认 `apiKeyEnv`，而 seam 上查不到这个默认值，所以 `routes.ts` 用一张 `NATIVE_ROUTE_DEFAULTS` 表对上。
+1. `llm-pi-ai.providers` in `settings.yaml` — the pi-ai routes the user configured.
+2. Native adapter routes from `ctx.llm.listConfigurableProviders()` (such as `deepseek-official`): they carry a default `apiKeyEnv` without a settings entry, and that default is not readable through the service, so `routes.ts` matches them against a `NATIVE_ROUTE_DEFAULTS` table.
 
-命名一律用 pi-ai 注册表的 `*Provider()` 工厂给的 name（`pi-ai-names.ts`，带缓存）；pi-ai 目录外只保留一个 Custom Gateway 入口。模型 ID 与路由 ID 在界面上一律显示原值，与 settings 里的键对得上。
+Display names always come from the `*Provider()` factory names in the pi-ai registry (`pi-ai-names.ts`, cached). Outside that registry only one entry is kept: Custom Gateway. Model IDs and route IDs are always shown as they are, matching the keys in settings.
 
-### 凭据体检
+### Credential check
 
-宿主端 resolve 各家 key 时顺手比对，两个 provider 用同一把 key 就在界面上报警（dsh 本身不做这个检查，而配置 UI 拿不到 key 值，这类错误在别处只表现为「某个 provider 一直查询失败」）。只输出结论，key 值只在宿主进程内参与比对。
+The host compares keys while resolving them for each provider and warns in the UI when two providers use the same key. dsh itself does not do this, and the configuration UI never sees key values, so elsewhere this mistake only shows up as one provider that keeps failing. Only the conclusion leaves the host process; key values are compared in-process.
 
-### HTTP 接口
+### HTTP endpoints
 
-| 路由 | 作用 |
+| Route | Purpose |
 |---|---|
-| `GET /plan/status` | 各 provider 额度快照（60 秒缓存，`?refresh=1` 绕过） |
-| `GET /provider/status` | 桥接状态、路由表、更新状态、测试环境标记 |
-| `POST /provider/update` | 手动触发一次上游检查 + 更新 |
-| `GET /provider/models` | pi-ai 模型全量元数据（60 秒缓存，详情卡与能力徽章用） |
-| `GET /provider/presets` | 可添加的供应商预设清单（含已配置标记） |
-| `POST /provider/refresh` | 单卡刷新余量（实查并更新全局快照） |
-| `POST /provider/remove` | 删除 provider（清路由 + 清凭据） |
-| `POST /provider/test` | 添加前实连测试 |
+| `GET /plan/status` | quota snapshot for every provider (60s cache, `?refresh=1` bypasses it) |
+| `GET /provider/status` | bridge status, route table, update status, test-instance flag |
+| `POST /provider/update` | trigger one upstream check and update |
+| `GET /provider/models` | full pi-ai model metadata (60s cache; used by detail cards and capability badges) |
+| `GET /provider/presets` | provider presets available for adding (with configured flags) |
+| `POST /provider/refresh` | refresh one card's quota (live query, updates the global snapshot) |
+| `POST /provider/remove` | remove a provider (route and credential) |
+| `POST /provider/test` | live test before adding |
 
-用自建路由而不是官方的 Typert Remote：那套生成器只认单体仓库布局（`<root>/packages/` 下的包、`@Remote` 的来源必须在已注册的包里），单包插件走不通。代价是没有类型安全的调用点，靠离线测试兜住。
+These are plain routes rather than official Typert Remotes: that generator only understands the monorepo layout (packages under `<root>/packages/`, `@Remote` sources inside registered packages), which does not fit a single-package plugin. The cost is no type-safe call sites, covered by the offline tests.
 
-### 构建
+### Build
 
 ```sh
-npm run build      # tsdown：宿主端 src/*.ts → lib/*.js（unbundle）；浏览器端 src/client/index.ts → lib/client.js（单文件 CJS + window.__ModuleLoader__ 外壳）
-npm run watch      # 改代码自动重建
+npm run build      # tsdown: host src/*.ts -> lib/*.js (unbundled); browser src/client/index.ts -> lib/client.js (single CJS file with the window.__ModuleLoader__ wrapper)
+npm run watch      # rebuild on change
 npm run typecheck  # tsc --noEmit
 ```
 
-宿主端 1:1 转译，产物路径与 package.json 的 exports 对应；浏览器端把 `src/client/` 下的模块全部内联成一个文件，那三行加载器外壳由构建的 banner/footer/intro 加上，源码里不写。
+The host half is translated file by file, and the output paths match the package.json exports. The browser half inlines everything under `src/client/` into one file; the three loader lines are added by the build's banner/footer/intro and are not in the source.
 
-插件是 profile 里 link 进来的，跑的就是 `lib/`——改完源码忘了构建，跑的还是旧代码。
+The plugin runs from `lib/`, so a source change without a build runs the old code.
 
-装依赖走 `scripts/install-deps.sh` 而不是直接 `npm install`：`node_modules/@deepseek-ai` 是指向宿主 profile 的软链，npm 会顺链去 reify 里面两百个包并失败；脚本的做法是装前挪开、装完放回。
+Dependencies are installed with `scripts/install-deps.sh`, not `npm install` directly: `node_modules/@deepseek-ai` is a link into the host profile, and npm would follow it, try to reify the two hundred packages inside and fail. The script moves it aside, installs, and puts it back.
 
-## 边界
+## Boundaries
 
-- **不写宿主配置**：对 dsh 安装目录、settings.yaml、credentials 一律只读；写只发生在两处——插件自己的 `vendor/`（下载 pi-ai、放桥接副本），以及用户在界面上显式操作时（添加/删除 provider）。启动期不写任何宿主配置。
-- **不改第三方包文件**：pi-ai 的文件一个字节都不改（它的模型数据是静态快照，落后于上游时也不打补丁——那样装下来的东西与 registry 的 integrity 对不上，不可复现）。
-- **不改官方插件文件**：接管一律通过 `cordis.patch.yml` 禁用官方行（`llm-pi-ai`、`llm-deepseek`、`ui-model-selection`、`ui-settings-models`），官方其余行为保持原样；不是这些行的目标时用负 priority 遮蔽。patch 命不中 id 时 dsh 只警告并跳过，所以挂到不含这些行的 profile 上也安全。
-- **key 值不出宿主进程**：浏览器端只拿结论与元信息（掩码提示前 3 + 后 4）。
-- **不依赖浏览器登录态**：只支持 API key 类 provider。
-- **webserver 无鉴权层**（dsh 的设计如此，默认只绑 loopback）：自建路由不做额外校验的前提是「仅本机可达」；把宿主暴露到 `0.0.0.0` 时 `/plan/status` 会泄露余额与凭据名。
+- **Never writes host configuration.** The dsh installation, `settings.yaml` and credentials are read-only. Writes happen in two places only: the plugin's own `vendor/` (downloaded pi-ai, bridge copy) and explicit user actions in the UI (adding or removing a provider). Nothing is written at startup.
+- **Never modifies third-party files.** Not a byte of pi-ai is patched, even when its model data is a static snapshot that lags behind upstream — patching would break the registry integrity check and make installs unreproducible.
+- **Never modifies official plugins.** Takeover happens by disabling official rows in `cordis.patch.yml` (`llm-pi-ai`, `llm-deepseek`, `ui-model-selection`, `ui-settings-models`); everything else official is untouched. Where a row is not the target, a negative priority hides it instead. When a patch does not match an id, dsh warns and skips, so the patch is safe on profiles without those rows.
+- **Key values never leave the host process.** The browser half receives conclusions and metadata only (a mask of the first 3 and last 4 characters).
+- **No browser sessions.** Only API-key providers are supported.
+- **The web server has no authentication** (dsh's design; it binds to loopback by default). These routes assume loopback-only reachability: exposing the host on `0.0.0.0` exposes balances and credential names through `/plan/status`.
 
-## 模型视角
+## What the model sees
 
-**请求内容**：插件不改 system prompt、工具 schema 或消息内容；它决定的是「哪些模型可用、走哪条 wire 协议」，以及推理档位怎样落到请求参数上。
+The plugin changes neither the system prompt, the tool schemas nor the message content. It decides which models are available, which wire protocol they use, and how reasoning effort maps onto request parameters.
 
-- 档位不指定（界面显示 `Default`）时请求里不带 `reasoning_effort`；各家的 thinking 开关按 wire 协议各自决定——deepseek/zai/qwen 与 MiniMax 系在这一档发 `thinking: disabled` / `enable_thinking: false`（即不思考），kimi-coding（anthropic 协议）则整个字段都不发，由服务商默认。
-- 指定档位时按各家映射发：deepseek 发 `thinking: enabled` + `reasoning_effort`，MiniMax/opencode-go 发 `thinking: enabled` + `budget_tokens`，kimi-coding 发自适应思考。
+- With no effort selected (the UI shows `Default`) the request carries no `reasoning_effort`. Each provider's thinking switch follows its wire protocol: deepseek, zai, qwen and MiniMax send `thinking: disabled` / `enable_thinking: false` at that level, while kimi-coding (Anthropic protocol) sends nothing and leaves it to the provider default.
+- With an effort selected: deepseek sends `thinking: enabled` plus `reasoning_effort`; MiniMax and opencode-go send `thinking: enabled` plus `budget_tokens`; kimi-coding sends adaptive thinking.
 
-**Token 影响**：插件不向模型请求注入额外 token；额度查询走的是独立的免费 HTTP 端点。档位选择影响的是思考预算（部分 provider 由 `budget_tokens` 决定）。桥接换 pi-ai 版本会同时换掉模型目录与 usage 计费口径。
+Quota lookups are separate free HTTP calls and add no tokens to model requests. Switching pi-ai versions swaps both the model catalog and the usage/billing interpretation. Switching model or provider changes the request prefix, so KV cache hits start from zero; switching effort within the same model only changes thinking parameters. The plugin keeps no cache and does not rewrite session content.
 
-**KV cache**：切模型或切 provider 会改变请求前缀，缓存命中随之从零开始；同模型内切换档位只改 thinking 相关参数。插件不缓存、不改写会话内容。
+## Known gaps
 
-## 已知限制与后续工作
+Retired together with the official rows, not yet reimplemented:
 
-随官方行禁用而退役、需要自己补的：
+- **Per-model list editing.** `ModelListEditor`, `DeepSeekModelsEditor` and `CustomProviderCard` from the official Models page are gone with it; per-model parameters now have to be edited by hand in `llm-pi-ai.providers.<id>` in `settings.yaml`.
+- **"Current model not routable" greying.** The official `ui-model-selection` pushed that state to the composer; with it disabled, the input no longer greys out automatically when the current provider has been removed.
+- **Official onboarding.** The DeepSeek onboarding flow that came with the Models page is gone as well.
 
-- **逐模型清单编辑**：官方 Models 页（`ui-settings-models`）的 `ModelListEditor` / `DeepSeekModelsEditor` / `CustomProviderCard` 一起退役，现在配置逐模型参数只能手改 settings.yaml 的 `llm-pi-ai.providers.<id>`。
-- **「当前模型不可路由」置灰**：官方 `ui-model-selection` 会往 composer 推这个状态，禁用后当前 provider 被删掉时输入框不再自动置灰。
-- **官方 onboarding**：官方 Models 页带的 DeepSeek 引导流程随之消失。
+Not implemented:
 
-未实现的功能：
+- A sidebar entry and a global quota badge via `shell.overlay`.
+- Live usage and failure attribution inside a session (reading usage from `llm/stream` and `session/event`, and quota/rate-limit failure codes from `llm/retry`). Quota data is polled from endpoints today, which answers "how much is left on the account", not "what did this request cost and why did it fail".
 
-- 侧边栏入口与 `shell.overlay` 全局额度徽标。
-- 会话内实时用量与失败归因（监听 `llm/stream`、`session/event` 的用量，`llm/retry` 的配额/限流失败码）。当前的额度数据是端点轮询，回答的是「账户还剩多少」而不是「这次用了多少、为什么失败」。
+Non-goals:
 
-非目标：
+- Providers that need a browser session (OAuth for Claude, Codex, Gemini, Grok, Copilot). The Kimi console API needs a web-session JWT and is left out for the same reason.
+- Forking the official plugin sources, or taking on the monorepo layout (which Typert Remote would require).
 
-- 需要浏览器登录态的 provider（Claude / Codex / Gemini / Grok / Copilot 的 OAuth）；Kimi 控制台接口需要网页登录态的 JWT，同样不接入。
-- 不 fork 官方插件源码，也不背单体仓库布局（Typert Remote 因此用不了）。
+## Source layout
 
-## 源码布局
-
-| 路径 | 作用 |
+| Path | Purpose |
 |---|---|
-| `src/index.ts` | 宿主入口：挂桥接、注册 HTTP 路由 |
-| `src/bridge.ts` | 桥接装载：拷 bundle、体检挑 pi-ai、管理软链 |
-| `src/updater.ts` | 上游更新器：检查 registry、校验 tarball、装依赖、标待重启 |
-| `src/routes.ts` | provider 路由发现 + 官网链接映射 + 显示名兜底 |
-| `src/provider-presets.ts` | 添加 Provider 的候选清单（pi-ai 目录动态生成 + Custom Gateway） |
-| `src/model-details.ts` | 模型详情：读生效 pi-ai 包的 providers 数据文件 |
-| `src/pi-ai-names.ts` | pi-ai 注册表名字读取（显示名的唯一来源） |
-| `src/credential-check.ts` | 凭据体检 |
-| `src/adapters/*.ts` | 额度适配器（一家一个文件 + 注册表 + CLI 跑测器） |
-| `src/client/*.ts` | 浏览器端：`index`（入口/座位注册）· `model-seat` · `settings` · `command` · `data` · `format` · `styles` · `i18n` · `icons` · `diag` · `types` |
-| `cordis.patch.yml` | bundle patch 层：禁用官方行、插入本插件、声明 DeepSeek 路由 |
-| `test/*.mjs` | 七个离线测试（不进 dsh、不起服务） |
-| `scripts/*.sh` | worktree 开发流程、测试实例、装依赖 |
+| `src/index.ts` | host entry: mounts the bridge, registers the HTTP routes |
+| `src/bridge.ts` | bridge loading: copy the bundle, pick pi-ai through the check, manage links |
+| `src/updater.ts` | upstream updater: check the registry, verify the tarball, install, mark pending |
+| `src/routes.ts` | route discovery, website links, display name fallback |
+| `src/provider-presets.ts` | preset list for adding a provider (generated from the pi-ai catalog plus Custom Gateway) |
+| `src/model-details.ts` | model details: read the providers data files of the active pi-ai package |
+| `src/pi-ai-names.ts` | read names from the pi-ai registry (the single source of display names) |
+| `src/credential-check.ts` | credential check |
+| `src/adapters/*.ts` | quota adapters (one file per provider, plus registry and CLI runner) |
+| `src/client/*.ts` | browser half: `index` (entry, slot registration) · `model-seat` · `settings` · `command` · `data` · `format` · `styles` · `i18n` · `icons` · `diag` · `types` |
+| `cordis.patch.yml` | bundle patch layer: disable official rows, insert this plugin, declare the DeepSeek route |
+| `test/*.mjs` | seven offline tests (no dsh, no services) |
+| `scripts/*.sh` | worktree workflow, test instance, dependency install |
