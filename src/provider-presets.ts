@@ -33,6 +33,8 @@ export interface ProviderPreset {
 /** 带"已配置"标记的预设（/provider/presets 的响应体）。 */
 export interface ProviderPresetWithMeta extends ProviderPreset {
   configured: boolean
+  /** 路由在、凭据没值：仍算已配置，但不能当成"没得可做"把补密钥的入口堵死。 */
+  missingKey: boolean
 }
 
 /** buildPresets 内部累积的每 provider 信息；目录来源和 EXTRA_PRESETS 都归到这个形状。 */
@@ -105,11 +107,32 @@ export function buildPresets(): ProviderPreset[] {
   return presets
 }
 
-/** 预设 + 已配置标记（供 /provider/presets 路由）。同厂商被原生适配器覆盖也算已配置。 */
-export function presetsWithMeta(configuredIds: ReadonlySet<string> | undefined): ProviderPresetWithMeta[] {
+/** 这条预设对应到的已配置路由 id（同厂商被原生适配器覆盖也算）；没有就是 undefined。 */
+function matchedRoute(presetId: string, configuredIds: ReadonlySet<string>): string | undefined {
+  if (configuredIds.has(presetId)) return presetId
+  for (const equivalent of NATIVE_EQUIVALENTS[presetId] ?? []) {
+    if (configuredIds.has(equivalent)) return equivalent
+  }
+  return undefined
+}
+
+/**
+ * 预设 + 已配置标记（供 /provider/presets 路由）。同厂商被原生适配器覆盖也算已配置。
+ * @param configuredIds - 已有路由的 id（providerRoutes 的键）。
+ * @param keylessIds - 其中凭据没值的那些：单列 missingKey，界面照旧让用户选中它去补密钥。
+ */
+export function presetsWithMeta(
+  configuredIds: ReadonlySet<string> | undefined,
+  keylessIds?: ReadonlySet<string>,
+): ProviderPresetWithMeta[] {
   const ids = configuredIds instanceof Set ? configuredIds : new Set<string>()
-  return buildPresets().map((preset) => ({
-    ...preset,
-    configured: ids.has(preset.id) || (NATIVE_EQUIVALENTS[preset.id] ?? []).some((route) => ids.has(route)),
-  }))
+  const keyless = keylessIds instanceof Set ? keylessIds : new Set<string>()
+  return buildPresets().map((preset) => {
+    const route = matchedRoute(preset.id, ids)
+    return {
+      ...preset,
+      configured: route !== undefined,
+      missingKey: route !== undefined && keyless.has(route),
+    }
+  })
 }

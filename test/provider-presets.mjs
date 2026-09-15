@@ -43,5 +43,25 @@ if (configured.some((p) => p.id === 'deepseek')) {
 }
 check('没配过的时候不标已配置', presets.every((p) => p.configured === false))
 
+// 路由在、凭据没值：插件自己的 config 就声明了 deepseek，这种"配了一半"的状态必须报出来，
+// 否则界面把它当"已配置"禁选，用户既加不了它、卡片上也没有补密钥的地方。
+check('没配过的时候不标缺密钥', presets.every((p) => p.missingKey === false))
+
+const keyless = presetsWithMeta(new Set(['deepseek']), new Set(['deepseek']))
+if (keyless.some((p) => p.id === 'deepseek')) {
+  const deepseek = keyless.find((p) => p.id === 'deepseek')
+  check('缺密钥的那家仍算已配置', deepseek.configured === true)
+  check('缺密钥的那家单列 missingKey', deepseek.missingKey === true)
+}
+const keyed = presetsWithMeta(new Set(['deepseek']), new Set())
+if (keyed.some((p) => p.id === 'deepseek')) {
+  check('有密钥的不标 missingKey', keyed.find((p) => p.id === 'deepseek').missingKey === false)
+}
+const nativeKeyless = presetsWithMeta(new Set(['deepseek-official']), new Set(['deepseek-official']))
+if (nativeKeyless.some((p) => p.id === 'deepseek')) {
+  check('原生路由缺密钥也算在目录同名项上',
+    nativeKeyless.find((p) => p.id === 'deepseek').missingKey === true)
+}
+
 console.log(failures === 0 ? '\n供应商清单测试全部通过' : `\n${failures} 个失败`)
 process.exit(failures === 0 ? 0 : 1)
