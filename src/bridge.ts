@@ -53,9 +53,10 @@ export interface RejectedCandidate {
   error?: string
 }
 
-/** 体检结果。 */
+/** 体检结果。`unverified` = 需求没解析出来，体检没跑，放行但不算「通过」。 */
 export interface ProbeResult {
   ok: boolean
+  unverified?: boolean
   error?: string
 }
 
@@ -66,6 +67,8 @@ export type BridgeLoadResult =
       plugin: BridgePluginModule
       piAiVersion: string
       piAiSource: string
+      /** 需求没解析出来、体检没跑：选中项是靠「目录存在」放行的，没验证过 */
+      probeUnverified: boolean
       rejected: RejectedCandidate[]
     }
   | { ok: false; error: string }
@@ -96,12 +99,20 @@ export function installedVersions(): string[] {
   }
 }
 
-/** semver 数字比较，够用即可（pi-ai 是 0.x.y 格式）。 */
+/**
+ * semver 数字比较，够用即可（pi-ai 是 0.x.y 格式）。
+ *
+ * 预发布 tag（0.86.0-beta.1）这类非纯数字段 Number() 出来是 NaN，NaN 参与比较时
+ * `diff !== 0` 永远为真，会把整个排序搅乱（installedVersions 的 sort、updater 的
+ * 「已是最新」判断都吃它）。这里把解析不出的段当 0：0.86.0-beta.1 与 0.86.0 视为同版。
+ * pi-ai 目前没有预发布版本，这只是防 NaN 的守卫，不追求完整 semver 语义。
+ */
 export function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map(Number)
-  const pb = b.split('.').map(Number)
+  const nums = (version: string): number[] => version.split('.').map((part) => Number(part) || 0)
+  const pa = nums(a)
+  const pb = nums(b)
   for (let i = 0; i < 3; i++) {
-    const diff = (pa[i] || 0) - (pb[i] || 0)
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0)
     if (diff !== 0) return diff
   }
   return 0
@@ -156,22 +167,48 @@ function piAiVersionOf(root: string): string | undefined {
  *
  * 拷来的那份代码写的是 bare specifier；上游改了导出名或子路径，加载就会炸。
  * 这里把"它到底要什么"读出来，好在加载**之前**就能判断某份 pi-ai 合不合格。
+ *
+ * 覆盖的形态：具名导入 / 具名 re-export（要对方给出这些名字）、动态 import、
+ * 副作用导入、namespace/默认导入、`export *`（只要子路径能加载，names 为空）。
+ * 解析不出来返回空数组，调用方据此知道"体检没执行"而不是"体检通过"。
  * @param source - bundle 源码。
  * @returns 需求列表；解析不出来时返回空数组（调用方据此跳过体检）。
  */
 export function piAiRequirements(source: string): PiAiRequirement[] {
-  const found: PiAiRequirement[] = []
-  const pattern = /import\s*\{([^}]*)\}\s*from\s*["'](@earendil-works\/pi-ai[^"']*)["']/g
-  let match: RegExpExecArray | null
-  while ((match = pattern.exec(source)) !== null) {
-    const names = (match[1] ?? '')
-      .split(',')
-      .map((part) => part.trim().split(/\s+as\s+/)[0]?.trim() ?? '')
-      .filter((name) => name !== '')
-    const specifier = match[2]
-    if (names.length > 0 && specifier !== undefined) found.push({ specifier, names })
+  const bySpecifier = new Map<string, Set<string>>()
+  const namedPatterns = [
+    /\bimport\s*\{([^}]*)\}\s*from\s*["'](@earendil-works\/pi-ai[^"']*)["']/g,
+    /\bexport\s*\{([^}]*)\}\s*from\s*["'](@earendil-works\/pi-ai[^"']*)["']/g,
+  ]
+  for (const pattern of namedPatterns) {
+    let match: RegExpExecArray | null
+    while ((match = pattern.exec(source)) !== null) {
+      const names = (match[1] ?? '')
+        .split(',')
+        .map((part) => part.trim().split(/\s+as\s+/)[0]?.trim() ?? '')
+        .filter((name) => name !== '')
+      const specifier = match[2]
+      if (names.length > 0 && specifier !== undefined) {
+        const existing = bySpecifier.get(specifier) ?? new Set<string>()
+        for (const name of names) existing.add(name)
+        bySpecifier.set(specifier, existing)
+      }
+    }
   }
-  return found
+  const barePatterns = [
+    /\bimport\s*\(\s*["'](@earendil-works\/pi-ai[^"']*)["']/g, // 动态 import()
+    /\bimport\s*["'](@earendil-works\/pi-ai[^"']*)["']/g, // 副作用导入
+    /\bimport[^"'{]*?\sfrom\s*["'](@earendil-works\/pi-ai[^"']*)["']/g, // namespace/默认导入
+    /\bexport\s*\*\s*from\s*["'](@earendil-works\/pi-ai[^"']*)["']/g, // export *
+  ]
+  for (const pattern of barePatterns) {
+    let match: RegExpExecArray | null
+    while ((match = pattern.exec(source)) !== null) {
+      const specifier = match[1]
+      if (specifier !== undefined && !bySpecifier.has(specifier)) bySpecifier.set(specifier, new Set())
+    }
+  }
+  return [...bySpecifier.entries()].map(([specifier, names]) => ({ specifier, names: [...names] }))
 }
 
 /** 读桥接副本，返回它对 pi-ai 的 import 需求（updater 装完新版本也拿它体检）。 */
@@ -202,8 +239,9 @@ export function probePiAi(requirements: readonly PiAiRequirement[], root: string
   // 断链会让 Node 继续往上找，一路找到主软链上那份能用的 pi-ai，把不合格的候选误判成通过
   // （实测踩过：内置依赖被移走后仍然"通过"，最后在真正加载时才炸）。
   if (!existsSync(root)) return { ok: false, error: '目录不存在' }
-  // 需求没解析出来（bundle 换了打包格式）就不拦路，目录存在即放行
-  if (requirements.length === 0) return { ok: true }
+  // 需求没解析出来（bundle 换了打包格式）就没法验证：放行，但标 unverified——
+  // 调用方（loadBridge / updater）据此知道这是「没体检」，不是「体检通过」。
+  if (requirements.length === 0) return { ok: true, unverified: true }
   const dir = join(bridgeDir, `.probe-${String(key).replace(/[^A-Za-z0-9._-]/g, '_')}`)
   try {
     const linkDir = join(dir, 'node_modules', '@earendil-works')
@@ -211,8 +249,11 @@ export function probePiAi(requirements: readonly PiAiRequirement[], root: string
     const link = join(linkDir, 'pi-ai')
     rmSync(link, { force: true, recursive: true })
     symlinkSync(root, link, 'dir')
+    // 具名需求验证导出存在；bare 需求（namespace/默认/副作用导入、export *）只要子路径能加载
     const lines = requirements.map(({ specifier, names }) =>
-      `import { ${names.join(', ')} } from ${JSON.stringify(specifier)}`)
+      names.length > 0
+        ? `import { ${names.join(', ')} } from ${JSON.stringify(specifier)}`
+        : `import ${JSON.stringify(specifier)}`)
     lines.push('export const ok = true')
     writeFileSync(join(dir, 'probe.js'), lines.join('\n') + '\n')
     const require = createRequire(import.meta.url)
@@ -302,10 +343,12 @@ export function loadBridge(): BridgeLoadResult {
     const requirements = piAiRequirements(readFileSync(bridgeLib, 'utf8'))
     const rejected: RejectedCandidate[] = []
     let chosen: PiAiCandidate | undefined
+    let probeUnverified = false
     for (const candidate of piAiCandidates()) {
       const probe = probePiAi(requirements, candidate.root, candidate.key)
       if (probe.ok) {
         chosen = candidate
+        probeUnverified = probe.unverified === true
         break
       }
       rejected.push({ version: candidate.version, error: probe.error })
@@ -331,9 +374,10 @@ export function loadBridge(): BridgeLoadResult {
       piAiVersion: chosen.version,
       needsRestart: false,
       piAiSource: chosen.key,
+      probeUnverified: probeUnverified || undefined,
       ...(rejected.length === 0 ? { rejected: undefined } : { rejected }),
     })
-    return { ok: true, plugin, piAiVersion: chosen.version, piAiSource: chosen.key, rejected }
+    return { ok: true, plugin, piAiVersion: chosen.version, piAiSource: chosen.key, probeUnverified, rejected }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }

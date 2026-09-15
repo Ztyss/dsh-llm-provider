@@ -256,9 +256,10 @@ npm test                                # 上面七条一起跑（自测/合入�
 ## 配置
 
 计费部分不用配：provider 从 settings.yaml 的 `llm-pi-ai.providers` 自动发现，key 走
-credentials 服务按 `apiKeyEnv` 解析。可选环境变量：
-
-- `DSH_PROVIDER_UPDATE=off` —— 关掉 pi-ai 自动检查（`POST /provider/update` 仍可用）
+credentials 服务按 `apiKeyEnv` 解析。没有环境变量开关了——pi-ai 更新只有手动触发
+（设置页「pi-ai 桥接」标签的检查按钮 → `POST /provider/update`），且**验证通过才替换**：
+tarball 完整性（registry 的 dist.integrity）与兼容性体检（bridge 的 import 需求 probe）
+两道都过才标记待重启，下次启动才切过去。
 
 ## 不改 pi-ai 的文件（曾经打过"目录补丁"）
 

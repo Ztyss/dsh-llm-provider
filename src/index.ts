@@ -23,7 +23,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { activePiAiRoot, loadBridge, vendorDir } from './bridge.js'
 import { loadModelDetails, type ModelDetail } from './model-details.js'
-import { startBackgroundCheck, checkAndUpdate } from './updater.js'
+import { checkAndUpdate } from './updater.js'
 import { labelOf, providerRoutes, websiteOf, type ProviderRoute } from './routes.js'
 import { presetsWithMeta } from './provider-presets.js'
 import { findAdapter } from './adapters/registry.js'
@@ -286,6 +286,8 @@ export function apply(ctx: PluginContext, config: unknown): void {
                 source: bridge.piAiSource,
                 // 体检没过、被跳过的候选——有回退就列在这里
                 rejected: bridge.rejected,
+                // 需求没解析出来、体检没跑：选中项没被验证过，界面上要标出来
+                probeUnverified: bridge.probeUnverified,
               }
             : { active: false, error: bridge.error },
           llmDirectorySize: declaredCount,
@@ -437,9 +439,8 @@ export function apply(ctx: PluginContext, config: unknown): void {
     'dsh-provider: /provider/test route',
   )
 
-  // 后台顺带查一次上游（6 小时节流），有新版就下好等重启
-  startBackgroundCheck(logger)
-
+  // 上游更新只有手动触发（设置页按钮 → POST /provider/update）：自动检查已移除，
+  // 替换必须验证通过（tarball 完整性 + 兼容性体检），见 updater.ts 头部注释。
   logger?.info?.('dsh-provider active: GET /plan/status, GET /provider/status, POST /provider/update')
 }
 

@@ -1508,6 +1508,16 @@ function piAiBridgeRows(bridge: unknown, update: unknown): BridgeRow[] {
     value: String(bridgeRecord.piAiVersion) + '（' + piAiSourceLabel(bridgeRecord.source) + '）',
     title: piAiSourceHint(bridgeRecord.source),
   })
+  // 体检没执行（bundle 的 import 需求解析不出）：这份 pi-ai 是靠「目录存在」放行的，没验证过
+  if (bridgeRecord.probeUnverified === true) {
+    rows.push({
+      key: 'unverified',
+      text: '当前这份 pi-ai 没做过兼容性体检',
+      value: '看原因',
+      title: '解析不出桥接副本的 import 需求（上游改了打包格式），按目录存在放行。建议关注 pi-ai 发版说明',
+      warn: true,
+    })
+  }
   // 体检没过的候选：为什么没用上更新的那版
   var rejected = Array.isArray(bridgeRecord.rejected) ? bridgeRecord.rejected : []
   for (var i = 0; i < rejected.length; i += 1) {
@@ -1524,13 +1534,13 @@ function piAiBridgeRows(bridge: unknown, update: unknown): BridgeRow[] {
   if (update !== undefined && update !== null) {
     var updateRecord = update as AnyRecord
     if (updateRecord.pending !== undefined) {
-      rows.push({ key: 'pending', text: '已下载 ' + String(updateRecord.pending) + '，兼容性检查通过，重启 dsh 后生效', warn: true })
+      rows.push({ key: 'pending', text: '已下载 ' + String(updateRecord.pending) + '，验证通过（完整性 + 兼容性），重启 dsh 后生效', warn: true })
     }
     if (updateRecord.rejected !== undefined && updateRecord.rejected !== null) {
       var rejectedLatest = updateRecord.rejected as AnyRecord
       rows.push({
         key: 'rejected',
-        text: String(rejectedLatest.version) + ' 兼容性检查没通过，已跳过（不会切过去）',
+        text: String(rejectedLatest.version) + ' 验证没通过，已跳过（不会切过去）',
         value: '看原因',
         title: String(rejectedLatest.error),
         warn: true,
