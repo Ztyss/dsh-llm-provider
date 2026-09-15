@@ -5,7 +5,7 @@
   "description": "给 dsh 提供 LLM 服务的插件：自动跟进 @earendil-works/pi-ai 上游新版本（新模型立即可用，无需等 dsh 发版），并为内置 provider 提供额度/余额查询",
   "type": "module",
   "scripts": {
-    "test": "node test/routes.mjs && node test/credential-check.mjs && node test/catalog-patch.mjs && node test/cordis-patch.mjs && node test/pi-ai-probe.mjs && node test/client-smoke.mjs"
+    "test": "node test/routes.mjs && node test/credential-check.mjs && node test/cordis-patch.mjs && node test/pi-ai-probe.mjs && node test/client-smoke.mjs"
   },
   "main": "lib/index.js",
   "exports": {

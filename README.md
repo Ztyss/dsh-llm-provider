@@ -175,12 +175,11 @@ node lib/adapters/run.js kimi-coding --key sk-xx
 
 node test/routes.mjs                    # 路由发现的单元测试
 node test/credential-check.mjs          # 凭据体检的单元测试
-node test/catalog-patch.mjs             # 目录补丁 + 「只打自己 vendor」的准入判断
 node test/cordis-patch.mjs              # patch 层：禁用 llm-deepseek 就必须自己声明路由
 node test/pi-ai-probe.mjs               # pi-ai 体检：需求解析 + 挡住不兼容的候选
 node test/client-smoke.mjs              # 浏览器端接线冒烟（假 loader + 桩 react）
 
-npm test                                # 上面六条一起跑（自测/合入用的就是这条）
+npm test                                # 上面五条一起跑（自测/合入用的就是这条）
 ```
 
 开发流程（主线不开发、全部走 worktree）见 `AGENTS.md`，脚本是 `scripts/dev-start.sh` /
@@ -212,22 +211,27 @@ credentials 服务按 `apiKeyEnv` 解析。可选环境变量：
 
 - `DSH_PROVIDER_UPDATE=off` —— 关掉 pi-ai 自动检查（`POST /provider/update` 仍可用）
 
-## 目录补丁（catalog patches）
+## 不改 pi-ai 的文件（曾经打过"目录补丁"）
 
-pi-ai 的模型数据是**静态快照**，官方模型升级后字段会滞后。插件在桥接加载时按「数据文件 → 模型
-id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启 dsh 后生效），条目集中在
-`lib/bridge.js` 的 `CATALOG_PATCHES`，**每条必须写 reason（官方文档出处）**，上游 pi-ai 修正后
-删掉对应条目即可。当前条目：
+pi-ai 的模型数据是**静态快照**，官方模型升级后会滞后。举个例子（2026-09-15 实测）：
+`kimi-for-coding` 官方已升到 K2.8 Preview / 上下文 1M，而 npm 上最新的 pi-ai（0.85.1）仍写
+K2.7 Code / 256k——**热更新到最新也拿不到正确值**。
 
-| 模型 | 修正 | 依据 |
-|---|---|---|
-| `kimi-for-coding` | name `Kimi K2.7 Code`→`Kimi K2.8 Preview`；contextWindow `262144`→`1048576` | [Kimi Code 模型文档](https://www.kimi.com/code/docs/kimi-code/models.html)：该 id 已升级为 K2.8 Preview，上下文 1M（pi-ai 0.85.1 仍写 K2.7/256k） |
+插件以前的做法是加载时直接改 pi-ai 的 `dist/providers/data/*.json`（`CATALOG_PATCHES`）。
+2026-09-15 拆掉了，理由：
 
-**只打自己 vendor 里那份**（`isVendoredRoot()`）：回退到内置依赖或 dsh 自带那份时补丁直接跳过——
-那两份分别属于包管理器和别的程序，一个字节都不改（2026-09-15 实践：从 worktree 起实例时写脏过
-一次 dsh 全局安装，已还原）。代价是回退后 Kimi 那条修正不生效，目录旧一点，好过改别人的包。
+- 改第三方包的文件，装下来的东西就跟 registry 上的 integrity 对不上，不可复现、不可审计；
+- 补丁是手写的、靠人维护的，上游跟上之后还得记得删；
+- 它和"版本跟进"是两套机制干同一件事，容易打架（比如补丁只打在热更新那一档，回退后同一版本
+  的两份数据就不一样了）。
 
-`/provider/status` 返回 `catalogPatches`，Provider 标签里也会逐条展示（悬停看依据）。
+改了哪里：`CATALOG_PATCHES` / `applyCatalogPatches` / `isVendoredRoot` 删除，`/provider/status`
+的 `catalogPatches` 字段和 Provider 标签里的那一行一并去掉。
+
+**代价**：Kimi 的模型名和上下文窗口现在显示 pi-ai 里的原值（K2.7 Code / 256k）。上下文窗口
+影响压缩阈值，不只是显示。
+
+**替代方向**见下一节——按 provider 拉上游自己的模型列表，动态覆盖。
 
 ## 边界：插件不写宿主
 
@@ -238,7 +242,7 @@ id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启
 
 | 删掉的 | 原来干什么 | 现在 |
 |---|---|---|
-| `bridge.js` 里给兜底目标打目录补丁 | 写脏 dsh 全局安装的 pi-ai 数据文件 | 兜底时跳过，见上一节 |
+| `bridge.js` 里给 pi-ai 打目录补丁 | 改第三方包的数据文件；兜底时还会写脏 dsh 全局安装 | 整块拆掉，见上一节 |
 | `index.js` 的 `ensureDeepseekRoute()` | 启动时往 settings 补一条 deepseek 路由 | 路由改在 `cordis.patch.yml` 的插件 config 里声明（见下），settings 里缺了由 `/provider/status` 的 `deepseekRouteMissing` 报出来 |
 | `index.js` 的 `syncRouteDisplayNames()` | 启动时往 settings 补 provider 显示名 | 删除。界面上的名字由 `lib/routes.js` 的 `labelOf()` 实时解析，不依赖写入 |
 
@@ -256,8 +260,8 @@ id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启
 
 ## 后续：实时模型参数增强（TODO）
 
-目前的目录补丁是**静态兜底**；更理想的方案是桥接加载时按 provider 拉上游自己的模型列表，
-动态覆盖能拿到的字段，pi-ai 目录继续当 fallback。
+pi-ai 的目录数据是静态快照，上游模型升级后会滞后。插件的方案是桥接加载时按 provider 拉上游
+自己的模型列表，动态覆盖能拿到的字段——**不在 pi-ai 的文件上动手**，pi-ai 目录继续当 fallback。
 
 **已探测结论（2026-09-13）**：
 
@@ -274,7 +278,7 @@ id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启
 2. `kimi-coding` 先实现（已验证端点），其它 adapter 返回 `null` 表示用静态目录；
 3. 在 `lib/bridge.js` 桥接加载流程里，拿到每个 provider 的 key 后异步拉一次 `/models`，
    把返回结果转成补丁格式写到 vendored JSON，再 require bundle；
-4. 静态 `CATALOG_PATCHES` 保留作为拉取失败/无实现时的兜底；
+4. 拉取失败或无实现时就用 pi-ai 的原值（不改它的文件）；
 5. 拉取带超时（如 5s），失败不阻塞启动。
 
 收益：Kimi 官方升级模型（如把 `kimi-for-coding` 升到 K2.8 Preview、上下文改为 1M）后，
@@ -314,7 +318,7 @@ id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启
 | 文件 | 作用 |
 |---|---|
 | `lib/index.js` | 宿主入口：挂桥接插件 + 计费/状态/预设/添加/删除路由 |
-| `lib/bridge.js` | 桥接装载：拷 bundle、管理 pi-ai 软链、目录补丁（只打自己 vendor）、require 副本 |
+| `lib/bridge.js` | 桥接装载：拷 bundle、体检挑 pi-ai、管理软链、require 副本 |
 | `lib/updater.js` | 上游更新器：registry 检查、下载、装依赖、切版本 |
 | `lib/routes.js` | provider 路由发现（settings + 原生适配器目录合并）+ 官网链接映射 + labelOf 兜底 |
 | `lib/pi-ai-names.js` | pi-ai 注册表名字读取（id → name，缓存；所有显示名的唯一来源） |
@@ -324,7 +328,7 @@ id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启
 | `lib/adapters/*` | 计费适配器（9 家，每家一个文件 + 注册表 + CLI 跑测器） |
 | `lib/client.js` | 浏览器端：模型选择器（官方蓝本两级层级）+ 设置页 Provider 标签（卡片/添加/删除） |
 | `lib/settings-source.js` | 直读 settings.yaml 的 llm-pi-ai 段（兜底） |
-| `test/*.mjs` | 路由发现、凭据体检、目录补丁、patch 层、客户端接线五个离线测试 |
+| `test/*.mjs` | 路由发现、凭据体检、patch 层、pi-ai 体检、客户端接线五个离线测试 |
 | `scripts/test-profile.sh` | plan-test 测试环境一键脚本（起服务 + 打开浏览器） |
 | `scripts/dev-*.sh` / `main-lock.sh` | worktree 并行开发流程：开任务分支、自测打标记、串行合入 main（见 `AGENTS.md`） |
 | `research/kimi-console-api.md` | kimi 控制台接口逆向记录（未接入） |
