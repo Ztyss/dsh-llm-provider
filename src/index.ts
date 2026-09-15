@@ -9,9 +9,9 @@
  *   2. 计费接口（src/adapters/）：按 provider 查额度/余额，挂在
  *      GET /plan/status；适配器各自独立文件，node lib/adapters/run.js 可单独跑测。
  *
- * 之所以用自建 HTTP 路由而不是 Typert Remote：官方那条路要 TypeScript + 代码生成器
- * （`@Remote` 装饰器 + 声明合并），第三方要用得先把自己做成 TS 构建项目。这里先是纯 JS
- * 手写，所以自建路由和 GUI 同源、浏览器端直接 fetch。改用 Typert 是后续单独的事。
+ * 之所以用自建 HTTP 路由而不是官方的 Typert Remote：试过了，那套生成器是给 dsh 单体仓库
+ * 写的（只认 <root>/packages/ 下的包、装饰器来源必须在已注册包里），单包插件走不通。
+ * 详见 README「为什么是自建路由」。自建路由和 GUI 同源，浏览器端直接 fetch。
  *
  * **边界：插件启动不碰宿主的东西。** 对 dsh 安装目录、settings.yaml、credentials 一律
  * 只读；写只发生在两处——插件自己的 vendor/ 目录（下载 pi-ai、拷桥接副本），以及用户

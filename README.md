@@ -231,6 +231,28 @@ npm test                                # 上面七条一起跑（自测/合入�
 | `POST /provider/remove` | 删除 provider（settings/mutate 清路由 + credentials 清密钥） |
 | `POST /provider/test` | 添加前测试连通（llm/discoverModels 实连探测模型） |
 
+### 为什么是自建路由，不是官方的 Typert Remote
+
+官方给插件暴露接口的正规通道是 **Typert Remote**（宿主声明服务面 → 生成器产出 host/remote
+两份产物 → 客户端 `ctx.remote.$mount` 挂载）。2026-09-15 试过，**用不了**——生成器和协议包
+虽然都发布在 npm 上，但那套东西是给 dsh 单体仓库写的，有四处硬编码假设：
+
+| 位置 | 假设 | 后果 |
+|---|---|---|
+| `workspaceRoot()` | 工作区根上有 `tsconfig.host.json` | 加个文件就行，这条能绕 |
+| `loadRegistrations()` | **只认 `<root>/packages/` 下面的包** | 单包仓库一个包都发现不了 |
+| `packageRoot()`（tsdown 插件） | 包目录在根下面一层（`packages/x/y/lib`） | 插件直接跳过，什么都不产出 |
+| `isTypeMetaSymbol()` | `@Remote` 的来源必须在**已注册的包**里 | npm 装的 protocol 永远不算数，绕不过去 |
+
+实测过程：单包布局下 `discover` 返回空；改成官方布局（包放进 `packages/dsh-provider/`、
+根上加 `tsconfig.host.json`）后 `discover` 成功、`analyze` 也产出了包模型，但仍报
+「发布了 Remote 产物但没有 Remote 方法」——就是最后那条。把 protocol 也搬进 `packages/`
+再用 `paths` 映射过去，依然认不出来。
+
+结论：**要 fork 官方生成器才走得通**，而它是为了维护 dsh 仓库里四十多个包之间的一致性才存在的
+重型机械，对单包插件是多余的。所以继续用自建 HTTP 路由（同源 fetch，浏览器端直接调），代价是
+没有类型安全的调用点，靠 `test/*.mjs` 兜住。
+
 ## 配置
 
 计费部分不用配：provider 从 settings.yaml 的 `llm-pi-ai.providers` 自动发现，key 走
