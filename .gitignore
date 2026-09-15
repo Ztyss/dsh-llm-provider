@@ -17,3 +17,6 @@ vendor/updater-state.json
 
 # 系统文件
 .DS_Store
+
+# 兜底依赖的依赖树（vendor/package.json 和 lockfile 入库，树不入库）
+vendor/node_modules/

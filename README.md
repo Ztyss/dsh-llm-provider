@@ -64,15 +64,21 @@ dsh 的模型目录来自打包时固定的旧版 pi-ai（实测装的是 0.84.4
 | 档 | 目录 | 何时用到 |
 |---|---|---|
 | `vendor/pi-ai/<版本>/` | 插件自己的 vendor（updater 下的） | 有新版本时，新 → 旧逐个试 |
-| 内置依赖 | `<插件>/node_modules/@earendil-works/pi-ai` | 热更新没下到 / 下了但不合格 |
-| dsh 自带 | `$DSH_HOME/profiles/node_modules/@earendil-works/pi-ai` | 裸克隆、依赖还没装 |
+| 兜底依赖 | `vendor/node_modules/@earendil-works/pi-ai` | 热更新没下到 / 下了但不合格 |
+| dsh 自带 | `$DSH_HOME/profiles/node_modules/@earendil-works/pi-ai` | 裸克隆、兜底依赖还没装 |
 
-`package.json` 里 **`dependencies` 锁定 `@earendil-works/pi-ai` 的版本**，那一份就是"验证过的
-兜底"。它和热更新目录互不覆盖：热更新只往 `vendor/pi-ai/<新版本>/` 里写。
+`vendor/package.json` 里**锁死 `@earendil-works/pi-ai` 的版本**，装在 `vendor/node_modules/`，
+那一份就是"验证过的兜底"。它和热更新目录互不覆盖：热更新只往 `vendor/pi-ai/<新版本>/` 写。
 
-> 依赖要装在**插件自己的目录**里（`link:` 装法不会替你装依赖，得在这个目录跑一次
-> `npm install`）。别用 `npm ci`——它会把 `node_modules/@deepseek-ai` 那条手工软链一起清掉，
-> 而桥接副本上的 dsh 包是靠它解析的。worktree 里不装也没关系，会落到"dsh 自带"那一档。
+放在 `vendor/` 而不是插件根目录，有两个原因：
+
+- **解析路径**：桥接副本在 `vendor/llm-bridge/`，往上找 `node_modules` 先撞到 `vendor/node_modules`，
+  再才是插件根的。所以中选这一档不用挂软链，"回退"只有一个动作。
+- **根目录跑不了 `npm install`**：插件根的 `node_modules/@deepseek-ai` 是条手工软链（桥接副本上的
+  dsh 包靠它解析），npm 会把它当待处理的条目，实测直接 EPERM。
+
+装法：`cd vendor && npm install`。`package.json` 和 `package-lock.json` 都在库里，可复现；
+`vendor/node_modules/` 不入库。worktree 里不装也没关系，会落到"dsh 自带"那一档。
 
 ### 体检（`probePiAi`）
 
