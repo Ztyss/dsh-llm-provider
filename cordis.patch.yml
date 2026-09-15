@@ -1,4 +1,4 @@
-# dsh-provider 的 bundle patch 层。
+# dsh-llm-provider 的 bundle patch 层。
 #
 # 按 cordis 的 patch 语义写：顶层数组，`- id: <行 id>` 定向覆盖（`disabled: true` 禁用它），
 # `- insert: [...]` 往插件树里插行。插进来的行按顺序建索引，后面的 patch 还能指向它。
@@ -33,8 +33,8 @@
   disabled: true
 
 - insert:
-    - id: dsh-provider
-      name: dsh-provider
+    - id: dsh-llm-provider
+      name: dsh-llm-provider
       # DeepSeek 走 pi-ai 的路由在这里声明：内置 llm-deepseek 被本文件禁用，得有人
       # 接手。放插件自己的 config（dsh 的 settings 组合是「schema 默认 → 这里 → 用户
       # settings.yaml 层」，见 dsh-settings 的 mergeLayers）而不是启动时往 settings

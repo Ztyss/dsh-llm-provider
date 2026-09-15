@@ -1,7 +1,7 @@
 {
-  "name": "dsh-provider-vendor",
+  "name": "dsh-llm-provider-vendor",
   "private": true,
-  "description": "dsh-provider 的 pi-ai 兜底版本。热更新只往 vendor/pi-ai/<版本>/ 写，永远不覆盖这一份；新版本体检不过就落回它。装法：在本目录跑 npm install。",
+  "description": "dsh-llm-provider 的 pi-ai 兜底版本。热更新只往 vendor/pi-ai/<版本>/ 写，永远不覆盖这一份；新版本体检不过就落回它。装法：在本目录跑 npm install。",
   "dependencies": {
     "@earendil-works/pi-ai": "0.85.1"
   }

@@ -19,7 +19,7 @@ const manifest = JSON.parse(readFileSync(new URL('./package.json', import.meta.u
  */
 export default defineConfig([
   {
-    name: 'dsh-provider/host',
+    name: 'dsh-llm-provider/host',
     entry: ['src/index.ts', 'src/adapters/run.ts'],
     outDir: 'lib',
     format: ['esm'],
@@ -34,7 +34,7 @@ export default defineConfig([
     deps: { neverBundle: true },
   },
   {
-    name: 'dsh-provider/client',
+    name: 'dsh-llm-provider/client',
     entry: { client: 'src/client/index.ts' },
     outDir: 'lib',
     format: 'cjs',
