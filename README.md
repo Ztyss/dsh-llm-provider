@@ -331,7 +331,7 @@ pi-ai 的目录数据是静态快照，上游模型升级后会滞后。插件�
 | `lib/credential-check.js` | 凭据体检：多个 provider 共用同一把 key 时报警 |
 | `lib/adapters/*` | 计费适配器（9 家，每家一个文件 + 注册表 + CLI 跑测器） |
 | `lib/client.js` | 浏览器端：模型选择器（官方蓝本两级层级）+ 设置页 Provider 标签（卡片/添加/删除） |
-| `lib/settings-source.js` | 直读 settings.yaml 的 llm-pi-ai 段（兜底） |
+| `lib/dsh-home.js` | DSH 数据目录（`$DSH_HOME`）解析 |
 | `test/*.mjs` | 路由发现、凭据体检、patch 层、pi-ai 体检、状态合并、客户端接线六个离线测试 |
 | `scripts/test-profile.sh` | plan-test 测试环境一键脚本（起服务 + 打开浏览器） |
 | `scripts/dev-*.sh` / `main-lock.sh` | worktree 并行开发流程：开任务分支、自测打标记、串行合入 main（见 `AGENTS.md`） |
