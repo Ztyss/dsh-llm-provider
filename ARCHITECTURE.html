@@ -139,7 +139,7 @@
       一次模型调用怎么走、界面上的数据从哪来。</div>
     <div class="meta-row">
       <span class="pill">整理日期 <b>2026-09-15</b></span>
-      <span class="pill">对应 <b>main @ 7815d31 之后</b></span>
+      <span class="pill">对应 <b>main @ 0356986 之后</b></span>
       <span class="pill">配套 <b>README.md · REQUIREMENTS.md</b></span>
     </div>
   </div>
@@ -277,13 +277,34 @@
 <p>密钥也是 ③ 自己去取，不经过我们的代码。我们写的取密钥逻辑只服务于余额查询。</p>
 
 <h2><span class="n">4</span>界面上的数据从哪来</h2>
-<p class="lead">模型选择器和设置页 Provider 标签，数据不走上面那条调用链。</p>
+<p class="lead">模型选择器和设置页 Provider 标签，数据不走上面那条调用链。这两块自己也分两条路走。</p>
 
 <div class="card">
   <div class="flow">
     <div class="node">
-      <div class="t">浏览器</div>
-      <div class="d">模型选择器<br>Provider 标签页</div>
+      <div class="t">模型选择器</div>
+      <div class="d">composer 座位</div>
+    </div>
+    <div class="arr">→</div>
+    <div class="node">
+      <div class="t">官方的目录服务</div>
+      <div class="d">官方 <code>ui-model-selection</code> 在时用 <code>modelDirectories</code>；<br>被禁用的 profile 走同源 RPC</div>
+    </div>
+    <div class="arr">→</div>
+    <div class="node">
+      <div class="t">宿主</div>
+      <div class="d">模型目录 <code>session/modelCatalog</code><br>会话投影 <code>modelSelection</code><br>切换 <code>session/selectModel</code></div>
+    </div>
+  </div>
+  <p class="lead" style="margin:16px 0 0">当前模型取「会话投影里的选择，没有则宿主的默认模型」；思考强度按会话已定的档位显示，
+  默认档只认目录声明的 defaultEffort。这套取数口径跟官方选择器逐条对过，是一致的。</p>
+</div>
+
+<div class="card">
+  <div class="flow">
+    <div class="node">
+      <div class="t">Provider 标签页</div>
+      <div class="d">设置页 · 桥接状态 · 余额</div>
     </div>
     <div class="arr">→</div>
     <div class="node">

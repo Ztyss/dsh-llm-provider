@@ -263,7 +263,7 @@
   <h3 class="block">用户场景</h3>
   <div class="tbl-wrap"><table>
     <tr><th style="width:56px">场景</th><th>用户要做什么</th><th>对应功能</th></tr>
-    <tr><td class="id"><b>S1</b></td><td>在模型座位打开选择器，按 provider 过滤或搜索，每行显示余额，一眼看出谁快没额度；点选即切换</td><td>FR-3.2</td></tr>
+    <tr><td class="id"><b>S1</b></td><td>在模型座位打开选择器，按 provider 过滤或搜索，每个 provider chip 带余量点，一眼看出谁快没额度；点选即切换</td><td>FR-3.2</td></tr>
     <tr><td class="id"><b>S2</b></td><td>composer 旁的徽标常显当前 provider 余量摘要，点开看各账户明细（余额/窗口/重置时间）</td><td>FR-3.1</td></tr>
     <tr><td class="id"><b>S3</b></td><td>设置页 Provider 标签看桥接状态、版本、额度明细、凭据体检结论，手动触发上游检查</td><td>FR-3.4 / FR-1.4</td></tr>
     <tr><td class="id"><b>S4</b></td><td>pi-ai 发新版后自动下载就位，重启生效；状态可查、可回滚</td><td>FR-1.1 ~ FR-1.3</td></tr>
@@ -347,11 +347,12 @@
     <tr><td class="id"><span class="fr">FR-2.4</span></td><td>凭据体检：多个 provider 同一把 key 时报警；key 值只在宿主进程内比对，绝不下发</td><td><code>node test/credential-check.mjs</code> 通过</td><td><span class="badge ok">✅ 已实现</span></td></tr>
     <tr><td class="id"><span class="fr">FR-2.5</span></td><td>凭据解析：按 <code>apiKeyEnv</code> 经 credentials 服务解析（env → 凭据文件 → .env）</td><td>与官方 llm-pi-ai 同通路</td><td><span class="badge ok">✅ 已实现</span></td></tr>
     <tr><td class="id"><span class="fr">FR-3.1</span></td><td>额度徽标 + 账户面板（落点：conversation.input.right）</td><td>真机验证 2026-09-13</td><td><span class="badge ok">✅ 已实现</span></td></tr>
-    <tr><td class="id"><span class="fr">FR-3.2</span></td><td>模型座位接管：搜索 / provider 过滤 / 每行余额 / 点选即切（落点：conversation.input.model，priority -10 遮蔽）</td><td>真机验证</td><td><span class="badge ok">✅ 已实现</span></td></tr>
+    <tr><td class="id"><span class="fr">FR-3.2</span></td><td>模型座位接管：搜索 / provider 过滤（带余量点）/ 能力徽章与上下文标注 / 点选即切（落点：conversation.input.model，priority -10 遮蔽）</td><td>真机验证</td><td><span class="badge ok">✅ 已实现</span></td></tr>
     <tr><td class="id"><span class="fr">FR-3.3</span></td><td>/model 命令带余额：官方行禁用时接管，官方在时静默让位</td><td>让位路径已验；接管路径待验</td><td><span class="badge ok">✅ 已实现</span></td></tr>
     <tr><td class="id"><span class="fr">FR-3.4</span></td><td>设置页 Provider 标签：桥接状态 / 版本 / 额度明细 / 凭据体检（落点：settings.section）</td><td>真机验证</td><td><span class="badge ok">✅ 已实现</span></td></tr>
     <tr><td class="id"><span class="fr">FR-3.5</span></td><td>数据面与官方同路：目录走 session/modelCatalog、切换走 session/selectModel、优先官方 modelDirectories 服务</td><td>—</td><td><span class="badge ok">✅ 已实现</span></td></tr>
     <tr><td class="id"><span class="fr">FR-3.6</span></td><td>接线可诊断：<code>window.__dshProvider</code> 暴露 applied / modelDirectories / face / seat</td><td>—</td><td><span class="badge ok">✅ 已实现</span></td></tr>
+    <tr><td class="id"><span class="fr">FR-3.7</span></td><td>模型与思考强度的取数口径与官方 <code>ui-model-selection</code> 一致：当前模型取会话投影 <code>modelSelection</code> 的 next、没有则宿主默认模型；思考强度按会话已定的档位显示，默认档只认目录声明的 <code>defaultEffort</code>；切模型只提交 provider/model，档位由宿主决定并回写投影。目录里没有该模型时档位行只读显示会话已定的档位（官方此处整行不渲染，是有意放宽的差异）</td><td>真机验证 2026-09-15</td><td><span class="badge ok">✅ 已实现</span></td></tr>
   </table></div>
 </section>
 
@@ -622,7 +623,7 @@
   <h3 class="block">验收标准速查</h3>
   <ul class="tight">
     <li>离线测试三条全绿：<code>node test/routes.mjs</code> · <code>node test/credential-check.mjs</code> · <code>node test/client-smoke.mjs</code></li>
-    <li>浏览器真机：模型座位显示当前模型 + 余额；搜索跨 provider 出结果；chips 过滤正常；切换生效且可切回；Provider 标签渲染正常</li>
+    <li>浏览器真机：模型座位显示当前模型 + 思考强度；搜索跨 provider 出结果；chips 过滤正常；切换生效且可切回；Provider 标签渲染正常</li>
     <li>桥接：上游新版自动就位 → needsRestart 提示出现 → 重启后新模型可见 → 回滚后目录恢复</li>
     <li>证据纪律（继承调研文档）：新结论必须可复验，拿不到的标 UNKNOWN，不当既成事实写</li>
   </ul>

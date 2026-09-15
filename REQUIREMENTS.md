@@ -54,11 +54,12 @@ dsh（DeepSeek Harness）打包时固定了旧版 pi-ai，模型目录滞后上�
 | 编号 | 需求 | 落点 | 状态 |
 |---|---|---|---|
 | FR-3.1 | 额度徽标 + 账户面板：当前 provider 余量摘要常显，点开看各账户余额/窗口/重置时间/报警 | `conversation.input.right`（list） | ✅ 已实现，真机验证（2026-09-13） |
-| FR-3.2 | 模型座位接管：搜索（跨 provider）、provider chips 过滤（带余额点）、每行余额、当前标记、点选即切 | `conversation.input.model`（single，priority -10 遮蔽官方占用者） | ✅ 已实现，真机验证 |
+| FR-3.2 | 模型座位接管：搜索（跨 provider）、provider chips 过滤（带余量指示点）、每行能力徽章（视觉/推理）与上下文标注、当前标记、点选即切 | `conversation.input.model`（single，priority -10 遮蔽官方占用者） | ✅ 已实现，真机验证 |
 | FR-3.3 | `/model` 命令带余额渲染：官方 `ui-model-selection` 行被禁用后由本插件接管；官方在时静默让位 | `commandUi.register` | ✅ 已实现（让位路径真机验证；接管路径待验） |
 | FR-3.4 | 设置页 Provider 标签：桥接状态、pi-ai 版本、上游版本与检查更新按钮、额度明细、凭据体检结论 | `settings.section`（list，新增 section） | ✅ 已实现，真机验证 |
 | FR-3.5 | 数据面与官方同一条路：模型目录走 `session/modelCatalog`、切换走 `session/selectModel`、余额走 `/plan/status`；优先用官方 `modelDirectories` 客户端服务，缺席时退回同源 HTTP/RPC | — | ✅ 已实现 |
 | FR-3.6 | 座位接线可诊断：`window.__dshProvider` 暴露 applied/modelDirectories/face/seat 状态 | — | ✅ 已实现 |
+| FR-3.7 | 模型与思考强度的取数口径与官方 `ui-model-selection` 一致：当前模型取会话投影 `modelSelection` 的 next、没有则宿主默认模型；思考强度按会话已定的档位显示，默认档只认目录声明的 `defaultEffort`（没有就显示「服务商默认」，不拿档位表首档顶替）；切模型只提交 provider/model，档位由宿主决定并回写投影。目录里没有该模型时档位行只读显示会话已定的档位（官方此处整行不渲染，是有意放宽的差异） | — | ✅ 已实现，真机验证（2026-09-15） |
 
 ### 3.4 界面落点需求（原始调研指定的四个落点，全部保留为正式需求）
 
@@ -100,7 +101,7 @@ dsh（DeepSeek Harness）打包时固定了旧版 pi-ai，模型目录滞后上�
 
 - **离线测试全绿**：`node test/routes.mjs`、`node test/credential-check.mjs`、`node test/client-smoke.mjs`。
 - **浏览器真机端到端**（以 README「已知状态」为准滚动更新）：
-  模型座位显示当前模型 + 余额；搜索跨 provider 出结果；chips 过滤正常；切换实际生效且可切回；
+  模型座位显示当前模型 + 思考强度；搜索跨 provider 出结果；chips 过滤正常；切换实际生效且可切回；
   设置页 Provider 标签渲染正常；徽标点开的面板数据与 `run.js` 直查一致。
 - **桥接验收**：上游发新版后自动就位，`needsRestart` 提示出现，重启后新模型可见；
   回滚后目录恢复旧版。
