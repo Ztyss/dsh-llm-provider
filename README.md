@@ -34,13 +34,15 @@ npm run build
 dsh web     # 重启生效（插件树变了必须重启）
 ```
 
-`vendor/` 是可选的兜底 pi-ai（`cd vendor && npm install`，package-lock 在库里）；不装也能跑，会落到 dsh 自带的那份 pi-ai。
+`vendor/` 是可选的兜底 pi-ai（`cd vendor && npm install`，package-lock 在库里）。**不装也行**：候选列表会直接跳过没安装的档，落到 dsh 自带的那份 pi-ai，界面上不会出现任何「体检没通过」的提示——目录不存在是「这一档没装」，不是兼容性问题。
 
 ### 配置
 
 计费与路由都不需要额外配置：provider 从 settings.yaml 的 `llm-pi-ai.providers` 自动发现，key 走 dsh 的 credentials 服务按 `apiKeyEnv` 解析。
 
-pi-ai 更新**只能手动触发**（Provider 设置页的「检查更新」→ `POST /provider/update`），且**验证通过才替换**：tarball 完整性（registry 的 `dist.integrity`）与兼容性体检两道都过才标记待重启，下次启动才切过去。没有环境变量开关。
+pi-ai 更新有两条触发路径：插件启动时后台检查一次（6 小时节流，`DSH_PROVIDER_UPDATE=off` 可关），以及 Provider 设置页的「检查更新」（`POST /provider/update`）。
+
+无论哪条，**验证通过才替换**：tarball 完整性（registry 的 `dist.integrity`）与兼容性体检两道都过，才标记待重启；当前已在同一版本时不会重复下载。换 pi-ai 版本要重启 dsh 才生效——桥接在进程启动时装载，这是机制本身决定的。
 
 ### 测试实例
 
@@ -81,9 +83,11 @@ dsh 的模型目录来自打包时固定的 pi-ai。桥接让它跑在插件自�
 
 | 档 | 目录 | 何时用到 |
 |---|---|---|
-| 热更新 | `vendor/pi-ai/<版本>/`（新 → 旧） | updater 下载并体检通过后 |
-| 兜底依赖 | `vendor/node_modules/@earendil-works/pi-ai` | 热更新那份没下到或不合格 |
-| dsh 自带 | `$DSH_HOME/profiles/node_modules/@earendil-works/pi-ai` | 裸克隆、兜底依赖还没装 |
+| 已下载 | `vendor/pi-ai/<版本>/`（新 → 旧） | updater 下载并通过体检后 |
+| 兜底依赖 | `vendor/node_modules/@earendil-works/pi-ai` | 可选档，装了就在这一档接住（`cd vendor && npm install`） |
+| dsh 自带 | `$DSH_HOME/profiles/node_modules/@earendil-works/pi-ai` | 前两档都没装，或体检不合格 |
+
+没安装的档会被直接跳过，只在**存在但体检不合格**时才列进「被跳过」并说明原因。dsh 自带的那份版本随 dsh 发布走，不一定比上游旧（实测 dsh 0.1.5-rc.1 就带着上游最新的 0.85.1）。
 
 `vendor/package.json` 锁死兜底依赖的版本，与热更新目录互不覆盖（热更新只往 `vendor/pi-ai/<新版本>/` 写）。放在 `vendor/` 有两个原因：桥接副本在 `vendor/llm-bridge/`，向上解析先撞到 `vendor/node_modules`，所以中选兜底档时不用挂软链；而插件根的 `node_modules/@deepseek-ai` 是条手工软链（桥接副本上的 dsh 包靠它解析），在根目录跑 `npm install` 会被 npm 当成待处理条目而失败。
 

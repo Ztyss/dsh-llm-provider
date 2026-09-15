@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { bridgeRequirements, compareVersions, installedVersions, probePiAi, updateStatus, vendorDir } from './bridge.js'
-import { asRecord, readString, type AnyRecord } from './types.js'
+import { asRecord, readString, type AnyRecord, type Logger } from './types.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -27,6 +27,7 @@ const PACKAGE = '@earendil-works/pi-ai'
 const REGISTRY = `https://registry.npmjs.org/${encodeURIComponent(PACKAGE).replace('%40', '@')}`
 const VERSIONS_DIR = join(vendorDir, 'pi-ai')
 const STATE_FILE = join(vendorDir, 'updater-state.json')
+const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 小时
 
 /** 一次检查 + 更新的结果（/provider/update 的响应体）。 */
 export interface UpdateResult {
@@ -151,8 +152,16 @@ export async function installVersion(release: RegistryRelease, log: (line: strin
   return target
 }
 
-/** 一次性检查 + 更新。返回给 /provider/update 与 /provider/status。 */
-export async function checkAndUpdate(log: (line: string) => void = () => {}): Promise<UpdateResult> {
+/**
+ * 一次性检查 + 更新。返回给 /provider/update 与 /provider/status。
+ * @param log - 进度输出。
+ * @param activeVersion - 当前正在用的 pi-ai 版本（可能来自 dsh 自带那份）。已经不比上游旧时
+ *   不再下载——否则像 dsh 自带 0.85.1、上游也是 0.85.1 的情况下会白下一份一模一样的。
+ */
+export async function checkAndUpdate(
+  log: (line: string) => void = () => {},
+  activeVersion?: string,
+): Promise<UpdateResult> {
   const result: UpdateResult = {
     checkedAt: new Date().toISOString(),
     latest: undefined,
@@ -164,6 +173,10 @@ export async function checkAndUpdate(log: (line: string) => void = () => {}): Pr
   try {
     const release = await latestRelease()
     result.latest = release.version
+    if (activeVersion !== undefined && compareVersions(release.version, activeVersion) <= 0) {
+      log(`当前已在 ${activeVersion}（上游 ${release.version}），无需下载`)
+      return result
+    }
     const have = installedVersions()
     const newest = have[have.length - 1]
     if (newest !== undefined && compareVersions(release.version, newest) <= 0) {
@@ -196,4 +209,19 @@ export async function checkAndUpdate(log: (line: string) => void = () => {}): Pr
     writeState({ lastCheck: result.checkedAt })
   }
   return result
+}
+
+/**
+ * 插件启动时调：距上次检查超过间隔才真的发请求，绝不阻塞启动。
+ *
+ * 装了新版 pi-ai 要重启才生效，所以这里下好的是"下次启动用得上"的那份——目的是让新装的
+ * 机器不用手点「检查更新」也能自动跟上上游。
+ * @param logger - 宿主日志器。
+ * @param activeVersion - 当前生效的 pi-ai 版本（见 {@link checkAndUpdate}）。
+ */
+export function startBackgroundCheck(logger: Logger | undefined, activeVersion: string | undefined): void {
+  if (process.env.DSH_PROVIDER_UPDATE === 'off') return
+  const last = readString(readState()['lastCheck'])
+  if (last !== undefined && Date.now() - Date.parse(last) < AUTO_CHECK_INTERVAL_MS) return
+  void checkAndUpdate((line) => logger?.info?.(`[pi-ai updater] ${line}`), activeVersion)
 }

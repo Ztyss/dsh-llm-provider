@@ -177,7 +177,7 @@ const pending = piAiBridgeRows(
   { latest: '0.86.0', pending: '0.86.0' },
 )
 rowsCheck('待生效版本提示重启', pending.some((r) => r.key === 'pending' && r.text.indexOf('重启 dsh') !== -1))
-rowsCheck('热更新档标成「热更新」', pending[0].value === '0.85.1（热更新）')
+rowsCheck('已下载档标成「已下载」', pending[0].value === '0.85.1（已下载）')
 
 const rejectedByUpdater = piAiBridgeRows(
   { active: true, piAiVersion: '0.85.1', source: '0.85.1' },
