@@ -1,22 +1,35 @@
 # dsh-provider 的 bundle patch 层。
-# 1) 禁用内置 llm-pi-ai 行：ctx.llm.registerAdapter 对同名路由直接抛 DUPLICATE_ADAPTER，
-#    没有遮蔽机制，所以桥接要接手路由只能在这一层禁用官方行。
-# 2) 禁用内置 llm-deepseek 行：DeepSeek 统一走 pi-ai 的 deepseek 路由，全世界只留
-#    pi-ai 一套 adapter。那条路由由下面的 config 声明（复用 DEEPSEEK_API_KEY）。
-# 3) 把本插件插进 profile 插件树；本插件内部的桥接副本完全接管 llm-pi-ai 的
-#    行为（settings 段、模型发现、模型选择器目录），对用户不可见地换到了新版 pi-ai。
 #
-# 注意模型选择器这里**没有**禁用官方 ui-model-selection 行：slot 座位支持 priority
-# 遮蔽（single/keyed/list 都是「同 priority 才冲突，不同 priority 遮蔽，最小者渲染」），
-# 本插件用 priority: -10 遮蔽 conversation.input.model 座位即可，官方插件其余部分
-# （含它的 /model 命令）保持原样。只有想让 /model 命令也带上余额时才需要在这里
-# 加上：
-#   - id: ui-model-selection
-#     disabled: true
+# 按 cordis 的 patch 语义写：顶层数组，`- id: <行 id>` 定向覆盖（`disabled: true` 禁用它），
+# `- insert: [...]` 往插件树里插行。插进来的行按顺序建索引，后面的 patch 还能指向它。
+# 命不中的 id，dsh 只警告并跳过（@deepseek-ai/cordis-plugin-include 的语义）——所以本文件
+# 挂到不含这些行的 profile 上也安全。
+#
+# 本插件要接管的官方行全部在这里禁用：
+#
+# 1) llm-pi-ai：ctx.llm.registerAdapter 对同名路由直接抛 DUPLICATE_ADAPTER，没有遮蔽机制，
+#    桥接要接手路由只能在这一层禁用官方行。本插件内部的桥接副本接管它的全部行为
+#    （settings 段、模型发现、模型选择器目录），对用户不可见地换到新版 pi-ai。
+# 2) llm-deepseek：DeepSeek 统一走 pi-ai 的 deepseek 路由，全世界只留 pi-ai 一套 adapter。
+#    那条路由由下面的 config 声明（复用 DEEPSEEK_API_KEY）。
+# 3) ui-model-selection：模型选择器整体由本插件接管（座位 + /model 命令 + 目录状态机）。
+#    座位本身可以用负 priority 遮蔽（本插件仍留着 priority: -10），但那样官方插件还在跑：
+#    它会再拉一份目录、还会推 composer 的「当前模型不可路由」置灰状态，两套状态机并存只会
+#    互相打架。整行禁用后，我们自己的目录路径就是唯一路径。核对过 client/ 全量引用：没有
+#    别的插件依赖它提供的 modelDirectories 服务，禁掉不会让谁卡在 pending。
+# 4) ui-settings-models：官方 Models 页退役，Provider 的「配置+展示一体」在本插件的 Provider
+#    标签里做（REQUIREMENTS §9.1）。随之退役的还有它独有的逐模型清单编辑（ModelListEditor /
+#    DeepSeekModelsEditor / CustomProviderCard）——记在 §8 已知缺口里。
 - id: llm-pi-ai
   disabled: true
 
 - id: llm-deepseek
+  disabled: true
+
+- id: ui-model-selection
+  disabled: true
+
+- id: ui-settings-models
   disabled: true
 
 - insert:

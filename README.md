@@ -15,13 +15,14 @@
 
 | 位置 | 做法 |
 |---|---|
-| composer 模型座位 `conversation.input.model` | 用 **priority 遮蔽**接管：座位是 `single`，官方 `ui-model-selection` 用默认 priority 0 占着，我们注册 `priority: -10`（最小者渲染）。官方插件行保持启用 |
-| `/model` 命令 | 官方还在时静默让位（`commandUi` 同名即抛，没有遮蔽）；只有把 `ui-model-selection` 行 patch 禁用后才由我们接管（带余量渲染） |
-| 设置页 Provider 标签 | 新增一个 `settings.section` 贡献（list 座位，**不影响**官方 Models 标签） |
+| composer 模型座位 `conversation.input.model` | 官方 `ui-model-selection` 行由本插件的 bundle patch 整行禁用，座位由我们独占注册（注册时仍留着 `priority: -10`：万一有人把那行再启用，单座位下我们照样遮蔽它） |
+| `/model` 命令 | 同上——官方那行禁用了，`commandUi` 的名字空出来由我们注册（带余量渲染）；代码里保留「同名即让位」的兜底分支 |
+| 设置页 Provider 标签 | 官方 `ui-settings-models` 行禁用（官方 Models 页退役），本插件贡献一个 `settings.section`（list 座位）承接配置+展示 |
 
-座位数据有两条来源，按序兜底：首选官方客户端服务 `ctx.modelDirectories`（目录、当前选择、切换提交
-都在它手里）；它缺席时（plan-test 禁用官方插件）退回同源 HTTP（`session/modelCatalog` RPC）+
-会话投影（`modelSelection`）+ `session/selectModel` RPC。inject 面必须把 `sessionId` 和 `sessions`
+座位数据有两条来源，按序兜底：首选官方客户端服务 `ctx.modelDirectories`（**只有官方
+`ui-model-selection` 还在时才存在**，所以这是"哪天有人再启用它"的兼容路径）；常态是它缺席——
+退回同源 HTTP（`session/modelCatalog` RPC）+ 会话投影（`modelSelection`）+
+`session/selectModel` RPC。inject 面必须把 `sessionId` 和 `sessions`
 都传给座位组件——座位靠它们读投影回显当前模型（**坑**：inject 工厂虽然收到 sessionId，不放进
 返回的 props 组件就拿不到；官方座位不需要，因为它绑在目录服务上）。**注意模块级 `inject` 要一并
 声明 `remote`、`remote.session`**：官方目录服务的方法绑定到调用方上下文，少声明就会在
@@ -137,8 +138,11 @@ dsh web                     # 重启生效（插件树变了必须重启）
 ## 测试环境（plan-test profile）
 
 `scripts/test-profile.sh` 一键起测试实例：幂等生成 `~/.dsh/profiles/plan-test/`（与官方 web 同
-bundle 组，但额外禁用官方 `ui-model-selection`——模型座位由本插件独立接管，即「补位」形态）、
-固定端口 3081（正常实例不受影响）、自动抓启动令牌并打开浏览器。
+bundle 组）、固定端口 3081（正常实例不受影响）、自动抓启动令牌并打开浏览器。
+
+官方模型管理三件套（`llm-pi-ai` / `ui-model-selection` / `ui-settings-models`）现在由**本插件的
+bundle patch 统一禁用**；`plan-test` 的 profile patch 里再禁一次，是为了「裸基线」形态——把
+dsh-provider 摘掉之后官方行也不会自己回来，方便对照排查。
 
 ```sh
 scripts/test-profile.sh        # 启动（已在跑会先重启）并打开测试前端
@@ -364,10 +368,9 @@ pi-ai 的目录数据是静态快照，上游模型升级后会滞后。插件�
     装不下了，会到处截断。全名始终在触发器 `title` 里；
   - 目录与设置页是两个数据源，但同源：模型选择器的 provider/模型列表来自宿主
     `session/modelCatalog`（宿主按**已配置的路由**实时构建），设置页卡片来自 settings 的
-    `llm-pi-ai.providers`。官方目录服务在时，它自己订阅 `settings/document-updated` 等事件
-    失效重载；补位形态（profile 禁用了官方 `ui-model-selection`）下由本插件自己拉，
-    **每次打开菜单都重拉一次**——否则在设置页删掉 provider 后再打开菜单，列表里还挂着
-    已经删掉的供应商（设置页那边自己会重载，于是两边看着不同步）；
+    `llm-pi-ai.providers`。官方目录服务（`ui-model-selection` 提供）被本插件禁用了，所以
+    常态就是本插件自己拉目录，**每次打开菜单都重拉一次**——否则在设置页删掉 provider 后再打开
+    菜单，列表里还挂着已经删掉的供应商（设置页那边自己会重载，于是两边看着不同步）；
   - 额度快照只有一个源：`planCache`（客户端 60 秒缓存）是唯一那份，写入（重拉 / 单卡刷新 /
     删除某家）一律走同一条路径并广播给订阅者。设置页卡片、座位触发器与 `/model` 命令都订阅它
     ——以前删除走缓存、单卡刷新只改设置页自己的 state，同一个余量数字能在两处同时存在两个值，
@@ -388,7 +391,8 @@ pi-ai 的目录数据是静态快照，上游模型升级后会滞后。插件�
 - **Kimi 凭据错配检测**：多个 provider 共用同一把 key 直接报警（凭据名点名，key 值不出宿主）。
 - **测试环境**：`scripts/test-profile.sh` 一键起 plan-test profile（3081 端口、自动开浏览器、
   `DSH_PROVIDER_TEST=1` 打「测」角标）；三态 = 补位 / 裸基线（摘 dsh-provider）/ 官方完整（3080）。
-  plan-test 的 patch 层禁用官方模型管理三件套（llm-pi-ai / ui-model-selection / ui-settings-models）。
+  官方模型管理三件套（llm-pi-ai / ui-model-selection / ui-settings-models）由本插件的 bundle patch
+  统一禁用（`cordis.patch.yml`）；plan-test 的 profile patch 再禁一次，供「裸基线」形态对照。
 - 排查用：浏览器里 `window.__dshProvider` 记录接线状态；`GET /provider/status` 的 `routes` 字段看路由发现。
 
 ## 文件
