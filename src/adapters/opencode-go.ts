@@ -10,6 +10,8 @@
  *   没有任何用量接口（实测 404），刻意不匹配。
  */
 import { account, authFailed, clampPercent, describeHttpError, fail, getJson } from './shared.js'
+import { asRecord } from '../types.js'
+import type { AccountStatus, AdapterQueryInput, BillingAdapter, QuotaWindow } from './shared.js'
 
 /** usage 下的窗口 key → 展示名。rolling 对应文档口径 $12/5h。 */
 const WINDOW_LABELS = [
@@ -21,12 +23,12 @@ const WINDOW_LABELS = [
 export default {
   id: 'opencode-go',
   label: 'OpenCode Go',
-  match(providerId, baseUrl) {
+  match(providerId: string, baseUrl: string | undefined): boolean {
     if (/^opencode-go/i.test(providerId)) return true
     return typeof baseUrl === 'string' && baseUrl.includes('opencode.ai/zen/go')
   },
 
-  async query({ id, displayName, key }) {
+  async query({ id, displayName, key }: AdapterQueryInput): Promise<AccountStatus> {
     const { status, body } = await getJson('https://opencode.ai/zen/go/v1/usage', {
       authorization: `Bearer ${key}`,
     })
@@ -35,19 +37,21 @@ export default {
     if (status === 403) fail('API key 有效，但该 workspace 没有订阅 OpenCode Go（HTTP 403）')
     if (status !== 200) fail(describeHttpError(status, body))
 
-    const usage = body?.usage
-    const windows = []
+    const usage = asRecord(body)['usage']
+    const windows: QuotaWindow[] = []
     if (usage !== undefined && usage !== null) {
+      const usageRecord = asRecord(usage)
       for (const [keyName, label] of WINDOW_LABELS) {
-        const window = usage?.[keyName]
-        const percent = typeof window?.percent === 'number' ? window.percent : undefined
-        if (window === undefined || window === null || percent === undefined) continue
+        const windowRaw = usageRecord[keyName]
+        const window = asRecord(windowRaw)
+        const percent = typeof window['percent'] === 'number' ? window['percent'] : undefined
+        if (windowRaw === undefined || windowRaw === null || percent === undefined) continue
         windows.push({
           window: label,
           percentLeft: clampPercent(100 - percent),
           // percent 为 0 时 resetsAt 是 now+窗口时长 的占位值，丢弃
-          ...(percent > 0 && typeof window?.resetsAt === 'string' ? { resetAt: window.resetsAt } : {}),
-          ...(window?.status === 'rate-limited' ? { note: '已触发限流' } : {}),
+          ...(percent > 0 && typeof window['resetsAt'] === 'string' ? { resetAt: window['resetsAt'] } : {}),
+          ...(window['status'] === 'rate-limited' ? { note: '已触发限流' } : {}),
         })
       }
     }
@@ -58,4 +62,4 @@ export default {
       windows,
     })
   },
-}
+} satisfies BillingAdapter

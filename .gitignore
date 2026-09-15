@@ -1,6 +1,9 @@
 # 依赖与运行时产物
 node_modules/
 
+# 构建产物（npm run build 生成，源码在 src/）
+lib/
+
 # 开发用 worktree（scripts/dev-start.sh 创建，一个任务一个）
 .worktrees/
 

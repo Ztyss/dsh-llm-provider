@@ -12,9 +12,17 @@ import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { adapters } from './registry.js'
+import type { BillingAdapter } from './shared.js'
+
+/** 命令行参数：`--key` / `--base-url` 各吃一个值，其余进 `_`。 */
+interface ParsedArgs {
+  _: string[]
+  key?: string
+  baseUrl?: string
+}
 
 /** 各适配器默认试的环境变量名（和 dsh settings.yaml 里 apiKeyEnv 的常规写法一致）。 */
-const KEY_ENV_NAMES = {
+const KEY_ENV_NAMES: Record<string, string[]> = {
   deepseek: ['DEEPSEEK_API_KEY'],
   'kimi-coding': ['KIMI_CODING_API_KEY', 'KIMI_API_KEY'],
   moonshot: ['MOONSHOT_API_KEY', 'MOONSHOT_CN_API_KEY', 'MOONSHOTAI_CN_API_KEY', 'MOONSHOTAI_API_KEY'],
@@ -27,7 +35,7 @@ const KEY_ENV_NAMES = {
 }
 
 /** 各适配器的默认 baseURL（settings 里通常不写）。 */
-const DEFAULT_BASE_URLS = {
+const DEFAULT_BASE_URLS: Record<string, string> = {
   deepseek: 'https://api.deepseek.com',
   'kimi-coding': 'https://api.kimi.com/coding',
   moonshot: 'https://api.moonshot.cn/v1',
@@ -37,8 +45,8 @@ const DEFAULT_BASE_URLS = {
   openrouter: 'https://openrouter.ai/api/v1',
 }
 
-function parseArgs(argv) {
-  const args = { _: [] }
+function parseArgs(argv: string[]): ParsedArgs {
+  const args: ParsedArgs = { _: [] }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === '--key') args.key = argv[++i]
@@ -49,7 +57,7 @@ function parseArgs(argv) {
 }
 
 /** 从 ~/.dsh/.credentials.yaml 里找 key（只取值，不回显）。 */
-function keyFromCredentials(envName) {
+function keyFromCredentials(envName: string): string | undefined {
   try {
     const lines = readFileSync(join(homedir(), '.dsh', '.credentials.yaml'), 'utf8').split('\n')
     const line = lines.find((l) => l.trim().startsWith(`${envName}:`))
@@ -60,7 +68,7 @@ function keyFromCredentials(envName) {
   }
 }
 
-function resolveKey(adapterId, args) {
+function resolveKey(adapterId: string, args: ParsedArgs): { key: string | undefined; source: string } {
   if (args.key !== undefined) return { key: args.key, source: '--key' }
   for (const envName of KEY_ENV_NAMES[adapterId] ?? []) {
     if (process.env[envName] !== undefined && process.env[envName] !== '') {
@@ -72,7 +80,7 @@ function resolveKey(adapterId, args) {
   return { key: undefined, source: '没找到' }
 }
 
-async function runOne(adapter, args) {
+async function runOne(adapter: BillingAdapter, args: ParsedArgs): Promise<void> {
   const { key, source } = resolveKey(adapter.id, args)
   console.log(`\n== ${adapter.id}（${adapter.label}）==`)
   if (key === undefined) {

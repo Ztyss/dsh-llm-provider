@@ -5,7 +5,10 @@
   "description": "给 dsh 提供 LLM 服务的插件：自动跟进 @earendil-works/pi-ai 上游新版本（新模型立即可用，无需等 dsh 发版），并为内置 provider 提供额度/余额查询",
   "type": "module",
   "scripts": {
-    "test": "node test/routes.mjs && node test/credential-check.mjs && node test/cordis-patch.mjs && node test/pi-ai-probe.mjs && node test/provider-presets.mjs && node test/vendor-status.mjs && node test/client-smoke.mjs"
+    "build": "tsdown",
+    "watch": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node test/routes.mjs && node test/credential-check.mjs && node test/cordis-patch.mjs && node test/pi-ai-probe.mjs && node test/provider-presets.mjs && node test/vendor-status.mjs && node test/client-smoke.mjs"
   },
   "main": "lib/index.js",
   "exports": {
@@ -45,5 +48,10 @@
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "tsdown": "^0.22.14",
+    "typescript": "^6.0.3"
+  }
 }

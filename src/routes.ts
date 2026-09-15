@@ -12,12 +12,24 @@
  * 命名空间没注册时退回 settings.section()：直接读 dsh 解析好的文档，不用自己解析 YAML。
  */
 import { piAiName } from './pi-ai-names.js'
+import { asRecord, readString, type AnyRecord, type LlmService, type SettingsService } from './types.js'
+
+/** 一条要查额度的路由。 */
+export interface ProviderRoute {
+  id: string
+  apiKeyEnv: string | undefined
+  baseURL: string | undefined
+  /** wire 协议（settings 段里存的值，卡片展开体要展示）。 */
+  api?: string | undefined
+  label: string | undefined
+  source: 'llm-pi-ai' | 'native'
+}
 
 /**
  * provider 显示名：pi-ai 注册表原名优先（deepseek → "DeepSeek"），
  * pi-ai 没有的原生路由走 NATIVE_ROUTE_DEFAULTS，再按 id 拼一个（kimi-coding → "Kimi Coding"）。
  */
-export function labelOf(providerId) {
+export function labelOf(providerId: string): string {
   const piName = piAiName(providerId)
   if (piName !== undefined) return piName
   return providerId
@@ -28,7 +40,7 @@ export function labelOf(providerId) {
 }
 
 /** provider id → 官网/控制台链接（Provider 卡片名称下的跳转链接）。取自 CC Switch 预设（剥掉 aff/utm 跟踪参数）；CC Switch 没有的（moonshot/zenmux）用官方控制台地址。 */
-const KNOWN_WEBSITES = {
+const KNOWN_WEBSITES: Record<string, string> = {
   'kimi-coding': 'https://www.kimi.com/code',
   'zai-coding-cn': 'https://open.bigmodel.cn',
   'qwen-token-plan-cn': 'https://bailian.console.aliyun.com',
@@ -40,8 +52,9 @@ const KNOWN_WEBSITES = {
 }
 
 /** 查官网链接：精确匹配优先，再试前缀（minimax-cn → minimax-intl 这类变体兜底）。 */
-export function websiteOf(providerId) {
-  if (Object.prototype.hasOwnProperty.call(KNOWN_WEBSITES, providerId)) return KNOWN_WEBSITES[providerId]
+export function websiteOf(providerId: string): string | undefined {
+  const exact = KNOWN_WEBSITES[providerId]
+  if (exact !== undefined) return exact
   for (const key of Object.keys(KNOWN_WEBSITES)) {
     const stem = key.endsWith('-cn') ? key.slice(0, -3) : key
     if (providerId.startsWith(key) || (stem !== key && providerId.startsWith(stem))) return KNOWN_WEBSITES[key]
@@ -50,7 +63,7 @@ export function websiteOf(providerId) {
 }
 
 /** 原生适配器的默认 apiKeyEnv：这些适配器不写 settings 段也有 key 引用，值只能在这里认。 */
-export const NATIVE_ROUTE_DEFAULTS = {
+export const NATIVE_ROUTE_DEFAULTS: Record<string, { apiKeyEnv: string; label: string }> = {
   'deepseek-official': { apiKeyEnv: 'DEEPSEEK_API_KEY', label: 'DeepSeek' },
 }
 
@@ -58,10 +71,12 @@ export const NATIVE_ROUTE_DEFAULTS = {
  * 合并出要查额度的路由表。
  * @param settings - settings 服务（可为 undefined）。
  * @param llm - llm 服务（可为 undefined）；用它的 listConfigurableProviders 找原生路由。
- * @returns `Map<providerId, { id, apiKeyEnv, baseURL, api?, label?, source }>`。
  */
-export function providerRoutes(settings, llm) {
-  const routes = new Map()
+export function providerRoutes(
+  settings: SettingsService | undefined,
+  llm: LlmService | undefined,
+): Map<string, ProviderRoute> {
+  const routes = new Map<string, ProviderRoute>()
 
   // 两条读法，按序兜底：
   //   get()     —— 命名空间「解析后」的值：schema 默认 + 插件 config（base 层）+ 用户配置。
@@ -71,34 +86,38 @@ export function providerRoutes(settings, llm) {
   //   section() —— 直接读 settings 文档里那一节的原始内容，不要求注册，正好补上面那个空档。
   //                以前这里是自己解析 settings.yaml（93 行手写 YAML），纯属绕远路：
   //                那份文档本来就是 dsh 解析好放在那儿的。
-  const resolved = safeObject(() => safeObject(() => settings?.get?.('llm-pi-ai')).providers)
+  const resolved = safeObject(() => asRecord(asRecord(settings?.get?.('llm-pi-ai'))['providers']))
   const piAiProviders = Object.keys(resolved).length > 0
     ? resolved
-    : safeObject(() => safeObject(() => settings?.section?.('llm-pi-ai')).providers)
-  for (const [id, route] of Object.entries(piAiProviders)) {
+    : safeObject(() => asRecord(asRecord(settings?.section?.('llm-pi-ai'))['providers']))
+  for (const [id, rawRoute] of Object.entries(piAiProviders)) {
+    const route = asRecord(rawRoute)
     routes.set(id, {
       id,
-      apiKeyEnv: route?.apiKeyEnv,
-      baseURL: route?.baseURL,
+      apiKeyEnv: readString(route['apiKeyEnv']),
+      baseURL: readString(route['baseURL']),
       // wire 协议：卡片展开体要和「添加供应商」表单展示同一组信息，settings 段里存的就是这个值
-      api: typeof route?.api === 'string' ? route.api : undefined,
-      label: typeof route?.displayName === 'string' ? route.displayName : undefined,
+      api: readString(route['api']),
+      label: readString(route['displayName']),
       source: 'llm-pi-ai',
     })
   }
 
-  let declared = []
+  let declared: unknown = []
   try {
     declared = typeof llm?.listConfigurableProviders === 'function' ? llm.listConfigurableProviders() : []
   } catch {
     declared = []
   }
-  for (const entry of Array.isArray(declared) ? declared : []) {
-    if (entry?.settingsNs === 'llm-pi-ai') continue
-    const defaults = NATIVE_ROUTE_DEFAULTS[entry?.provider]
-    if (defaults === undefined || routes.has(entry.provider)) continue
-    routes.set(entry.provider, {
-      id: entry.provider,
+  for (const rawEntry of Array.isArray(declared) ? declared : []) {
+    const entry = asRecord(rawEntry)
+    if (entry['settingsNs'] === 'llm-pi-ai') continue
+    const provider = readString(entry['provider'])
+    if (provider === undefined) continue
+    const defaults = NATIVE_ROUTE_DEFAULTS[provider]
+    if (defaults === undefined || routes.has(provider)) continue
+    routes.set(provider, {
+      id: provider,
       apiKeyEnv: defaults.apiKeyEnv,
       baseURL: undefined,
       label: defaults.label,
@@ -109,11 +128,9 @@ export function providerRoutes(settings, llm) {
   return routes
 }
 
-function safeObject(read) {
+function safeObject(read: () => AnyRecord): AnyRecord {
   try {
-    const value = read()
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return {}
-    return value
+    return asRecord(read())
   } catch {
     return {}
   }

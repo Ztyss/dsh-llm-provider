@@ -19,9 +19,11 @@ import {
   originOf,
   percentLeftOf,
 } from './shared.js'
+import { asRecord } from '../types.js'
+import type { AccountStatus, AdapterQueryInput, BillingAdapter, QuotaWindow } from './shared.js'
 
 /** GLM 窗口长度：unit 3 = 小时，6 = 周，5 = 月，4 = 天。 */
-function windowLabel(unit, number) {
+function windowLabel(unit: number | undefined, number: number | undefined): string {
   if (unit === 3 && number !== undefined) return `${String(number)} 小时窗口`
   if (unit === 6) return '每周窗口'
   if (unit === 5) return '每月窗口'
@@ -32,48 +34,52 @@ function windowLabel(unit, number) {
 export default {
   id: 'glm',
   label: 'GLM Coding（智谱）',
-  match(providerId, baseUrl) {
+  match(providerId: string, baseUrl: string | undefined): boolean {
     if (/^zai|^zhipu|^glm|^bigmodel/i.test(providerId)) return true
     if (typeof baseUrl !== 'string') return false
     return baseUrl.includes('bigmodel.cn') || baseUrl.includes('z.ai')
   },
 
-  async query({ id, displayName, key, baseUrl }) {
+  async query({ id, displayName, key, baseUrl }: AdapterQueryInput): Promise<AccountStatus> {
     const origin = originOf(baseUrl) ?? 'https://open.bigmodel.cn'
     const { status, body } = await getJson(`${origin}/api/monitor/usage/quota/limit`, {
       // 智谱的鉴权头就是 key 本身，加 Bearer 反而会被拒
-      authorization: key,
+      // key 由调用方保证已配置（没配凭据时插件层不会调 query），断言只为满足 headers 的值类型
+      authorization: key as string,
       'content-type': 'application/json',
     })
     if (status !== 200) fail(describeHttpError(status, body))
-    if (body?.success === false || (typeof body?.code === 'number' && body.code !== 200)) {
-      fail(`鉴权或配额查询失败：${body?.msg ?? body?.message ?? `code ${String(body?.code)}`}`)
+    const record = asRecord(body)
+    if (record['success'] === false || (typeof record['code'] === 'number' && record['code'] !== 200)) {
+      fail(`鉴权或配额查询失败：${String(record['msg'] ?? record['message'] ?? `code ${String(record['code'])}`)}`)
     }
 
-    const windows = []
-    const mcp = []
-    const limits = Array.isArray(body?.data?.limits) ? body.data.limits : []
-    for (const entry of limits) {
-      const unit = num(entry?.unit)
-      const number = num(entry?.number)
-      const usage = num(entry?.usage)
-      const remainingRaw = num(entry?.remaining)
-      const currentValue = num(entry?.currentValue)
+    const windows: QuotaWindow[] = []
+    const mcp: QuotaWindow[] = []
+    const data = asRecord(record['data'])
+    const limits: unknown[] = Array.isArray(data['limits']) ? data['limits'] : []
+    for (const raw of limits) {
+      const entry = asRecord(raw)
+      const unit = num(entry['unit'])
+      const number = num(entry['number'])
+      const usage = num(entry['usage'])
+      const remainingRaw = num(entry['remaining'])
+      const currentValue = num(entry['currentValue'])
       const used = currentValue ?? (usage !== undefined && remainingRaw !== undefined ? usage - remainingRaw : undefined)
       const remaining = remainingRaw ?? (usage !== undefined && used !== undefined ? Math.max(0, usage - used) : undefined)
-      const row = {
+      const row: QuotaWindow = {
         window: windowLabel(unit, number),
         limit: usage,
         used,
         remaining,
         percentLeft: percentLeftOf(usage, remaining),
-        resetAt: epochMsToIso(entry?.nextResetTime),
+        resetAt: epochMsToIso(entry['nextResetTime']),
       }
       if (unit === 5 && number === 1) mcp.push(row)
       else windows.push(row)
     }
 
-    const level = body?.data?.level
+    const level = data['level']
     return account(id, displayName, 'quota', {
       baseUrl: origin,
       ...(typeof level === 'string' ? { membership: level } : {}),
@@ -81,4 +87,4 @@ export default {
       ...(windows.length === 0 && mcp.length > 0 ? { note: '只拿到 MCP 月度窗口，Coding Plan 额度窗口未返回' } : {}),
     })
   },
-}
+} satisfies BillingAdapter

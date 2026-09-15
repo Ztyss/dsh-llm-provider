@@ -11,16 +11,17 @@ import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { activePiAiRoot } from './bridge.js'
 
-let cache
+/** 按 pi-ai 包目录缓存；根目录变了（换版本）自然失效。 */
+let cache: { root: string; names: Map<string, string> } | undefined
 
 /** pi-ai 注册表全量 id → name。读不到时返回空 Map（调用方自行兜底）。 */
-export function piAiNames() {
+export function piAiNames(): Map<string, string> {
   const root = activePiAiRoot()
   if (root === undefined) return new Map()
   if (cache !== undefined && cache.root === root) return cache.names
-  const names = new Map()
+  const names = new Map<string, string>()
   const dir = join(root, 'dist', 'providers')
-  let files
+  let files: string[]
   try {
     files = readdirSync(dir)
   } catch {
@@ -31,9 +32,12 @@ export function piAiNames() {
     if (!file.endsWith('.js') || file.endsWith('.models.js') || file === 'all.js') continue
     const id = file.slice(0, -'.js'.length)
     try {
-      const mod = require(join(dir, file))
-      const factory = Object.values(mod).find((value) => typeof value === 'function' && /Provider$/.test(value.name))
-      if (typeof factory !== 'function') continue
+      const mod = require(join(dir, file)) as Record<string, unknown>
+      // pi-ai 每个 provider 文件导出一个 *Provider() 工厂；按函数名认它
+      const factory = Object.values(mod).find(
+        (value): value is () => { name?: unknown } => typeof value === 'function' && /Provider$/.test(value.name),
+      )
+      if (factory === undefined) continue
       const name = factory().name
       if (typeof name === 'string' && name !== '') names.set(id, name)
     } catch {
@@ -45,6 +49,6 @@ export function piAiNames() {
 }
 
 /** 单个 provider 的 pi-ai 注册名，读不到返回 undefined。 */
-export function piAiName(id) {
+export function piAiName(id: string): string | undefined {
   return piAiNames().get(id)
 }
