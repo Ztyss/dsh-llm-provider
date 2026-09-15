@@ -113,7 +113,8 @@ export async function installVersion(release: RegistryRelease, log: (line: strin
   // 用插件本地缓存：用户默认缓存可能因权限问题（root 属主残留）不可写，不该让它挡住更新
   const npmCache = join(vendorDir, '.npm-cache')
   mkdirSync(npmCache, { recursive: true })
-  await execFileAsync('npm', [
+  // Windows 上 npm 是 npm.cmd，execFile 直接找 'npm' 会 ENOENT
+  await execFileAsync(process.platform === 'win32' ? 'npm.cmd' : 'npm', [
     'install', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--loglevel=error',
     `--cache=${npmCache}`,
   ], {

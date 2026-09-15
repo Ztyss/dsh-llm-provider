@@ -17,7 +17,7 @@
  * 边界：本模块只写插件自己的 vendor/ 目录，pi-ai 本身的文件一个字节都不改——改第三方包的
  * 文件不可复现，也没法保证跟 lockfile 对得上。
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readlinkSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -220,6 +220,21 @@ export function bridgeRequirements(): PiAiRequirement[] {
 }
 
 /**
+ * 建一条目录链要用的目标与类型。
+ *
+ * Windows 上目录软链需要 SeCreateSymbolicLinkPrivilege（管理员或开发者模式），普通账户会 EPERM；
+ * junction 不需要任何权限，但目标必须是绝对路径。POSIX 上仍用相对目标的软链，仓库整体挪位置
+ * 也不会断。
+ * @param from - 链所在目录（POSIX 相对目标的基准）。
+ * @param target - 链要指向的包目录。
+ */
+function linkSpec(from: string, target: string): { target: string; type: 'dir' | 'junction' } {
+  return process.platform === 'win32'
+    ? { target: resolve(target), type: 'junction' }
+    : { target: relative(from, target), type: 'dir' }
+}
+
+/**
  * 体检一个 pi-ai 候选：那份拷贝要的子路径和具名导出，这份 pi-ai 给不给得出。
  *
  * **为什么不直接试着加载拷贝**：Node 对加载失败的 ESM 会留下半初始化记录，同一个文件
@@ -246,7 +261,8 @@ export function probePiAi(requirements: readonly PiAiRequirement[], root: string
     mkdirSync(linkDir, { recursive: true })
     const link = join(linkDir, 'pi-ai')
     rmSync(link, { force: true, recursive: true })
-    symlinkSync(root, link, 'dir')
+    const spec = linkSpec(linkDir, root)
+    symlinkSync(spec.target, link, spec.type)
     // 具名需求验证导出存在；bare 需求（namespace/默认/副作用导入、export *）只要子路径能加载
     const lines = requirements.map(({ specifier, names }) =>
       names.length > 0
@@ -381,19 +397,21 @@ export function loadBridge(): BridgeLoadResult {
   }
 }
 
-/** 把桥接副本的 pi-ai 软链指向指定包目录（指向没变就不动，避免无谓的 mtime 抖动）。 */
+/** 把桥接副本的 pi-ai 链指向指定包目录（指向没变就不动，避免无谓的 mtime 抖动）。 */
 function setPiAiLink(target: string): void {
   const linkDir = join(bridgeDir, 'node_modules', '@earendil-works')
   mkdirSync(linkDir, { recursive: true })
   const linkPath = join(linkDir, 'pi-ai')
-  const relTarget = relative(linkDir, target)
+  const spec = linkSpec(linkDir, target)
   let current: string | undefined
   try {
-    current = readFileSync(linkPath, { encoding: 'utf8' })
-  } catch { /* 还没有软链 */ }
-  if (current === relTarget) return
+    // readlink 而不是 readFile：链指向的是目录，readFile 会解析进去抛 EISDIR，
+    // 于是"指向没变"永远判不出来，每次加载都白删白建一次。
+    current = readlinkSync(linkPath)
+  } catch { /* 还没有链 */ }
+  if (current === spec.target) return
   rmSync(linkPath, { force: true, recursive: true })
-  symlinkSync(relTarget, linkPath, 'dir')
+  symlinkSync(spec.target, linkPath, spec.type)
 }
 
 /**
@@ -406,8 +424,8 @@ function clearPiAiLink(): void {
 }
 
 /**
- * 相对路径（自写而不用 path.relative）：软链目标一律用正斜杠，
- * 免得 Windows 上写出反斜杠的链接目标。
+ * 相对路径（自写而不用 path.relative）：软链目标一律用正斜杠。
+ * 只在 POSIX 上用到——Windows 走 junction，目标是绝对路径。
  */
 function relative(from: string, to: string): string {
   const fromParts = from.split(sep)
