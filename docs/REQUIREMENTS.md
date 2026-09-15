@@ -58,7 +58,7 @@ dsh（DeepSeek Harness）打包时固定了旧版 pi-ai，模型目录滞后上�
 | FR-3.4 | 设置页 Provider 标签：桥接状态、pi-ai 版本、上游版本与检查更新按钮、额度明细、凭据体检结论 | `settings.section`（list，新增 section） | ✅ 已实现，真机验证 |
 | FR-3.5 | 数据面与官方同一条路：模型目录走 `session/modelCatalog`、切换走 `session/selectModel`、余额走 `/plan/status`；优先用官方 `modelDirectories` 客户端服务，缺席时退回同源 HTTP/RPC | — | ✅ 已实现 |
 | FR-3.6 | 座位接线可诊断：`window.__dshProvider` 暴露 applied/modelDirectories/face/seat 状态 | — | ✅ 已实现 |
-| FR-3.7 | 模型与思考强度的取数口径与官方 `ui-model-selection` 一致：当前模型取会话投影 `modelSelection` 的 next、没有则宿主默认模型；思考强度按会话已定的档位显示，默认档只认目录声明的 `defaultEffort`（没有就显示「服务商默认」，不拿档位表首档顶替）；切模型只提交 provider/model，档位由宿主决定并回写投影。目录里没有该模型时档位行只读显示会话已定的档位（官方此处整行不渲染，是有意放宽的差异） | — | ✅ 已实现，真机验证（2026-09-15） |
+| FR-3.7 | 模型与思考强度的取数口径与官方 `ui-model-selection` 一致：当前模型取会话投影 `modelSelection` 的 next、没有则宿主默认模型；思考强度按会话已定的档位显示，默认档只认目录声明的 `defaultEffort`（没有就显示官方的「Default」文案，不拿档位表首档顶替）；切模型只提交 provider/model，档位由宿主决定并回写投影；选完模型或档位**成功即关闭菜单**（官方 `settleSelection` 行为）。目录里没有该模型时档位行只读显示会话已定的档位（官方此处整行不渲染，是有意放宽的差异） | — | ✅ 已实现，真机验证（2026-09-15） |
 
 ### 3.4 界面落点需求（原始调研指定的四个落点，全部保留为正式需求）
 

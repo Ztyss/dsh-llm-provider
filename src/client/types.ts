@@ -128,7 +128,7 @@ export interface ModelSwitchSeatProps {
   select?: (selection: ModelSelection) => Promise<boolean>
 }
 
-/** 推理等级面板里的一行：服务商默认（effort 为 undefined）或目录声明的某个档位。 */
+/** 推理等级面板里的一行：Default（effort 为 undefined）或目录声明的某个档位。 */
 export interface EffortChoice {
   effort?: string
   label: string
