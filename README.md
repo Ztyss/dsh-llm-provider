@@ -177,10 +177,11 @@ node test/routes.mjs                    # 路由发现的单元测试
 node test/credential-check.mjs          # 凭据体检的单元测试
 node test/cordis-patch.mjs              # patch 层：禁用 llm-deepseek 就必须自己声明路由
 node test/pi-ai-probe.mjs               # pi-ai 体检：需求解析 + 挡住不兼容的候选
+node test/provider-presets.mjs          # 候选清单的顺序与标记
 node test/vendor-status.mjs             # vendor/status.json 的合并语义（undefined = 删键）
 node test/client-smoke.mjs              # 浏览器端接线冒烟 + pi-ai 桥接明细的出词
 
-npm test                                # 上面六条一起跑（自测/合入用的就是这条）
+npm test                                # 上面七条一起跑（自测/合入用的就是这条）
 ```
 
 开发流程（主线不开发、全部走 worktree）见 `AGENTS.md`，脚本是 `scripts/dev-start.sh` /
@@ -306,8 +307,9 @@ pi-ai 的目录数据是静态快照，上游模型升级后会滞后。插件�
   与「添加供应商」表单同一组信息，缺的字段整行不显示）；添加走 settings/mutate + credentials/set
   （先测试连通才能添加），删除同理；余量不支持时该行不显示而不是报错。
 - **命名全面切到 pi-ai 注册表**（`lib/pi-ai-names.js`）：显示名一律调 pi-ai 自己的 `*Provider()`
-  工厂拿（41 家全量，带缓存）；CURATED 表只剩排序优先级，不起名字。**不再往 settings 写
-  displayName**（见「边界」一节），宿主界面因此显示路由 id，界面内部显示 id（2026-09-15 决定）。
+  工厂拿（41 家全量，带缓存）。**不再往 settings 写 displayName**（见「边界」一节），宿主界面
+  因此显示路由 id，界面内部显示 id（2026-09-15 决定）。候选清单**按名字排序**，自定义网关
+  固定排最后——以前压着一张 38 家的人工优先级表，下拉里有过滤之后那份表就没必要了。
 - **pi-ai 目录外只留 Custom Gateway**：添加时可路由 ID、端点、协议（OpenAI / Anthropic 下拉）全
   自定义；stepfun/siliconflow/novita/volcengine-ark 四家预设连同适配器已删除。
 - **计费适配器收敛到 9 家**（对齐 CC Switch 源码调研）。
@@ -332,7 +334,7 @@ pi-ai 的目录数据是静态快照，上游模型升级后会滞后。插件�
 | `lib/adapters/*` | 计费适配器（9 家，每家一个文件 + 注册表 + CLI 跑测器） |
 | `lib/client.js` | 浏览器端：模型选择器（官方蓝本两级层级）+ 设置页 Provider 标签（卡片/添加/删除） |
 | `lib/dsh-home.js` | DSH 数据目录（`$DSH_HOME`）解析 |
-| `test/*.mjs` | 路由发现、凭据体检、patch 层、pi-ai 体检、状态合并、客户端接线六个离线测试 |
+| `test/*.mjs` | 路由发现、凭据体检、patch 层、pi-ai 体检、候选清单、状态合并、客户端接线七个离线测试 |
 | `scripts/test-profile.sh` | plan-test 测试环境一键脚本（起服务 + 打开浏览器） |
 | `scripts/dev-*.sh` / `main-lock.sh` | worktree 并行开发流程：开任务分支、自测打标记、串行合入 main（见 `AGENTS.md`） |
 | `research/kimi-console-api.md` | kimi 控制台接口逆向记录（未接入） |
