@@ -2,15 +2,15 @@
  * pi-ai 上游更新器：盯 @earendil-works/pi-ai 的 npm registry，
  * 有新版本就下载、装依赖、放进 vendor/pi-ai/<版本>/，验证通过后标记待生效。
  *
- * 替换的硬规矩（2026-09-15 决定）：**验证通过才能替换**，两道都过才算数——
+ * 替换的硬规矩：**验证通过才能替换**，两道都过才算数——
  *   1. tarball 完整性：按 registry packument 里的 dist.integrity（sha512）校验下载内容；
  *   2. 兼容性体检：用桥接副本自己的 import 需求 probe 那份新 pi-ai（见 bridge.js 的
  *      probePiAi）。体检没跑起来（unverified，需求解析不出）一样不替换。
  * 通过后只写 status.json 的 needsRestart 标记——已 require 的旧模块不受影响，
  * 下一次 dsh 重启时 bridge.js 才会挂到新版本。/provider/status 会报出来。
  *
- * 触发方式：**只有手动**（设置页按钮 → POST /provider/update）。启动期自动检查
- * 已移除——上游新版本由用户决定什么时候装。
+ * 触发方式：**只有手动**（设置页按钮 → POST /provider/update），没有启动期自动检查；
+ * 上游新版本由用户决定什么时候装。
  */
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'

@@ -96,8 +96,7 @@ export function buildPresets(): ProviderPreset[] {
   for (const extra of EXTRA_PRESETS) {
     if (!seen.has(extra.id)) presets.push(makePreset(extra.id, extra))
   }
-  // 按名字排。以前这里还压着一张 38 家的人工优先级表（CURATED），那是把"从手工列表改成
-  // 动态生成"时丢掉的顺序钉回来的补丁；下拉里已经有过滤（名字 + id 模糊匹配），不需要了。
+  // 按名字排（下拉里已经有过滤：名字 + id 模糊匹配，不需要人工优先级表）。
   // Custom Gateway 固定最后：它是"其它，自己填"，不是一家供应商，混在字母序中间反而碍事。
   presets.sort((a, b) => {
     if (a.custom !== b.custom) return a.custom ? 1 : -1

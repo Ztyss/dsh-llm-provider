@@ -32,10 +32,10 @@
 - rebase 有冲突：进 worktree 解决 → `scripts/dev-finish.sh` 重跑（刷新 done 标记）→ 回主线重跑 `dev-merge.sh`。主线始终不被冲突污染。
 - 合入后主线测试挂了：能从最新 main 开新 worktree 修就修（走完整流程）；主线不可用（插件起不来/核心功能挂）就先 `git revert -m 1 <merge commit>` 恢复，再另开 worktree 排查。
 - worktree 是「拉分支那一刻」的快照：**worktree 里的 `scripts/` 可能是旧版**，要用新脚本就写主线路径、cwd 留在 worktree 内：`bash /Users/cgeng/Workspaces/dsh-plan/scripts/dev-merge.sh <slug>`。
-- worktree 里**要装依赖**（从 2026-09-15 起是 TypeScript 项目）：新建的 worktree 没有
+- worktree 里**要装依赖**（本仓库是 TypeScript 项目）：新建的 worktree 没有
   `node_modules`，进去先 `scripts/install-deps.sh`（装 typescript / tsdown / @types/node），
   否则 `npm run build` 起不来。**别直接 `npm install`**——会去 reify 那条指向宿主的
-  `node_modules/@deepseek-ai` 软链，直接 EPERM；脚本负责装前挪开、装完放回。`node_modules/`、`vendor/`、`reference/dsh-src/` 都是 gitignore 的，
+  `node_modules/@deepseek-ai` 软链，直接 EPERM；脚本负责装前挪开、装完放回。`node_modules/`、`vendor/`、`reference/` 都是 gitignore 的，
   不进 worktree。worktree 里跑测试实例时，`vendor/`（bridge 副本 + pi-ai）会由插件自己在该
   worktree 里重新生成，属正常。
 - 临时产物（复现样例、diff、临时脚本、截图）写到 `/tmp`，不要落在仓库里：主线有 untracked 文件会挡住 `dev-merge.sh` 的校验。

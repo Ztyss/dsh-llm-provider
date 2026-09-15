@@ -1,7 +1,6 @@
 // 供应商候选清单的顺序与标记。
 //
-// 顺序以前是一张 38 行的人工优先级表（CURATED）压着的——那是把"从手工列表改成从 pi-ai
-// 动态生成"时丢掉的顺序钉回来的补丁。现在按名字排、自定义入口固定最后，这个测试盯住它。
+// 清单从 pi-ai 目录动态生成，按名字排、Custom Gateway 固定最后，这个测试盯住它。
 import { presetsWithMeta } from '../lib/provider-presets.js'
 
 let failures = 0

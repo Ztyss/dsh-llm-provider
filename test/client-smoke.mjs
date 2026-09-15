@@ -98,8 +98,7 @@ function runApply(commandDuplicate) {
   }
   // 真机上的 ctx 是 cordis 代理：取没 inject 的服务属性直接抛
   // （"cannot get property \"styles\" without inject"）。桩必须照这个行为来，否则
-  // 「把 ctx.styles 的读取挪到 try 外面」这种改动测不出来——2026-09-15 正是这一下
-  // 把客户端插件整个加载搞挂了（Failed to load plugins）。
+  // 「把 ctx.styles 的读取挪到 try 外面」这种改动测不出来——那一抛会让整个插件加载失败。
   const ctx = { effect, slots: scope.slots, inject: scope.inject }
   Object.defineProperty(ctx, 'styles', {
     get() {
@@ -219,8 +218,6 @@ rowsCheck('默认选择形状不对当作没有', normalizeSelection({ provider:
 rowsCheck('默认选择为空当作没有', normalizeSelection(null) === undefined)
 
 // ---- 共享额度快照的广播（设置页刷新/删除后，座位指示器与 /model 命令要立刻跟上）----
-// 以前删除走缓存、单卡刷新只改设置页自己的 state，同一个余量数字能同时存在两个值，
-// 直到 60 秒缓存过期为止。
 const { onPlanChange, mergePlanAccount, dropPlanAccount } = moduleExports
 const broadcasts = []
 const stopListening = onPlanChange((payload) => { broadcasts.push(payload) })

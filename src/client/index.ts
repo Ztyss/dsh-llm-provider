@@ -42,8 +42,8 @@ export function apply(ctx: ClientContext) {
   installCss()
   // 样式挂载固定走 installCss 的手写 style 标签。官方 styles.insert 要 inject 'styles'，
   // 而本插件 inject 列表里没有它：直接取 ctx.styles 会抛
-  // "cannot get property "styles" without inject"（2026-09-15 实测，这一抛会把整个插件
-  // 加载搞挂），所以属性访问必须在 try 里，仅用于诊断，不影响样式走哪条路。
+  // "cannot get property "styles" without inject"，把整个插件加载搞挂。所以属性访问必须在
+  // try 里，仅用于诊断，不影响样式走哪条路。
   try {
     if (ctx.styles !== undefined && ctx.styles !== null && typeof ctx.styles.insert === 'function') {
       recordDiagnostic('styles', 'styles.insert')
