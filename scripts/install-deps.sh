@@ -29,4 +29,14 @@ restore() {
 }
 trap restore EXIT
 
-npm install --no-audit --no-fund "$@"
+# npm 默认往 $HOME/.npm 写缓存。真机上一般没问题，但两种环境会挡：沙箱（写工作区外被拒）、
+# 以及缓存目录被 root 属主残留占了。检测不可写就换仓库本地缓存，免得整个安装失败。
+CACHE=()
+if ! touch "${HOME}/.npm/.dsh-write-test" 2>/dev/null; then
+  CACHE=(--cache="$ROOT/.npm-cache")
+  echo "全局 npm 缓存不可写，改用 $ROOT/.npm-cache"
+else
+  rm -f "${HOME}/.npm/.dsh-write-test"
+fi
+
+npm install --no-audit --no-fund "${CACHE[@]}" "$@"

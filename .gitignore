@@ -23,3 +23,6 @@ vendor/updater-state.json
 
 # 兜底依赖的依赖树（vendor/package.json 和 lockfile 入库，树不入库）
 vendor/node_modules/
+
+# install-deps.sh 在全局缓存不可写时的本地 npm 缓存
+.npm-cache/
