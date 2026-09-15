@@ -16,7 +16,7 @@ import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { bridgeRequirements, compareVersions, installedVersions, probePiAi, updateStatus, vendorDir } from './bridge.js'
 import { asRecord, readString, type AnyRecord } from './types.js'
@@ -73,6 +73,32 @@ export async function latestRelease(): Promise<RegistryRelease> {
 }
 
 /**
+ * 拼一条能跨平台跑起来的 npm 命令。
+ *
+ * 直接 `execFile('npm', …)` 在 Windows 上是 ENOENT（npm 是 npm.cmd）；换成 `npm.cmd` 又会撞
+ * Node 从 18.20.2 / 20.12 / 21.7 起的行为——不经 shell 执行 .cmd/.bat 一律 EINVAL；过 shell
+ * 则要自己处理引号（`--cache=` 后面是路径，可能带空格）。
+ *
+ * 所以首选 Node 自带那份 npm 的 JS 入口，用 `node <npm-cli.js>` 跑：跨平台一致、不经过 .cmd、
+ * 也没有 shell 解析。找不到才退回 PATH 上的 npm（Windows 上过 shell，参数自己加引号）。
+ * @param args - 传给 npm 的参数。
+ */
+function npmCommand(args: readonly string[]): { file: string; args: string[]; shell: boolean } {
+  const nodeDir = dirname(process.execPath)
+  const cli = [
+    join(nodeDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'), // Windows 与官方安装包
+    join(nodeDir, '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'), // POSIX（nvm、fnm 常见布局）
+  ].find((candidate) => existsSync(candidate))
+  if (cli !== undefined) return { file: process.execPath, args: [cli, ...args], shell: false }
+  const isWindows = process.platform === 'win32'
+  return {
+    file: isWindows ? 'npm.cmd' : 'npm',
+    args: isWindows ? args.map((argument) => (/\s/.test(argument) ? `"${argument}"` : argument)) : [...args],
+    shell: isWindows,
+  }
+}
+
+/**
  * 下载并就位一个版本：tarball 校验后解压到 vendor/pi-ai/<v>/，再补依赖闭包。
  * 已就位则跳过（校验也不重跑——那份内容装的时候验过）。integrity 缺省时不校验，
  * 但会记一行日志：registry 正常都会给，缺了多半是请求/字段出了问题。
@@ -113,13 +139,14 @@ export async function installVersion(release: RegistryRelease, log: (line: strin
   // 用插件本地缓存：用户默认缓存可能因权限问题（root 属主残留）不可写，不该让它挡住更新
   const npmCache = join(vendorDir, '.npm-cache')
   mkdirSync(npmCache, { recursive: true })
-  // Windows 上 npm 是 npm.cmd，execFile 直接找 'npm' 会 ENOENT
-  await execFileAsync(process.platform === 'win32' ? 'npm.cmd' : 'npm', [
+  const npm = npmCommand([
     'install', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--loglevel=error',
     `--cache=${npmCache}`,
-  ], {
+  ])
+  await execFileAsync(npm.file, npm.args, {
     cwd: target,
     timeout: 300_000,
+    ...(npm.shell ? { shell: true } : {}),
   })
   return target
 }
