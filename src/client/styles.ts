@@ -23,10 +23,12 @@ var css =
   '.mp_modelName{font-weight:500}' +
   '.mp_empty{padding:14px 10px;text-align:center;font-size:12px;color:var(--dsw-alias-label-tertiary)}' +
   // ---- 模型座位：官方 ModelSelect 同款（两级层级，Figma 313:14108 / 496:26454 规格）----
-  // 宽度上限：45cqw 是相对 composer 行（InputBar 的 .row 声明了 container-type），
-  // 跟官方 PermissionSelect 的 460px 断点、ModelSelect 的 360px 断点在同一个匿名容器里。
-  '.ms_trigger{display:flex;align-items:center;gap:4px;min-width:0;max-width:min(360px,45vw);' +
-  'max-width:min(360px,45cqw);height:28px;' +
+  // 宽度上限：官方 ModelSelect 用 min(360px, 45cqw)，那是按「模型名 + 档位」两段内容算的；
+  // 我们多两段（provider、余量），实测宽窗口下 360px 装不下就到处截断，所以上限放到
+  // min(560px, 60cqw)。60cqw 仍是相对 composer 行（InputBar 的 .row 声明了 container-type，
+  // 跟官方 PermissionSelect 的 460px 断点在同一个匿名容器里），宽行不会让触发器吃掉半行。
+  '.ms_trigger{display:flex;align-items:center;gap:4px;min-width:0;max-width:min(560px,60vw);' +
+  'max-width:min(560px,60cqw);height:28px;' +
   'padding:0 4px 0 8px;border:0;border-radius:24px;background:transparent;outline:0;' +
   'color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:20px;font-weight:500;' +
   'cursor:pointer;white-space:nowrap}' +
@@ -44,11 +46,12 @@ var css =
   // 触发器里供应商段后面的余量（点 + 百分比/余额）：不参与收缩
   '.ms_tQuota{flex:0 0 auto;display:inline-flex;align-items:center;gap:3px;font-size:11px;line-height:16px;' +
   'color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary))}' +
-  // 行宽不够时的两级降级（断点按 composer 行宽，容器见上面的注释）：
-  //   ≤740px：触发器上限 45cqw 已经装不下「provider / 余量 模型 档位」→ 余量只留彩点
-  //   ≤620px：再省掉 provider 段（连分隔符一起，不留「deepse…」这种残字）
-  '@container (max-width:740px){.ms_tQuotaText{display:none}}' +
-  '@container (max-width:620px){.ms_tProvider,.ms_tSlash{display:none}}' +
+  // 行宽不够时的两级降级（断点按 composer 行宽，容器见上面的注释；数字是按四段的总宽
+  // 除以 60cqw 反推的——触发器上限恰好装不下全部内容的那一行宽）：
+  //   ≤760px：装不下「provider / 余量 模型 档位」→ 整段去掉 provider 与分隔符
+  //   ≤620px：再省掉余量数字，只留指示点
+  '@container (max-width:760px){.ms_tProvider,.ms_tSlash{display:none}}' +
+  '@container (max-width:620px){.ms_tQuotaText{display:none}}' +
   '.ms_chev{flex:0 0 auto;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary));' +
   'transition:transform .12s ease}' +
   '.ms_chevOpen{transform:rotate(180deg)}' +
