@@ -1,6 +1,6 @@
 # AGENTS.md
 
-给所有在本仓库干活的 session（人或 AI）的约定。核心一条：**主线不开发，开发全在 worktree**。
+给所有在本仓库干活的 session（人或 AI）的约定。
 
 ## 铁律：开发一律走 worktree
 
@@ -11,7 +11,7 @@
 3. `scripts/dev-finish.sh` —— 检查改动已提交 → 跑 `npm test` → 打 `done/<slug>` 标记。**开发 session 到此为止，不合入。**
 4. 回到主线（主工作区）跑 `scripts/dev-merge.sh <slug>` —— rebase 到最新 main → 复测 → `--no-ff` 合入 → 主线复测 → 清理 worktree/分支/done 标记。
 
-**例外**（不走 worktree，直接在 main 上做）：只读分析（读代码、查资料、汇报）；改仓库自身约定/文档且不涉及代码行为（本文件、`README.md` 纯文档、`scripts/` 里的流程脚本）——工作流没法自己 bootstrap，这几样只能在 main 上改。
+**例外**（不走 worktree，直接在 main 上做）：只读分析（读代码、查资料、汇报）；改仓库自身约定/文档且不涉及代码行为（本文件、`README.md` / `README.zh.md` 纯文档、`scripts/` 里的流程脚本）——工作流没法自己 bootstrap，这几样只能在 main 上改。
 
 ## 构建与测试
 
@@ -23,7 +23,9 @@
   类型错了要单独跑才看得见。
 - 要开界面看效果：`scripts/test-profile.sh`（在 worktree 里跑就是起这个 worktree 的实例，插件目录按脚本位置定位）。这个脚本会写 `~/.dsh/profiles/`、还要开浏览器，**由用户本人在真实终端跑**，代理别在沙箱里试。
 - 测试实例默认 3081 端口、`plan-test` profile——**一次只能跑一个**。要并行各起一个：
-  `PORT=3082 PROFILE=plan-test-foo LOG=/tmp/dsh-plan-foo.log scripts/test-profile.sh`
+  `PORT=3082 PROFILE=plan-test-foo LOG=/tmp/dsh-plan-foo.log scripts/test-profile.sh`。
+  脚本生成的 profile 还会 link 本机另一条插件 `dsh-sidekick`（`$DSH_HOME/workspaces/dsh-mobile/plugin`），
+  没有那份 checkout 的机器上先改脚本里那两行。
 
 ## 注意点
 
@@ -32,10 +34,6 @@
 - rebase 有冲突：进 worktree 解决 → `scripts/dev-finish.sh` 重跑（刷新 done 标记）→ 回主线重跑 `dev-merge.sh`。主线始终不被冲突污染。
 - 合入后主线测试挂了：能从最新 main 开新 worktree 修就修（走完整流程）；主线不可用（插件起不来/核心功能挂）就先 `git revert -m 1 <merge commit>` 恢复，再另开 worktree 排查。
 - worktree 是「拉分支那一刻」的快照：**worktree 里的 `scripts/` 可能是旧版**，要用新脚本就写主工作区的绝对路径、cwd 留在 worktree 内：`bash <主工作区>/scripts/dev-merge.sh <slug>`。
-- worktree 里**要装依赖**（本仓库是 TypeScript 项目）：新建的 worktree 没有
-  `node_modules`，进去先 `scripts/install-deps.sh`（装 typescript / tsdown / @types/node），
-  否则 `npm run build` 起不来。**别直接 `npm install`**——会去 reify 那条指向宿主的
-  `node_modules/@deepseek-ai` 软链，直接 EPERM；脚本负责装前挪开、装完放回。`node_modules/`、`vendor/`、`reference/` 都是 gitignore 的，
-  不进 worktree。worktree 里跑测试实例时，`vendor/`（bridge 副本 + pi-ai）会由插件自己在该
-  worktree 里重新生成，属正常。
+- 装依赖：`dev-start.sh` 建完 worktree 会自动跑一次 `scripts/install-deps.sh`（装 typescript / tsdown / @types/node），失败时它会打印手动命令，那才需要补跑。**别直接 `npm install`**——会去 reify 那条指向宿主的 `node_modules/@deepseek-ai` 软链，直接 EPERM；脚本负责装前挪开、装完放回。
+- worktree 里没有的东西：`node_modules/`、`reference/` 完全不进；`vendor/` 只有 `package.json` 和 lockfile 入库会跟着进，`vendor/pi-ai/`、`vendor/llm-bridge/`、`vendor/node_modules/` 不进。跑测试实例时 `vendor/`（bridge 副本 + pi-ai）会由插件自己在该 worktree 里生成，属正常。
 - 临时产物（复现样例、diff、临时脚本、截图）写到 `/tmp`，不要落在仓库里：主线有 untracked 文件会挡住 `dev-merge.sh` 的校验。

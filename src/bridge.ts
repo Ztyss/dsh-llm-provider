@@ -426,7 +426,7 @@ export function loadBridge(): BridgeLoadResult {
     //    同一个文件没法重试，所以不能"先试再退"。
     //
     //    目录不存在的档直接跳过，不算"体检没通过"：那是这一档没安装（可选档），不是兼容性
-    //    问题。以前把它写进 rejected，界面上就出现「跳过 兜底依赖：兼容性检查没通过」这种
+    //    问题。写进 rejected 的话，界面上会出现「跳过 兜底依赖：兼容性检查没通过」这种
     //    看着像故障、其实一切正常的行。
     const requirements = piAiRequirements(readFileSync(bridgeLib, 'utf8'))
     const rejected: RejectedCandidate[] = []

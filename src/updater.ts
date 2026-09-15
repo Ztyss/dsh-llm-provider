@@ -9,8 +9,8 @@
  * 通过后只写 status.json 的 needsRestart 标记——已 require 的旧模块不受影响，
  * 下一次 dsh 重启时 bridge.js 才会挂到新版本。/provider/status 会报出来。
  *
- * 触发方式：**只有手动**（设置页按钮 → POST /provider/update），没有启动期自动检查；
- * 上游新版本由用户决定什么时候装。
+ * 触发方式：启动时后台自动查一次（6 小时节流，startBackgroundCheck），以及设置页按钮
+ * → POST /provider/update 手动触发。
  */
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
