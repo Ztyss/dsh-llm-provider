@@ -8,10 +8,12 @@ const manifest = JSON.parse(readFileSync(new URL('./package.json', import.meta.u
  *
  *   宿主端   src/*.ts → lib/*.js      1:1 转译，不打包（unbundle）。产物路径跟以前一样，
  *                                      package.json 的 exports、测试、profile 的 link 都不用改。
- *   浏览器端 src/client.ts → lib/client.js
+ *   浏览器端 src/client/index.ts → lib/client.js
  *                                      单文件 CJS，外面套 window.__ModuleLoader__.load 外壳——
  *                                      那三行就是官方的做法（见 reference/dsh-src/packages/
  *                                      client/tsdown.client.ts 的 banner/footer/intro）。
+ *                                      src/client/ 下的模块（types/format/data/settings/…）
+ *                                      构建时全部内联进这一个文件。
  *
  * lib/ 是产物，不入库；改完要 `npm run build`。
  */
@@ -33,7 +35,7 @@ export default defineConfig([
   },
   {
     name: 'dsh-provider/client',
-    entry: { client: 'src/client.ts' },
+    entry: { client: 'src/client/index.ts' },
     outDir: 'lib',
     format: 'cjs',
     platform: 'browser',
