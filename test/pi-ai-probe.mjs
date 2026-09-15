@@ -81,9 +81,12 @@ check('无需求 + 目录存在 → 通过', probePiAi([], good, 'noreq').ok ===
 check('无需求 + 目录不存在 → 不通过', probePiAi([], join(tmpdir(), 'pi-ai-无-xyz'), 'noreq2').ok === false)
 // ---- 候选列表 ----
 const candidates = piAiCandidates()
-check('候选里必有内置依赖档', candidates.some((c) => c.key === 'dependency'))
-check('内置依赖档不挂软链', candidates.find((c) => c.key === 'dependency').link === false)
-check('末档是 dsh 自带', candidates[candidates.length - 1].key === 'dsh')
+check('候选里必有兜底依赖档', candidates.some((c) => c.key === 'dependency'))
+check('兜底依赖档不挂软链', candidates.find((c) => c.key === 'dependency').link === false)
+// dsh 自带那一档的目录是沿解析链找出来的：dsh 没装/依赖没装时它可以缺席，
+// 但在场时必须排最后，且是挂软链的那一档。
+const dshTier = candidates.find((c) => c.key === 'dsh')
+check('dsh 自带档在场时排最后且挂软链', dshTier === undefined || (candidates[candidates.length - 1].key === 'dsh' && dshTier.link === true))
 check('每档都有 key/version/root', candidates.every((c) => c.key && c.version !== undefined && c.root !== undefined))
 
 console.log(failures === 0 ? '\npi-ai 体检测试全部通过' : `\n${failures} 个失败`)

@@ -85,9 +85,11 @@ dsh 的模型目录来自打包时固定的 pi-ai。桥接让它跑在插件自�
 |---|---|---|
 | 已下载 | `vendor/pi-ai/<版本>/`（新 → 旧） | updater 下载并通过体检后 |
 | 兜底依赖 | `vendor/node_modules/@earendil-works/pi-ai` | 可选档，装了就在这一档接住（`cd vendor && npm install`） |
-| dsh 自带 | `$DSH_HOME/profiles/node_modules/@earendil-works/pi-ai` | 前两档都没装，或体检不合格 |
+| dsh 自带 | 沿官方 bundle 的 `node_modules` 链找到的那份（不写死路径） | 前两档都没装，或体检不合格 |
 
 没安装的档会被直接跳过，只在**存在但体检不合格**时才列进「被跳过」并说明原因。dsh 自带的那份版本随 dsh 发布走，不一定比上游旧（实测 dsh 0.1.5-rc.1 就带着上游最新的 0.85.1）。
+
+后两档的目录都不写死：官方 bundle 按「profile 的 node_modules → dsh 安装树（含嵌在 dsh 包内的 node_modules）→ 本插件」的顺序沿解析链找，pi-ai 则从找到的那份 bundle 位置继续沿解析链找。所以 dsh 换布局（把 bundle 放进自己的安装目录、把依赖提升到别处）都不会让某一档凭空消失。
 
 `vendor/package.json` 锁死兜底依赖的版本，与热更新目录互不覆盖（热更新只往 `vendor/pi-ai/<新版本>/` 写）。放在 `vendor/` 有两个原因：桥接副本在 `vendor/llm-bridge/`，向上解析先撞到 `vendor/node_modules`，所以中选兜底档时不用挂软链；而插件根的 `node_modules/@deepseek-ai` 是条手工软链（桥接副本上的 dsh 包靠它解析），在根目录跑 `npm install` 会被 npm 当成待处理条目而失败。
 

@@ -118,6 +118,80 @@ export function compareVersions(a: string, b: string): number {
 }
 
 /**
+ * 从一个文件位置出发，沿 node_modules 链找出某个包的**包目录**。
+ *
+ * 用它代替手拼路径：包的依赖可能被提升到上层 node_modules（pnpm 的 hoisted 布局、dsh 把
+ * bundle 放在自己的安装目录里……）。手拼 `$DSH_HOME/profiles/node_modules/<包名>` 这类路径，
+ * dsh 换个布局就落空；沿解析链找，跟运行时真正会加载的那份永远一致。
+ *
+ * 刻意**不用** `require.resolve()`：那只认包 `exports` 里给 `require` 条件的入口，而 pi-ai
+ * 的 `exports["."]` 只声明了 `import`（0.84.x 就是这样），纯解析会报
+ * ERR_PACKAGE_PATH_NOT_EXPORTED。我们要的是包目录本身，逐层找
+ * `node_modules/<包名>/package.json` 就够了，与 exports 怎么写无关。
+ * @param fromFile - 解析起点（文件不必存在），通常是解析的用例方。
+ * @param specifier - 包名。
+ * @returns 包目录（绝对路径）；找不到返回 undefined。
+ */
+function resolvePackageRoot(fromFile: string, specifier: string): string | undefined {
+  const parts = specifier.split('/')
+  let dir = dirname(fromFile)
+  for (;;) {
+    const candidate = join(dir, 'node_modules', ...parts)
+    if (existsSync(join(candidate, 'package.json'))) return candidate
+    const parent = dirname(dir)
+    if (parent === dir) return undefined
+    dir = parent
+  }
+}
+
+/**
+ * 官方 llm-pi-ai bundle 的实际位置。
+ *
+ * 它是桥接要拷的那份源文件。路径同样不写死：按「profile 的 node_modules → dsh 安装目录
+ * （全局 node_modules）→ 插件自己」的顺序沿解析链找，找到哪个用哪个。
+ * @returns bundle 入口文件的绝对路径；找不到返回 undefined。
+ */
+function findSourceBundle(): string | undefined {
+  const anchors: string[] = []
+  try {
+    anchors.push(join(resolveDshHome(), 'profiles', 'node_modules', '_anchor.js'))
+  } catch { /* 拿不到 DSH_HOME 就少一个锚点 */ }
+  // dsh 的安装树：Windows 的官方安装包放在 <node>/node_modules，POSIX 在 <node>/lib/node_modules
+  const nodeDir = dirname(process.execPath)
+  anchors.push(join(nodeDir, 'node_modules', '_anchor.js'))
+  anchors.push(join(nodeDir, '..', 'lib', 'node_modules', '_anchor.js'))
+  anchors.push(join(pluginRoot, '_anchor.js'))
+
+  const bundleSpec = '@deepseek-ai/dsh-llm-pi-ai'
+  const seen = new Set<string>()
+  for (const anchor of anchors) {
+    const roots: string[] = []
+    const direct = resolvePackageRoot(anchor, bundleSpec)
+    if (direct !== undefined) roots.push(direct)
+    // 也可能是嵌在 dsh 包自己的 node_modules 里（npm 全局安装遇到版本冲突时就这样摆）
+    const dshRoot = resolvePackageRoot(anchor, '@deepseek-ai/dsh')
+    if (dshRoot !== undefined) roots.push(join(dshRoot, 'node_modules', ...bundleSpec.split('/')))
+    for (const root of roots) {
+      if (seen.has(root)) continue
+      seen.add(root)
+      const entry = join(root, 'lib', 'index.js')
+      if (existsSync(entry)) return entry
+    }
+  }
+  return undefined
+}
+
+/**
+ * dsh 自己那份 pi-ai 的包目录：从官方 bundle 的位置沿解析链找——那是 bundle 真正会加载的
+ * 那份，dsh 把 bundle 放在哪、依赖提升到哪一层都不影响。
+ * @param bundlePath - 官方 bundle 的入口文件路径。
+ */
+function dshPiAiRoot(bundlePath: string | undefined): string | undefined {
+  if (bundlePath === undefined) return undefined
+  return resolvePackageRoot(bundlePath, '@earendil-works/pi-ai')
+}
+
+/**
  * 兜底那份 pi-ai：`vendor/package.json` 锁死的依赖，装在 `vendor/node_modules/` 里。
  *
  * 位置是挑过的——它在桥接副本的解析路径上（副本在 `vendor/llm-bridge/`，往上找先撞到
@@ -145,11 +219,7 @@ export function activePiAiRoot(): string | undefined {
   const newest = versions[versions.length - 1]
   if (newest !== undefined) return join(piAiVersionsDir, newest)
   if (existsSync(pluginDependencyRoot())) return pluginDependencyRoot()
-  try {
-    return join(resolveDshHome(), 'profiles', 'node_modules', '@earendil-works', 'pi-ai')
-  } catch {
-    return undefined
-  }
+  return dshPiAiRoot(findSourceBundle())
 }
 
 /** 读一个 pi-ai 包的版本号；读不到返回 undefined。 */
@@ -280,9 +350,9 @@ export function probePiAi(requirements: readonly PiAiRequirement[], root: string
 
 /**
  * pi-ai 候选，按优先级排：
- *   1. `vendor/pi-ai/<版本>/`——updater 热更新下来的，新 → 旧
- *   2. 插件自己声明的依赖——package.json 里锁死的那个版本，验证过的兜底
- *   3. dsh 自己装的那份——裸克隆、依赖还没装时的最后一根稻草
+ *   1. `vendor/pi-ai/<版本>/`——updater 下载下来的，新 → 旧
+ *   2. `vendor/node_modules/@earendil-works/pi-ai`——可选的手装兜底档（vendor/package.json 锁定）
+ *   3. dsh 自己装的那份——从官方 bundle 的位置解析出来，包放哪一层都能找到
  */
 export function piAiCandidates(): PiAiCandidate[] {
   const list: PiAiCandidate[] = []
@@ -294,10 +364,10 @@ export function piAiCandidates(): PiAiCandidate[] {
   }
   const dependency = pluginDependencyRoot()
   list.push({ key: 'dependency', version: piAiVersionOf(dependency) ?? '内置依赖', root: dependency, link: false })
-  try {
-    const dshRoot = join(resolveDshHome(), 'profiles', 'node_modules', '@earendil-works', 'pi-ai')
+  const dshRoot = dshPiAiRoot(findSourceBundle())
+  if (dshRoot !== undefined) {
     list.push({ key: 'dsh', version: piAiVersionOf(dshRoot) ?? 'dsh 自带', root: dshRoot, link: true })
-  } catch { /* 拿不到 DSH_HOME 就算了 */ }
+  }
   return list
 }
 
@@ -339,10 +409,10 @@ export function updateStatus(patch: AnyRecord): void {
  */
 export function loadBridge(): BridgeLoadResult {
   try {
-    const profileModules = join(resolveDshHome(), 'profiles', 'node_modules')
-    const srcBundle = join(profileModules, '@deepseek-ai', 'dsh-llm-pi-ai', 'lib', 'index.js')
-
-    if (!existsSync(srcBundle)) return { ok: false, error: `找不到官方 llm-pi-ai bundle：${srcBundle}` }
+    const srcBundle = findSourceBundle()
+    if (srcBundle === undefined) {
+      return { ok: false, error: '找不到官方 llm-pi-ai bundle：profile 的 node_modules 与 dsh 安装目录里都没有 @deepseek-ai/dsh-llm-pi-ai' }
+    }
 
     // 1. 桥接目录：bundle 副本（源更新过就重拷）+ 固定 package.json
     mkdirSync(join(bridgeDir, 'lib'), { recursive: true })
