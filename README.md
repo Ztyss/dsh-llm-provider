@@ -214,8 +214,9 @@ id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启
   - composer 的额度徽标座位已按用户要求撤下。
 - **Provider 标签页**（真机验证）：官方 PluginCard 蓝本 1:1 的卡片（两行布局：名称+绿点+官网链接 /
   余量摘要+刷新时间+刷新+删除，贯穿分割线，官方 Chevron）；余量格式 `5h: 90% ◷ 4h34m ｜ 7d: …`，
-  刷新指示 `<1min`/`刚刚`；添加走 settings/mutate + credentials/set（先测试连通才能添加），
-  删除同理；余量不支持时该行不显示而不是报错。
+  刷新指示 `<1min`/`刚刚`；展开体展示路由配置（路由 ID / 掩码密钥 / API 地址 / 协议 / 密钥存为，
+  与「添加供应商」表单同一组信息，缺的字段整行不显示）；添加走 settings/mutate + credentials/set
+  （先测试连通才能添加），删除同理；余量不支持时该行不显示而不是报错。
 - **命名全面切到 pi-ai 注册表**（`lib/pi-ai-names.js`）：显示名一律调 pi-ai 自己的 `*Provider()`
   工厂拿（41 家全量，带缓存）；`syncRouteDisplayNames()` 把 pi-ai 名补进 settings 的 displayName
   （只补缺失，不覆盖用户自定义）；CURATED 表只剩排序优先级，不起名字。

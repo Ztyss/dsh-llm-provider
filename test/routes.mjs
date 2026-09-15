@@ -18,7 +18,7 @@ function check(name, actual, expected) {
 
 const piAiSettings = {
   get: (ns) => (ns === 'llm-pi-ai'
-    ? { providers: { 'kimi-coding': { apiKeyEnv: 'KIMI_CODING_API_KEY' }, 'zai-coding-cn': { apiKeyEnv: 'ZAI_CODING_CN_API_KEY' } } }
+    ? { providers: { 'kimi-coding': { apiKeyEnv: 'KIMI_CODING_API_KEY', api: 'anthropic-messages' }, 'zai-coding-cn': { apiKeyEnv: 'ZAI_CODING_CN_API_KEY' } } }
     : undefined),
 }
 // llm 服务：llm-pi-ai 的目录条目 + 原生 deepseek-official
@@ -36,6 +36,9 @@ check('未配置的 catalog provider 不进面板', merged.has('openai'), false)
 check('原生路由用已知默认凭据名', merged.get('deepseek-official').apiKeyEnv, 'DEEPSEEK_API_KEY')
 check('原生路由带友好名', merged.get('deepseek-official').label, 'DeepSeek')
 check('settings 优先于文件兜底', merged.get('kimi-coding').apiKeyEnv, 'KIMI_CODING_API_KEY')
+check('settings 里的协议带到路由上（卡片展开体要展示）', merged.get('kimi-coding').api, 'anthropic-messages')
+check('settings 没写协议就是 undefined，不编造', merged.get('zai-coding-cn').api, undefined)
+check('原生路由没有协议', merged.get('deepseek-official').api, undefined)
 
 // 场景：llm 服务不可用（老 dsh）→ 只靠 settings
 const noLlm = providerRoutes(piAiSettings, '/nonexistent', undefined)
