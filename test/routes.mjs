@@ -44,6 +44,16 @@ check('原生路由没有协议', merged.get('deepseek-official').api, undefined
 const noLlm = providerRoutes(piAiSettings, undefined)
 check('llm 缺席时不崩，仍给出 pi-ai 路由', [...noLlm.keys()].sort(), ['kimi-coding', 'zai-coding-cn'])
 
+// 场景：老用户配过官方 llm-deepseek，目录里因此多一条 deepseek-official；插件的 config
+// 已经声明了 pi-ai 的 deepseek——同一家只留一张卡，不能冒出 deepseek-official
+const withPiAiDeepseek = {
+  get: () => ({ providers: { deepseek: { apiKeyEnv: 'DEEPSEEK_API_KEY', api: 'openai-completions' } } }),
+}
+check('pi-ai 已在服务这家时不再补原生那一条',
+  [...providerRoutes(withPiAiDeepseek, llm).keys()].sort(), ['deepseek'])
+check('没有 pi-ai 那一条时原生路由照旧出来（patch 没生效、或用户删掉了它）',
+  [...providerRoutes({ get: () => ({ providers: {} }) }, llm).keys()].sort(), ['deepseek-official'])
+
 // 场景：命名空间没注册（get() 取不到）→ 退回 section()，它直接读 dsh 解析好的文档
 const documentOnly = {
   get: () => undefined,

@@ -68,6 +68,22 @@ export const NATIVE_ROUTE_DEFAULTS: Record<string, { apiKeyEnv: string; label: s
 }
 
 /**
+ * 同一家供应商在两套适配器里的 id 对照：pi-ai 的 `deepseek` ↔ 原生 llm-deepseek 的
+ * `deepseek-official`。两边是同一个账号、同一个凭据名，所以界面上只该有一张卡片。
+ */
+export const NATIVE_EQUIVALENTS: Record<string, readonly string[]> = {
+  deepseek: ['deepseek-official'],
+}
+
+/** 这条原生路由对应那家供应商是不是已经有 pi-ai 路由在服务了。 */
+function piAiRouteCovers(nativeProvider: string, routes: ReadonlyMap<string, ProviderRoute>): boolean {
+  for (const [piAiId, nativeIds] of Object.entries(NATIVE_EQUIVALENTS)) {
+    if (nativeIds.includes(nativeProvider) && routes.has(piAiId)) return true
+  }
+  return false
+}
+
+/**
  * 合并出要查额度的路由表。
  * @param settings - settings 服务（可为 undefined）。
  * @param llm - llm 服务（可为 undefined）；用它的 listConfigurableProviders 找原生路由。
@@ -115,6 +131,9 @@ export function providerRoutes(
     if (provider === undefined) continue
     const defaults = NATIVE_ROUTE_DEFAULTS[provider]
     if (defaults === undefined || routes.has(provider)) continue
+    // 同一家已经由 pi-ai 路由服务时不再出第二张卡。老用户配过官方 llm-deepseek 的，
+    // 目录里就多一条 deepseek-official，两张卡查的是同一个账号、同一把 key。
+    if (piAiRouteCovers(provider, routes)) continue
     routes.set(provider, {
       id: provider,
       apiKeyEnv: defaults.apiKeyEnv,
