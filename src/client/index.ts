@@ -183,5 +183,5 @@ export function apply(ctx: ClientContext) {
 // 纯函数，离线测试直接调；组件里用的是同一份实现
 
 export { normalizeSelection, onPlanChange, mergePlanAccount, dropPlanAccount } from './data.js'
-export { piAiBridgeRows, piAiUpstreamText } from './settings.js'
+export { piAiBridgeRows, piAiUpstreamText, presetPickState, refreshFailure } from './settings.js'
 export { reasoningTextOf, defaultEffortOf } from './format.js'

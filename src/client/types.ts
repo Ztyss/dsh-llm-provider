@@ -92,6 +92,8 @@ export interface ProviderPreset {
   apiKeyEnv?: string
   websiteUrl?: string
   configured?: boolean
+  /** 路由在、凭据没值：仍算已配置，但下拉里不该禁选（选中就是去补密钥）。 */
+  missingKey?: boolean
   custom?: boolean
 }
 

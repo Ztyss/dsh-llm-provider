@@ -356,11 +356,21 @@ export function apply(ctx: PluginContext, config: unknown): void {
       kind: 'exact',
       path: '/provider/presets',
       handler: (_req, res) => {
-        let configured = new Set<string>()
-        try {
-          configured = new Set(providerRoutes(service<SettingsService>('settings'), service<LlmService>('llm')).keys())
-        } catch { /* 路由发现失败就当全部未配置 */ }
-        json(res, 200, { presets: presetsWithMeta(configured) })
+        void (async () => {
+          const configured = new Set<string>()
+          const keyless = new Set<string>()
+          try {
+            const routes = providerRoutes(service<SettingsService>('settings'), service<LlmService>('llm'))
+            for (const route of routes.values()) {
+              configured.add(route.id)
+              // 路由在、钥匙没值：插件自己的 config 就声明了 deepseek（没有 key 也能配上路由），
+              // 这种"配了一半"的状态若照旧标成"已配置"，用户就既选不了它也补不了 key。
+              const credential = await resolveKey(route.apiKeyEnv)
+              if (!credential.configured) keyless.add(route.id)
+            }
+          } catch { /* 路由发现失败就当全部未配置 */ }
+          json(res, 200, { presets: presetsWithMeta(configured, keyless) })
+        })()
       },
     }),
     'dsh-llm-provider: /provider/presets route',

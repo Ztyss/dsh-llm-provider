@@ -237,6 +237,25 @@ stopListening()
 mergePlanAccount({ id: 'deepseek', balances: [], windows: [], fetchedAt: 'c' })
 rowsCheck('退订之后不再收到', broadcasts.length === 3)
 
+// ---- 「添加供应商」下拉的选中状态 / 刷新结果判定（纯函数，不渲染）----
+// 路由配好了但没密钥（deepseek 由插件 config 声明，天生就是这个样子）时不能禁选：
+// 禁选之后用户既加不了新的，卡片上也没地方补 key。
+const { presetPickState, refreshFailure } = moduleExports
+const fresh = presetPickState({ id: 'kimi-coding', label: 'Kimi' })
+rowsCheck('没配过的预设可选、无标记', fresh.disabled === false && fresh.tag === null)
+const donePick = presetPickState({ id: 'kimi-coding', label: 'Kimi', configured: true })
+rowsCheck('配好且密钥在 → 禁选并标已配置', donePick.disabled === true && donePick.tag === '已配置')
+const keylessPick = presetPickState({ id: 'deepseek', label: 'DeepSeek', configured: true, missingKey: true })
+rowsCheck('配了但缺密钥 → 可选并标缺密钥', keylessPick.disabled === false && keylessPick.tag === '缺密钥')
+
+// 宿主 refresh/test 一律回 200，成败看 body 的 ok：没配 key 时 ok=false、原因在 account.error。
+// 只判 account 在不在，就会在"未配置 key"的卡片上弹一句"✓ 余量已刷新"。
+rowsCheck('ok:true 算成功', refreshFailure({ ok: true, account: { id: 'deepseek' } }) === undefined)
+rowsCheck('没密钥时把原因带出来',
+  refreshFailure({ ok: false, account: { error: 'DEEPSEEK_API_KEY 没有值' } }) === 'DEEPSEEK_API_KEY 没有值')
+rowsCheck('缺 ok 但有 account.error 也算失败', refreshFailure({ account: { error: '解析失败' } }) === '解析失败')
+rowsCheck('既没 ok 也没原因时给兜底文案', refreshFailure(undefined) === '未知错误')
+
 if (failures > 0) throw new Error(`桥接明细有 ${failures} 条断言没过`)
 
 console.log('\n冒烟通过：模型座位 + 设置页标签两个座位已注册，模型座位用负 priority 遮蔽官方占用者；' +
