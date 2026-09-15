@@ -31,7 +31,7 @@
 - 合入必须串行：`dev-merge.sh` 全程持 `<git-common-dir>/main-write.lock`（`scripts/main-lock.sh` 的原子 mkdir 锁），拿不到锁说明已有进程在写 main，等它结束再跑，**不要手动绕过校验去 merge**。被中断留下残留锁时：`rm -rf .git/main-write.lock`。
 - rebase 有冲突：进 worktree 解决 → `scripts/dev-finish.sh` 重跑（刷新 done 标记）→ 回主线重跑 `dev-merge.sh`。主线始终不被冲突污染。
 - 合入后主线测试挂了：能从最新 main 开新 worktree 修就修（走完整流程）；主线不可用（插件起不来/核心功能挂）就先 `git revert -m 1 <merge commit>` 恢复，再另开 worktree 排查。
-- worktree 是「拉分支那一刻」的快照：**worktree 里的 `scripts/` 可能是旧版**，要用新脚本就写主线路径、cwd 留在 worktree 内：`bash /Users/cgeng/Workspaces/dsh-plan/scripts/dev-merge.sh <slug>`。
+- worktree 是「拉分支那一刻」的快照：**worktree 里的 `scripts/` 可能是旧版**，要用新脚本就写主工作区的绝对路径、cwd 留在 worktree 内：`bash <主工作区>/scripts/dev-merge.sh <slug>`。
 - worktree 里**要装依赖**（本仓库是 TypeScript 项目）：新建的 worktree 没有
   `node_modules`，进去先 `scripts/install-deps.sh`（装 typescript / tsdown / @types/node），
   否则 `npm run build` 起不来。**别直接 `npm install`**——会去 reify 那条指向宿主的
