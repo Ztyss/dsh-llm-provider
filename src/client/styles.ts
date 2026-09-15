@@ -23,18 +23,32 @@ var css =
   '.mp_modelName{font-weight:500}' +
   '.mp_empty{padding:14px 10px;text-align:center;font-size:12px;color:var(--dsw-alias-label-tertiary)}' +
   // ---- 模型座位：官方 ModelSelect 同款（两级层级，Figma 313:14108 / 496:26454 规格）----
-  '.ms_trigger{display:flex;align-items:center;gap:4px;min-width:0;max-width:min(360px,45vw);height:28px;' +
+  // 宽度上限：45cqw 是相对 composer 行（InputBar 的 .row 声明了 container-type），
+  // 跟官方 PermissionSelect 的 460px 断点、ModelSelect 的 360px 断点在同一个匿名容器里。
+  '.ms_trigger{display:flex;align-items:center;gap:4px;min-width:0;max-width:min(360px,45vw);' +
+  'max-width:min(360px,45cqw);height:28px;' +
   'padding:0 4px 0 8px;border:0;border-radius:24px;background:transparent;outline:0;' +
   'color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:20px;font-weight:500;' +
   'cursor:pointer;white-space:nowrap}' +
   '.ms_trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}' +
   '.ms_trigger:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}' +
+  // 触发器里四段内容的让位优先级：档位（用户显式选的）> 模型名 > 余量 > provider。
+  // provider 的收缩因子压倒性大，空间不够先缩没它（不会把模型名和档位切碎）；
+  // 档位与余量一律不收缩，宁可让模型名省略。
   '.ms_tLabel{min-width:0;overflow:hidden;text-overflow:ellipsis}' +
-  '.ms_tEffort{flex-shrink:1000;min-width:0;overflow:hidden;text-overflow:ellipsis;' +
+  '.ms_tProvider{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;flex-shrink:999}' +
+  '.ms_tModel{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;flex-shrink:1}' +
+  '.ms_tSlash{flex:0 0 auto}' +
+  '.ms_tEffort{flex:0 0 auto;' +
   'color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary))}' +
-  // 触发器里供应商段后面的余量（点 + 百分比/余额）：不参与收缩，窄了先让名称省略
+  // 触发器里供应商段后面的余量（点 + 百分比/余额）：不参与收缩
   '.ms_tQuota{flex:0 0 auto;display:inline-flex;align-items:center;gap:3px;font-size:11px;line-height:16px;' +
   'color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary))}' +
+  // 行宽不够时的两级降级（断点按 composer 行宽，容器见上面的注释）：
+  //   ≤740px：触发器上限 45cqw 已经装不下「provider / 余量 模型 档位」→ 余量只留彩点
+  //   ≤620px：再省掉 provider 段（连分隔符一起，不留「deepse…」这种残字）
+  '@container (max-width:740px){.ms_tQuotaText{display:none}}' +
+  '@container (max-width:620px){.ms_tProvider,.ms_tSlash{display:none}}' +
   '.ms_chev{flex:0 0 auto;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary));' +
   'transition:transform .12s ease}' +
   '.ms_chevOpen{transform:rotate(180deg)}' +
