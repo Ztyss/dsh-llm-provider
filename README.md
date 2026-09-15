@@ -117,7 +117,7 @@ npm run typecheck  # = tsc --noEmit（构建不查类型，要单独跑）
 | 产物 | 来源 | 说明 |
 |---|---|---|
 | `lib/*.js`、`lib/adapters/*.js` | `src/*.ts` | 宿主端。1:1 转译（`unbundle`），不打包，产物路径跟迁移前完全一样 |
-| `lib/client.js` | `src/client.ts` | 浏览器端。单文件 CJS + `window.__ModuleLoader__.load({...})` 外壳——**那三行外壳由构建的 `banner`/`footer`/`intro` 加上**，源码里不写（跟官方插件同一套做法，见官方的 `packages/client/tsdown.client.ts`） |
+| `lib/client.js` | `src/client/index.ts`（+ 同目录模块） | 浏览器端。`src/client/` 下按职责分模块（types/format/data/model-seat/settings/command/styles/i18n/icons/diag），构建时全部内联成单文件 CJS + `window.__ModuleLoader__.load({...})` 外壳——**那三行外壳由构建的 `banner`/`footer`/`intro` 加上**，源码里不写（跟官方插件同一套做法，见官方的 `packages/client/tsdown.client.ts`） |
 
 插件是 profile 里 `link:` 进来的，跑的就是 `lib/`——**改完源码忘了构建，跑的还是旧代码**。
 
@@ -256,9 +256,10 @@ npm test                                # 上面七条一起跑（自测/合入�
 ## 配置
 
 计费部分不用配：provider 从 settings.yaml 的 `llm-pi-ai.providers` 自动发现，key 走
-credentials 服务按 `apiKeyEnv` 解析。可选环境变量：
-
-- `DSH_PROVIDER_UPDATE=off` —— 关掉 pi-ai 自动检查（`POST /provider/update` 仍可用）
+credentials 服务按 `apiKeyEnv` 解析。没有环境变量开关了——pi-ai 更新只有手动触发
+（设置页「pi-ai 桥接」标签的检查按钮 → `POST /provider/update`），且**验证通过才替换**：
+tarball 完整性（registry 的 dist.integrity）与兼容性体检（bridge 的 import 需求 probe）
+两道都过才标记待重启，下次启动才切过去。
 
 ## 不改 pi-ai 的文件（曾经打过"目录补丁"）
 
@@ -382,7 +383,7 @@ pi-ai 的目录数据是静态快照，上游模型升级后会滞后。插件�
 | `src/model-details.ts` | 模型详情：读生效 pi-ai 包的 providers 数据文件（上下文/能力/思维链） |
 | `src/credential-check.ts` | 凭据体检：多个 provider 共用同一把 key 时报警 |
 | `src/adapters/*.ts` | 计费适配器（9 家，每家一个文件 + 注册表 + CLI 跑测器） |
-| `src/client.ts` | 浏览器端：模型选择器（官方蓝本两级层级）+ 设置页 Provider 标签（卡片/添加/删除） |
+| `src/client/index.ts` | 浏览器端入口：座位注册、inject 面、诊断；+ 同目录模块（types/format/data/model-seat/settings/command/styles/i18n/icons/diag） |
 | `src/dsh-home.ts` | DSH 数据目录（`$DSH_HOME`）解析 |
 | `test/*.mjs` | 路由发现、凭据体检、patch 层、pi-ai 体检、候选清单、状态合并、客户端接线七个离线测试 |
 | `scripts/test-profile.sh` | plan-test 测试环境一键脚本（起服务 + 打开浏览器） |

@@ -1,21 +1,25 @@
 /**
  * pi-ai 上游更新器：盯 @earendil-works/pi-ai 的 npm registry，
- * 有新版本就下载、装依赖、放进 vendor/pi-ai/<版本>/，然后换软链。
+ * 有新版本就下载、装依赖、放进 vendor/pi-ai/<版本>/，验证通过后标记待生效。
  *
- * 生效时机：软链换了之后，已 require 的旧模块不受影响——下一次 dsh 重启时
- * bridge.js 会挂到新版本。status.json 里用 needsRestart 标记这件事，
- * /provider/status 会报出来。
+ * 替换的硬规矩（2026-09-15 决定）：**验证通过才能替换**，两道都过才算数——
+ *   1. tarball 完整性：按 registry packument 里的 dist.integrity（sha512）校验下载内容；
+ *   2. 兼容性体检：用桥接副本自己的 import 需求 probe 那份新 pi-ai（见 bridge.js 的
+ *      probePiAi）。体检没跑起来（unverified，需求解析不出）一样不替换。
+ * 通过后只写 status.json 的 needsRestart 标记——已 require 的旧模块不受影响，
+ * 下一次 dsh 重启时 bridge.js 才会挂到新版本。/provider/status 会报出来。
  *
- * 手动触发：POST /provider/update；自动检查默认只在插件启动时跑一次，
- * DSH_PROVIDER_UPDATE=off 可关。
+ * 触发方式：**只有手动**（设置页按钮 → POST /provider/update）。启动期自动检查
+ * 已移除——上游新版本由用户决定什么时候装。
  */
+import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { bridgeRequirements, compareVersions, installedVersions, probePiAi, updateStatus, vendorDir } from './bridge.js'
-import { asRecord, readString, type AnyRecord, type Logger } from './types.js'
+import { asRecord, readString, type AnyRecord } from './types.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -23,7 +27,6 @@ const PACKAGE = '@earendil-works/pi-ai'
 const REGISTRY = `https://registry.npmjs.org/${encodeURIComponent(PACKAGE).replace('%40', '@')}`
 const VERSIONS_DIR = join(vendorDir, 'pi-ai')
 const STATE_FILE = join(vendorDir, 'updater-state.json')
-const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 小时
 
 /** 一次检查 + 更新的结果（/provider/update 的响应体）。 */
 export interface UpdateResult {
@@ -33,6 +36,12 @@ export interface UpdateResult {
   applied: boolean
   compatible: boolean | undefined
   error: string | undefined
+}
+
+/** registry 上最新版：版本号 + tarball 的 sha512（base64，无前缀）。 */
+interface RegistryRelease {
+  version: string
+  integrity: string | undefined
 }
 
 /** 上次检查时间等本地状态。 */
@@ -49,8 +58,8 @@ function writeState(patch: AnyRecord): void {
   writeFileSync(STATE_FILE, JSON.stringify({ ...readState(), ...patch, at: new Date().toISOString() }))
 }
 
-/** registry 上最新版本号。 */
-export async function latestVersion(): Promise<string> {
+/** registry 上最新版与它的 dist.integrity（下载校验用）。 */
+export async function latestRelease(): Promise<RegistryRelease> {
   const response = await fetch(REGISTRY, {
     headers: { accept: 'application/vnd.npm.install-v1+json' },
     signal: AbortSignal.timeout(15_000),
@@ -59,11 +68,17 @@ export async function latestVersion(): Promise<string> {
   const doc = asRecord(await response.json())
   const latest = readString(asRecord(doc['dist-tags'])['latest'])
   if (latest === undefined) throw new Error('registry 响应里没有 dist-tags.latest')
-  return latest
+  const versionDoc = asRecord(asRecord(doc['versions'])[latest])
+  return { version: latest, integrity: readString(asRecord(versionDoc['dist'])['integrity']) }
 }
 
-/** 下载并就位一个版本：tarball 解压到 vendor/pi-ai/<v>/，再补依赖闭包。已就位则跳过。 */
-export async function installVersion(version: string, log: (line: string) => void = () => {}): Promise<string> {
+/**
+ * 下载并就位一个版本：tarball 校验后解压到 vendor/pi-ai/<v>/，再补依赖闭包。
+ * 已就位则跳过（校验也不重跑——那份内容装的时候验过）。integrity 缺省时不校验，
+ * 但会记一行日志：registry 正常都会给，缺了多半是请求/字段出了问题。
+ */
+export async function installVersion(release: RegistryRelease, log: (line: string) => void = () => {}): Promise<string> {
+  const { version, integrity } = release
   const target = join(VERSIONS_DIR, version)
   if (existsSync(join(target, 'node_modules'))) {
     log(`${version} 已就位，跳过下载`)
@@ -78,7 +93,17 @@ export async function installVersion(version: string, log: (line: string) => voi
     signal: AbortSignal.timeout(120_000),
   })
   if (!response.ok) throw new Error(`tarball HTTP ${String(response.status)}`)
-  writeFileSync(tgzPath, Buffer.from(await response.arrayBuffer()))
+  const bytes = Buffer.from(await response.arrayBuffer())
+  if (integrity !== undefined) {
+    const actual = `sha512-${createHash('sha512').update(bytes).digest('base64')}`
+    if (actual !== integrity) {
+      throw new Error(`tarball 校验失败（本地 sha512 与 registry 的 dist.integrity 不一致），拒绝安装 ${version}`)
+    }
+    log('完整性校验通过（sha512）')
+  } else {
+    log('registry 没给 dist.integrity，跳过完整性校验')
+  }
+  writeFileSync(tgzPath, bytes)
 
   log('解压 ...')
   await execFileAsync('tar', ['-xzf', tgzPath, '-C', target, '--strip-components', '1'])
@@ -109,28 +134,32 @@ export async function checkAndUpdate(log: (line: string) => void = () => {}): Pr
     error: undefined,
   }
   try {
-    const latest = await latestVersion()
-    result.latest = latest
+    const release = await latestRelease()
+    result.latest = release.version
     const have = installedVersions()
     const newest = have[have.length - 1]
-    if (newest !== undefined && compareVersions(latest, newest) <= 0) {
-      log(`已是最新（本地 ${newest}，上游 ${latest}）`)
+    if (newest !== undefined && compareVersions(release.version, newest) <= 0) {
+      log(`已是最新（本地 ${newest}，上游 ${release.version}）`)
       return result
     }
-    const target = await installVersion(latest, log)
-    result.installed = latest
+    const target = await installVersion(release, log)
+    result.installed = release.version
     // 装完先体检：不兼容的版本不该让用户白重启一趟，也不该在下次启动时才被发现。
     // 体检用桥接副本自己的 import 需求（见 bridge.js 的 probePiAi）。
-    const probe = probePiAi(bridgeRequirements(), target, `check-${latest}`)
-    result.compatible = probe.ok
-    if (probe.ok) {
-      updateStatus({ piAiVersion: latest, needsRestart: true, latestVersion: latest, latestRejected: undefined })
+    const probe = probePiAi(bridgeRequirements(), target, `check-${release.version}`)
+    result.compatible = probe.ok && probe.unverified !== true
+    if (probe.ok && probe.unverified !== true) {
+      updateStatus({ piAiVersion: release.version, needsRestart: true, latestVersion: release.version, latestRejected: undefined })
       result.applied = true
-      log(`已就位 ${latest}，重启 dsh 后生效`)
+      log(`已验证 ${release.version}（完整性 + 兼容性体检），重启 dsh 后生效`)
     } else {
-      // 留着不删：下次启动还会体检一遍，结论一致；万一判断有误也能人工指定
-      updateStatus({ latestVersion: latest, latestRejected: { version: latest, error: probe.error } })
-      log(`${latest} 与当前桥接不兼容，已跳过（不会切过去）：${String(probe.error)}`)
+      // 留着不删：下次启动还会体检一遍，结论一致；万一判断有误也能人工指定。
+      // unverified（需求解析不出）同样不替换——「验证才能替换」没有例外。
+      const reason = probe.unverified === true
+        ? '体检未执行（解析不出 bridge 的 import 需求），按「验证才能替换」不切换'
+        : probe.error
+      updateStatus({ latestVersion: release.version, latestRejected: { version: release.version, error: reason } })
+      log(`${release.version} 未通过验证，已跳过（不会切过去）：${String(reason)}`)
     }
   } catch (error) {
     result.error = error instanceof Error ? error.message : String(error)
@@ -139,12 +168,4 @@ export async function checkAndUpdate(log: (line: string) => void = () => {}): Pr
     writeState({ lastCheck: result.checkedAt })
   }
   return result
-}
-
-/** 插件启动时调：距上次检查超过间隔才真的发请求，绝不阻塞启动。 */
-export function startBackgroundCheck(logger: Logger | undefined): void {
-  if (process.env.DSH_PROVIDER_UPDATE === 'off') return
-  const last = readString(readState()['lastCheck'])
-  if (last !== undefined && Date.now() - Date.parse(last) < AUTO_CHECK_INTERVAL_MS) return
-  void checkAndUpdate((line) => logger?.info?.(`[pi-ai updater] ${line}`))
 }

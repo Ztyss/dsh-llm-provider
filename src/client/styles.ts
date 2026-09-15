@@ -1,0 +1,330 @@
+/**
+ * 插件样式：沿用 GUI 的 CSS 变量，跟模型座位视觉一致。
+ * installCss 走官方 styles.insert（在时）或手写 style 标签（缺席时）。
+ */
+var css =
+  '.plan_root{position:relative;display:inline-flex;align-items:center}' +
+  '.plan_dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-label-tertiary)}' +
+  '.plan_dot_ok{background:#22a06b}.plan_dot_warn{background:#d9a300}.plan_dot_bad{background:#d9534f}' +
+  '.plan_tag{margin-left:auto;font-size:12px;color:var(--dsw-alias-label-tertiary);font-weight:400}' +
+  '.plan_warnText{color:#b8860b}.plan_badText{color:#d9534f}' +
+  '.plan_note{margin-top:3px;font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);word-break:break-word}' +
+  // ---- 模型选择器（搜索/过滤/余额）----
+  '.mp_search{box-sizing:border-box;width:100%;padding:6px 10px;margin-bottom:4px;font:inherit;font-size:12px;' +
+  'color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));' +
+  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:8px;outline:0}' +
+  '.mp_search:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}' +
+  '.mp_chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}' +
+  '.mp_chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;font:inherit;font-size:12.5px;line-height:18px;' +
+  'color:var(--dsw-alias-label-secondary);background:0 0;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));' +
+  'border-radius:999px;cursor:pointer}' +
+  '.mp_chip[data-on="1"]{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.05));' +
+  'border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}' +
+  '.mp_modelName{font-weight:500}' +
+  '.mp_empty{padding:14px 10px;text-align:center;font-size:12px;color:var(--dsw-alias-label-tertiary)}' +
+  // ---- 模型座位：官方 ModelSelect 同款（两级层级，Figma 313:14108 / 496:26454 规格）----
+  '.ms_trigger{display:flex;align-items:center;gap:4px;min-width:0;max-width:min(360px,45vw);height:28px;' +
+  'padding:0 4px 0 8px;border:0;border-radius:24px;background:transparent;outline:0;' +
+  'color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:20px;font-weight:500;' +
+  'cursor:pointer;white-space:nowrap}' +
+  '.ms_trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}' +
+  '.ms_trigger:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}' +
+  '.ms_tLabel{min-width:0;overflow:hidden;text-overflow:ellipsis}' +
+  '.ms_tEffort{flex-shrink:1000;min-width:0;overflow:hidden;text-overflow:ellipsis;' +
+  'color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary))}' +
+  '.ms_chev{flex:0 0 auto;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary));' +
+  'transition:transform .12s ease}' +
+  '.ms_chevOpen{transform:rotate(180deg)}' +
+  '.ms_menu{position:absolute;bottom:calc(100% + 6px);right:0;z-index:1100;display:flex;flex-direction:column;' +
+  'width:max-content;min-width:min(240px,calc(100vw - 32px));max-width:min(420px,calc(100vw - 32px));' +
+  'max-height:min(360px,calc(100vh - 96px));overflow:hidden;padding:4px;border:0;border-radius:20px;' +
+  'background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));' +
+  'box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18));color:var(--dsw-alias-label-primary)}' +
+  '.ms_cell{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:auto;min-width:100%;height:40px;' +
+  'padding:0 10px;border:0;border-radius:10px;background:transparent;color:var(--dsw-alias-label-primary);' +
+  'font:inherit;font-size:14px;line-height:22px;cursor:pointer;text-align:left}' +
+  '.ms_cell:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}' +
+  '.ms_cellLabel{flex:0 0 auto;white-space:nowrap}' +
+  '.ms_cellValue{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
+  'text-align:right;color:var(--dsw-alias-label-tertiary)}' +
+  '.ms_cellChev{flex:0 0 auto;color:var(--dsw-alias-label-tertiary)}' +
+  '.ms_scroll{min-height:0;overflow-y:auto;display:flex;flex-direction:column}' +
+  '.ms_group{margin-top:4px}' +
+  '.ms_groupTitle{position:sticky;top:0;z-index:1;padding:5px 8px 3px;' +
+  'background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-tertiary);' +
+  'font-size:12px;line-height:18px;font-weight:500}' +
+  '.ms_option{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:auto;min-width:100%;' +
+  'min-height:38px;padding:6px 8px;border:0;border-radius:10px;background:transparent;color:inherit;' +
+  'font:inherit;font-size:14px;line-height:20px;text-align:left;cursor:pointer}' +
+  '.ms_option:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}' +
+  '.ms_option:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}' +
+  '.ms_name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}' +
+  '.ms_capsCol{flex:none;width:92px;display:flex;justify-content:flex-end;align-items:center;gap:4px}' +
+  '.ms_ctxCol{flex:none;width:48px;text-align:right;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}' +
+  '.ms_check{flex:0 0 18px;display:grid;place-items:center;color:var(--dsw-alias-label-primary)}' +
+  '.ms_status{padding:10px;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}' +
+  // ---- 设置页 Provider 标签 ----
+  '.pv_section{display:flex;flex-direction:column;gap:12px;max-width:640px}' +
+  '.pv_card{padding:14px 16px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:12px;' +
+  'background:var(--dsw-alias-bg-layer-1,#fff)}' +
+  '.pv_title{font-size:13px;font-weight:600;line-height:18px;margin-bottom:8px}' +
+  '.pv_line{display:flex;align-items:center;gap:10px;font-size:13px;line-height:22px;padding:3px 0;' +
+  'color:var(--dsw-alias-label-secondary)}' +
+  '.pv_action{margin-left:auto;font:inherit;font-size:12px;color:var(--dsw-alias-label-primary);' +
+  'background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.05));border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));' +
+  'border-radius:6px;padding:4px 12px;cursor:pointer}' +
+  '.pv_action:disabled{opacity:.5;cursor:default}' +
+  // ---- Provider 标签：CC Switch 式卡片（字号/间距对齐官方插件页）----
+  '.pv_stack{display:flex;flex-direction:column;gap:14px;max-width:600px}' +
+  '.pv_pc{list-style:none;border:.5px solid var(--dsw-alias-border-l4,rgba(0,0,0,.15));border-radius:16px;' +
+  'background:var(--dsw-alias-bg-layer-3,#fff);transition:border-color .16s,background .16s;' +
+  'display:flex;flex-direction:column}' +
+  '.pv_pc:hover{border-color:var(--dsw-alias-label-dimmed,rgba(0,0,0,.3))}' +
+  // 展开态：官方读法「正在操作的卡」——底变 layer-2（更沉）、边框加深
+  '.pv_pcOpen{background:var(--dsw-alias-bg-layer-2,#f4f5f6);border-color:var(--dsw-alias-label-dimmed,rgba(0,0,0,.3))}' +
+  '.pv_pcTop{display:flex;align-items:stretch}' +
+  '.pv_pcMain{flex:1;min-width:0;display:flex;flex-direction:column}' +
+  '.pv_pcCaretCol{flex:none;width:36px;display:flex;align-items:center;justify-content:center;' +
+  'cursor:pointer;color:var(--dsw-alias-label-tertiary)}' +
+  '.pv_pcCaretCol:hover{color:var(--dsw-alias-label-secondary)}' +
+  '.pv_pcHead{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border:0;background:0 0;' +
+  'cursor:pointer;font:inherit;color:inherit;text-align:left;border-radius:12px}' +
+  '.pv_pcHead:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#3b5bdb);outline-offset:-2px}' +
+  '.pv_pcName{font-size:15px;font-weight:600;line-height:1.4;color:var(--dsw-alias-label-primary);' +
+  'overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+  '.pv_pcChips{flex:none;display:flex;align-items:center;gap:10px;font-size:13px;white-space:nowrap}' +
+  '.pv_chipItem{display:inline-flex;align-items:baseline;gap:2px}' +
+  '.pv_chipLabel{color:var(--dsw-alias-label-secondary)}' +
+  '.pv_chipSep{flex:none;width:1px;height:12px;margin:0 4px;background:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}' +
+  '.pv_chipReset{color:var(--dsw-alias-label-tertiary);font-size:12px}' +
+  '.pv_pcCaret{flex:none;display:block;color:var(--dsw-alias-label-tertiary);' +
+  'transition:transform .16s}' +
+  '.pv_pcCaretOpen{transform:rotate(180deg)}' +
+  // 第二行：余量摘要 + 操作（官方卡片没有这一行，是我们的产品扩展）
+  '.pv_pcMeta{display:flex;align-items:center;gap:10px;padding:2px 16px 14px;font-size:13px;flex-wrap:wrap}' +
+  '.pv_metaActs{margin-left:auto;display:inline-flex;align-items:center;gap:4px}' +
+  '.pv_pcWeb{display:inline-flex;align-items:center;color:var(--dsw-alias-label-tertiary);text-decoration:none;' +
+  'font-size:14px;line-height:20px;padding:0 2px;border-radius:6px}' +
+  '.pv_pcWeb:hover{color:var(--dsw-alias-label-secondary)}' +
+  // 等级胶囊（Coding Plan 会员档）：业务蓝描边 + 蓝字，靠右
+  '.pv_lv{flex:none;margin-left:auto;font-size:12px;line-height:18px;padding:1px 10px;border-radius:999px;' +
+  'white-space:nowrap;color:var(--dsw-alias-state-business-primary,#5b8cff);' +
+  'border:1px solid var(--dsw-alias-state-business-primary,#5b8cff)}' +
+  // 微过渡（官方 .16s 节奏）+ 键盘焦点环
+  '.pv_pickItem,.pv_iconBtn,.pv_action,.pv_tab,.pv_addBtn,.pv_fclear,.pv_delYes,.pv_delNo,' +
+  '.mp_chip,.pv_pcLink{transition:background-color .16s ease,color .16s ease}' +
+  '.pv_iconBtn:focus-visible,.pv_action:focus-visible,.pv_tab:focus-visible,' +
+  '.pv_pickItem:focus-visible,.pv_addBtn:focus-visible,.pv_mFilter:focus-visible,input.pv_field:focus-visible,' +
+  'select.pv_field:focus-visible,select.pv_msEff:focus-visible,a.pv_pcLink:focus-visible{' +
+  'outline:2px solid var(--dsw-alias-brand-primary,#3b5bdb);outline-offset:1px}' +
+  '.pv_pcBody{border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));' +
+  'padding:10px 18px 14px;display:flex;flex-direction:column;gap:4px}' +
+  '.pv_line .plan_tag{margin-left:0}' +
+  '.pv_line .pv_push{margin-left:auto}' +
+  '.pv_row>span:first-child{width:72px;flex:none}' +
+  // 次要注解（凭据名这类）：单独一行小字，缩进跟着值列
+  '.pv_hint{font-size:12px;line-height:16px;color:var(--dsw-alias-label-tertiary)}' +
+  // 值框（API 密钥/端点）：Cherry 式输入框外观
+  '.pv_field{display:inline-flex;align-items:center;min-width:240px;max-width:100%;padding:6px 12px;' +
+  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;' +
+  'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));font-size:13px;line-height:20px;' +
+  'color:var(--dsw-alias-label-secondary)}' +
+  // 模型区外框
+  '.pv_mBox{border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:12px;' +
+  'padding:0 14px;display:flex;flex-direction:column}' +
+  '.pv_mRight{margin-left:auto;display:inline-flex;align-items:center;gap:8px}' +
+  '.pv_iconBtn{border:0;background:0 0;cursor:pointer;font:inherit;font-size:15px;padding:3px 6px;' +
+  'border-radius:6px;color:var(--dsw-alias-label-tertiary)}' +
+  '.pv_iconBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}' +
+  '.pv_delOn{color:#e03131;font-size:12px;width:auto;padding:2px 8px}' +
+  // 删除确认框：红确认 + 灰取消，点框内任意处不触发卡片折叠
+  '.pv_delBox{display:inline-flex;gap:2px;align-items:center;padding:3px 5px;' +
+  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:8px;' +
+  'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03))}' +
+  '.pv_delYes{border:0;background:0 0;cursor:pointer;font:inherit;font-size:12px;color:#e03131;' +
+  'padding:3px 9px;border-radius:6px}' +
+  '.pv_delYes:hover{background:rgba(224,49,49,.12)}' +
+  '.pv_delNo{border:0;background:0 0;cursor:pointer;font:inherit;font-size:12px;' +
+  'color:var(--dsw-alias-label-secondary);padding:3px 9px;border-radius:6px}' +
+  '.pv_delNo:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}' +
+  '@keyframes pvRot{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}' +
+  '.pv_spin{display:inline-block;animation:pvRot 1s linear infinite}' +
+  // 刷新结果 toast（右下，2.6s 自动消失）
+  '.pv_toast{position:fixed;bottom:24px;right:24px;z-index:500;padding:10px 18px;border-radius:12px;' +
+  'font-size:13px;line-height:20px;max-width:min(420px,80vw);' +
+  'background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));' +
+  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));' +
+  'box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18))}' +
+  '.pv_toastOk{color:#2f9e44}' +
+  '.pv_toastFail{color:#e03131}' +
+  // 上次刷新时间（时钟 + 相对时间，内联在卡片头部）
+  '.pv_fresh{font-size:12px;line-height:18px;white-space:nowrap;' +
+  'color:var(--dsw-alias-label-tertiary)}' +
+  // ---- 添加 provider 面板 ----
+  '.pv_addBtn{width:100%;padding:13px;border:1px dashed var(--dsw-alias-border-l2,rgba(0,0,0,.2));' +
+  'border-radius:14px;background:0 0;cursor:pointer;font:inherit;font-size:14px;' +
+  'color:var(--dsw-alias-label-secondary)}' +
+  '.pv_addBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.03))}' +
+  'input.pv_field{cursor:text}' +
+  'select.pv_field{cursor:pointer}' +
+  // 预置字段（路由 ID/端点/协议）：灰底只读；密钥/待填项：白底提示可输入
+  'input.pv_ro{background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.05));' +
+  'color:var(--dsw-alias-label-tertiary);cursor:default}' +
+  'input.pv_key{background:var(--dsw-alias-bg-layer-1,#fff);' +
+  'border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}' +
+  '.pv_actRow{display:flex;gap:10px;align-items:center;padding:8px 0 4px}' +
+  // ---- 供应商可过滤下拉 ----
+  '.pv_pick{flex:1;min-width:0;position:relative}' +
+  '.pv_pickBtn{width:100%;cursor:pointer;justify-content:space-between;gap:8px}' +
+  '.pv_pickMenu{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:250;padding:6px;' +
+  'display:flex;flex-direction:column;gap:4px;border-radius:10px;' +
+  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));' +
+  'background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));' +
+  'box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18))}' +
+  '.pv_pickList{max-height:240px;overflow:auto;display:flex;flex-direction:column}' +
+  '.pv_pickItem{display:flex;align-items:center;gap:6px;padding:8px 12px;border:0;background:0 0;' +
+  'cursor:pointer;font:inherit;font-size:13.5px;color:var(--dsw-alias-label-primary);text-align:left;' +
+  'border-radius:8px}' +
+  '.pv_pickItem:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.04))}' +
+  '.pv_pickItem:disabled{opacity:.5;cursor:default}' +
+  '.pv_pickEmpty{padding:12px;font-size:13px;color:var(--dsw-alias-label-tertiary);text-align:center}' +
+  // ---- 模型选择器行：模型 + 思考强度 ----
+  '.pv_msRow{display:flex;align-items:center;gap:8px}' +
+  '.pv_msMain{flex:1;min-width:0;display:flex;align-items:center;gap:8px;text-align:left}' +
+  'select.pv_msEff{flex:none;font:inherit;font-size:12px;padding:3px 8px;cursor:pointer;' +
+  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:6px;' +
+  'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-secondary)}' +
+  // ---- Provider 页内二级标签 ----
+  '.pv_tabs{display:flex;gap:2px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));' +
+  'margin-bottom:14px}' +
+  '.pv_tab{font:inherit;font-size:14px;padding:8px 14px;border:0;background:0 0;cursor:pointer;' +
+  'color:var(--dsw-alias-label-secondary);border-bottom:2px solid transparent;margin-bottom:-1px}' +
+  '.pv_tab:hover{color:var(--dsw-alias-label-primary)}' +
+  '.pv_tabOn{color:var(--dsw-alias-label-primary);border-bottom-color:var(--dsw-alias-brand-primary,#3b5bdb);font-weight:600}' +
+  // ---- Provider 卡片：CC Switch 式名称+链接两行布局 ----
+  '.pv_pcLead{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}' +
+  '.pv_pcLeadRow{display:flex;align-items:center;gap:8px}' +
+  '.pv_pcLink{font-size:13px;line-height:1.5;color:var(--dsw-alias-label-tertiary);text-decoration:none;' +
+  'overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+  '.pv_pcLink:hover{color:var(--dsw-alias-label-secondary);text-decoration:underline}' +
+  // ---- 模型行悬浮详情卡（Cherry Studio 式）----
+  '.pv_mRow{position:relative;display:flex;align-items:center;gap:8px;padding:3px 0}' +
+  '.pv_mId{flex:none;width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
+  'font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);' +
+  'font-family:ui-monospace,Menlo,Consolas,monospace}' +
+  '.pv_mName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+  '.pv_mHeadRow{display:flex;align-items:center;gap:8px;padding:5px 0 4px;font-size:12px;' +
+  'color:var(--dsw-alias-label-tertiary);border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}' +
+  '.pv_mCaps{flex:none;width:100px;display:inline-flex;justify-content:flex-end;align-items:center;gap:6px}' +
+  '.pv_mCtx{flex:none;width:56px;text-align:right;font-size:12px;line-height:18px;' +
+  'color:var(--dsw-alias-label-tertiary)}' +
+  '.pv_capIcons{display:inline-flex;gap:6px;font-size:12px;line-height:16px}' +
+  '.pv_capMini{font-size:11px;line-height:16px;padding:0 7px;border-radius:999px;white-space:nowrap}' +
+  '.pv_mHead{display:flex;align-items:center;gap:6px;flex:1;min-width:0;font:inherit;font-size:13px;font-weight:600;' +
+  'line-height:18px;padding:0;border:0;background:0 0;cursor:pointer;color:var(--dsw-alias-label-primary);text-align:left}' +
+  '.pv_mHead:hover{color:var(--dsw-alias-label-secondary)}' +
+  // 模型区头部（仿父卡片）：标题左、过滤器右、Chevron 最右；列表区分割线 = 折叠态下边缘（零外边距）
+  // 头部行高 = 字号行高(18) + 上下各 10px，恒定不变；过滤框在该行内居中，不撑高行
+  '.pv_mTop{display:flex;align-items:center;gap:8px;height:38px;padding:0}' +
+  '.pv_mCaretCol{flex:none;width:24px;display:flex;align-items:center;justify-content:center;' +
+  'cursor:pointer;color:var(--dsw-alias-label-tertiary)}' +
+  '.pv_mCaretCol:hover{color:var(--dsw-alias-label-secondary)}' +
+  '.pv_mList{border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));' +
+  'margin-top:0;padding-top:6px;display:flex;flex-direction:column}' +
+  '.pv_mFilter{flex:none;width:240px;box-sizing:border-box;padding:5px 24px 5px 12px;font:inherit;font-size:13px;' +
+  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:8px;outline:0;' +
+  'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-primary)}' +
+  '.pv_mFilter:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}' +
+  '.pv_fbox{position:relative;display:inline-flex;align-items:center;flex:none}' +
+  '.pv_fclear{position:absolute;right:2px;top:50%;transform:translateY(-50%);border:0;background:0 0;' +
+  'cursor:pointer;font:inherit;font-size:14px;line-height:1;padding:2px 6px;' +
+  'color:var(--dsw-alias-label-tertiary);border-radius:6px}' +
+  '.pv_fclear:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}' +
+  '.pv_tip{display:none;position:absolute;left:0;bottom:calc(100% + 6px);z-index:300;width:270px;' +
+  'padding:12px 14px;border-radius:12px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));' +
+  'background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));' +
+  'box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18));flex-direction:column;gap:6px}' +
+  '.pv_mRow:hover .pv_tip{display:flex}' +
+  '.pv_tipTitle{font-size:13px;font-weight:600;line-height:18px}' +
+  '.pv_tipRow{display:flex;gap:10px;font-size:12px;line-height:18px}' +
+  '.pv_tipLabel{flex:none;width:60px;color:var(--dsw-alias-label-tertiary)}' +
+  '.pv_tipDim{font-size:11px;color:var(--dsw-alias-label-tertiary)}' +
+  '.pv_tipCaps{display:flex;gap:6px;flex-wrap:wrap}' +
+  '.pv_cap{font-size:11px;padding:1px 8px;border-radius:999px}' +
+  '.pv_capVision{color:#2f9e44;background:rgba(47,158,68,.12)}' +
+  '.pv_capVideo{color:#7c3aed;background:rgba(124,58,237,.12)}' +
+  '.pv_capReason{color:#b8860b;background:rgba(217,162,0,.15)}'
+
+var tagId = 'dsh-provider/plan.css'
+
+/** 挂样式：规范路径是官方 styles.insert（动态插件运行时随 client run 清理、带 data-dyn 记账）；
+ *  静态插件运行时没有该内置，退回手写 style 标签（等价实现）。 */
+export function installCss(stylesInsert: ((cssText: string) => unknown) | undefined): void {
+  if (typeof stylesInsert === 'function') {
+    try {
+      stylesInsert(css)
+      return
+    } catch (cause) { /* insert 失败就走手写标签兜底 */ }
+  }
+  if (typeof document === 'undefined') return
+  if (document.querySelector('style[data-plugin-css=' + JSON.stringify(tagId) + ']') !== null) return
+  var tag = document.createElement('style')
+  tag.dataset.plugin = 'dsh-provider'
+  tag.dataset.pluginCss = tagId
+  tag.textContent = css
+  document.head.appendChild(tag)
+}
+
+/** 测试环境标识：标题加「· 测试」后缀 + favicon 右下角盖橙色「测」角标。 */
+export function markTestEnv() {
+  try {
+    if (document.title.indexOf('测试') === -1) {
+      document.title = (document.title === '' ? 'dsh' : document.title) + ' · 测试'
+    }
+    var iconLink = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
+    var img = new window.Image()
+    img.onload = function () {
+      var canvas = document.createElement('canvas')
+      canvas.width = 64
+      canvas.height = 64
+      var g = canvas.getContext('2d')
+      if (g !== null && g !== undefined) {
+        g.drawImage(img, 0, 0, 64, 64)
+        g.fillStyle = '#e8890c'
+        g.beginPath()
+        g.arc(46, 46, 20, 0, Math.PI * 2)
+        g.fill()
+        g.fillStyle = '#ffffff'
+        g.font = 'bold 24px sans-serif'
+        g.textAlign = 'center'
+        g.textBaseline = 'middle'
+        g.fillText('测', 46, 48)
+        setFavicon(canvas.toDataURL('image/png'))
+        return
+      }
+      setFavicon(undefined)
+    }
+    img.onerror = function () { setFavicon(undefined) }
+    img.src = iconLink === null ? '/favicon.ico' : iconLink.href
+  } catch (cause) { /* 标不了就算了 */ }
+}
+
+/** 替换 favicon；dataUrl 为 undefined 时退到一个纯「测」字圆形 icon。 */
+function setFavicon(dataUrl: string | undefined) {
+  try {
+    var link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
+    if (link === null || link === undefined) {
+      link = document.createElement('link')
+      link.rel = 'icon'
+      document.head.appendChild(link)
+    }
+    if (dataUrl !== undefined) {
+      link.href = dataUrl
+      return
+    }
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+      '<circle cx="32" cy="32" r="30" fill="#e8890c"/>' +
+      '<text x="32" y="43" font-size="30" font-weight="bold" fill="#fff" text-anchor="middle">测</text></svg>'
+    link.href = 'data:image/svg+xml,' + encodeURIComponent(svg)
+  } catch (cause) { /* 标不了就算了 */ }
+}

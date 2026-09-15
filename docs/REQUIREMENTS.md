@@ -29,11 +29,11 @@ dsh（DeepSeek Harness）打包时固定了旧版 pi-ai，模型目录滞后上�
 
 ## 3. 功能需求（as-is 基线）
 
-### 3.1 pi-ai 桥接与自动更新
+### 3.1 pi-ai 桥接与更新
 
 | 编号 | 需求 | 验收要点 |
 |---|---|---|
-| FR-1.1 | 自动跟进上游：监视 npm registry，节流（默认启动时检查一次，间隔 6h），发现新版本自动下载、装依赖、就位 | 新版本出现在 `vendor/pi-ai/<版本>/`；`DSH_PROVIDER_UPDATE=off` 可关闭自动检查 |
+| FR-1.1 | 手动跟进上游：设置页按钮触发（`POST /provider/update`），检查 npm registry 最新版、下载、装依赖、就位；**验证通过才替换**——tarball 完整性（`dist.integrity` sha512）与兼容性体检（bridge 的 import 需求 probe）两道都过才标记待重启；启动期自动检查已移除（2026-09-15 决策） | 新版本出现在 `vendor/pi-ai/<版本>/`；校验失败/体检不过的版本进 `latestRejected`，不会切换 |
 | FR-1.2 | 桥接装载：官方 llm-pi-ai bundle 的拷贝跑在我们维护的新版 pi-ai 上；bridge 不可用时退化为纯计费模式，不拖垮启动 | 重启后模型目录包含上游新增模型；bridge 失败时 `/plan/status` 仍工作 |
 | FR-1.3 | 升级与回滚：换软链即生效时机 = 重启；回滚 = 软链指回旧版本目录 | `GET /provider/status` 报告当前版本/needsRestart |
 | FR-1.4 | 桥接状态可诊断：版本、上游最新版、已发现的路由表（含凭据名，不含值） | `GET /provider/status` JSON 可见 |
