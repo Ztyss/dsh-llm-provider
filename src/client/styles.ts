@@ -1,6 +1,6 @@
 /**
  * 插件样式：沿用 GUI 的 CSS 变量，跟模型座位视觉一致。
- * installCss 走官方 styles.insert（在时）或手写 style 标签（缺席时）。
+ * installCss 一律手写 style 标签（官方 styles.insert 需要 inject 'styles'，见文件末尾注释）。
  */
 var css =
   '.plan_root{position:relative;display:inline-flex;align-items:center}' +
@@ -257,15 +257,14 @@ var css =
 
 var tagId = 'dsh-provider/plan.css'
 
-/** 挂样式：规范路径是官方 styles.insert（动态插件运行时随 client run 清理、带 data-dyn 记账）；
- *  静态插件运行时没有该内置，退回手写 style 标签（等价实现）。 */
-export function installCss(stylesInsert: ((cssText: string) => unknown) | undefined): void {
-  if (typeof stylesInsert === 'function') {
-    try {
-      stylesInsert(css)
-      return
-    } catch (cause) { /* insert 失败就走手写标签兜底 */ }
-  }
+/**
+ * 挂样式：手写 style 标签（带 data-plugin-css 标记，重复调用幂等）。
+ *
+ * 不走官方 styles.insert：那个服务要 inject 'styles'，本插件没 inject 它，取 ctx.styles
+ * 会直接抛（见 index.ts apply 里的注释）。手写标签是等价实现——静态插件运行时本来也只有
+ * 这一条路。
+ */
+export function installCss(): void {
   if (typeof document === 'undefined') return
   if (document.querySelector('style[data-plugin-css=' + JSON.stringify(tagId) + ']') !== null) return
   var tag = document.createElement('style')

@@ -39,18 +39,21 @@ import type { ClientContext, ModelDirectoriesService, ModelSelection } from './t
 export var inject = ['slots', 'sessions', 'remote', 'remote.session', 'locale']
 
 export function apply(ctx: ClientContext) {
-  installCss(ctx.styles !== undefined && ctx.styles !== null && typeof ctx.styles.insert === 'function'
-    ? ctx.styles.insert
-    : undefined)
-  // 规范路径：官方 styles.insert 在（动态插件运行时）就走它——随 client run 自动清理、
-  // 带 data-dyn 记账；静态插件运行时没有该内置，installCss 的手写 style 标签是等价实现。
+  installCss()
+  // 样式挂载固定走 installCss 的手写 style 标签。官方 styles.insert 要 inject 'styles'，
+  // 而本插件 inject 列表里没有它：直接取 ctx.styles 会抛
+  // "cannot get property "styles" without inject"（2026-09-15 实测，这一抛会把整个插件
+  // 加载搞挂），所以属性访问必须在 try 里，仅用于诊断，不影响样式走哪条路。
   try {
     if (ctx.styles !== undefined && ctx.styles !== null && typeof ctx.styles.insert === 'function') {
       recordDiagnostic('styles', 'styles.insert')
     } else {
       recordDiagnostic('styles', 'fallback-style-tag')
     }
-  } catch (cause) { /* 诊断而已 */ }
+  } catch (cause) {
+    // 没 inject 'styles' 时取属性即抛，属常态：记成手写标签
+    recordDiagnostic('styles', 'fallback-style-tag')
+  }
   recordDiagnostic('applied', new Date().toISOString())
 
   // i18n：优先官方 locale（register + bind，语言切换实时跟随）；重复注册（热重载）会抛，

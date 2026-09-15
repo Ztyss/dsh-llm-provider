@@ -96,7 +96,17 @@ function runApply(commandDuplicate) {
       }
     },
   }
-  moduleExports.apply({ effect, slots: scope.slots, inject: scope.inject })
+  // 真机上的 ctx 是 cordis 代理：取没 inject 的服务属性直接抛
+  // （"cannot get property \"styles\" without inject"）。桩必须照这个行为来，否则
+  // 「把 ctx.styles 的读取挪到 try 外面」这种改动测不出来——2026-09-15 正是这一下
+  // 把客户端插件整个加载搞挂了（Failed to load plugins）。
+  const ctx = { effect, slots: scope.slots, inject: scope.inject }
+  Object.defineProperty(ctx, 'styles', {
+    get() {
+      throw new Error('cannot get property "styles" without inject')
+    },
+  })
+  moduleExports.apply(ctx)
   return { registrations, slotInjects, injectedServices, commandRegistered }
 }
 
