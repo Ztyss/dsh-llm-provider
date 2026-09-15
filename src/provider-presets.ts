@@ -14,7 +14,7 @@
 import { loadModelDetails } from './model-details.js'
 import { activePiAiRoot } from './bridge.js'
 import { piAiName } from './pi-ai-names.js'
-import { labelOf, websiteOf } from './routes.js'
+import { NATIVE_EQUIVALENTS, labelOf, websiteOf } from './routes.js'
 import { findAdapter } from './adapters/registry.js'
 
 /** 预设里一条供应商。 */
@@ -50,11 +50,6 @@ interface PresetSource {
 const EXTRA_PRESETS: (PresetSource & { id: string })[] = [
   { id: 'custom-gateway', label: 'Custom Gateway', baseURL: '', api: 'openai-completions', custom: true },
 ]
-
-/** 原生适配器已覆盖的厂商：目录里同厂商的预设视为已配置（deepseek 官方 ≠ 目录的 deepseek，但同为一家）。 */
-const NATIVE_EQUIVALENTS: Record<string, readonly string[]> = {
-  deepseek: ['deepseek-official'],
-}
 
 /** 官方 deriveKeyRef 同款：路由键 → 凭据名（KIMI_CODING_API_KEY 这种）。 */
 export function keyEnvOf(routeId: string): string {

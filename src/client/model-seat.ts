@@ -9,7 +9,38 @@ import { accountsById, findModel, loadModelCatalog, loadModelDetailMap, loadPlan
 import { recordDiagnostic } from './diag.js'
 import { defaultEffortOf, dotClass, effortLabel, formatContext, fuzzyMatch, quotaShortOf, quotaTipOf, reasoningTextOf, toneColor, worstPercent } from './format.js'
 import { caretSvg, checkSvg, chevronRightSvg } from './icons.js'
-import type { CatalogModel, EffortChoice, FieldEvent, ModelSelection, ModelSwitchSeatProps } from './types.js'
+import type { CatalogGroup, CatalogModel, EffortChoice, FieldEvent, ModelSelection, ModelSwitchSeatProps } from './types.js'
+
+/**
+ * 老的 provider id → 现在的路由 id。官方 llm-deepseek 时代的会话里记的是 `deepseek-official`，
+ * 那条路由由本插件接管的 pi-ai `deepseek` 顶上（两边服务的是同一批模型）。
+ */
+export var LEGACY_PROVIDER_ALIASES: Record<string, string> = { 'deepseek-official': 'deepseek' }
+
+/**
+ * 把选择里已经不存在的老 provider id 折到现存路由上。
+ *
+ * 只在「目标 provider 和同一个 model id 都在目录里」时才折——对不上就原样返回，宁可显示
+ * 那个死 id，也不能把会话悄悄指到别的模型上。档位只在新模型支持时才带过去（两套适配器的
+ * 档位表不一定一致）。
+ *
+ * @param selection - 会话/目录给出的当前选择。
+ * @param groups - 模型目录。
+ * @returns 折过之后的选择；不需要折时原样返回。
+ */
+export function aliasSelection(selection: ModelSelection | undefined, groups: CatalogGroup[] | undefined): ModelSelection | undefined {
+  if (selection === undefined || selection === null) return selection
+  var mapped = LEGACY_PROVIDER_ALIASES[selection.provider]
+  if (mapped === undefined || groups === undefined) return selection
+  var target = findModel(groups, mapped, selection.model)
+  if (target === undefined) return selection
+  var effort = selection.reasoningEffort
+  var efforts = target.reasoning === undefined ? undefined : target.reasoning.efforts
+  var keepEffort = typeof effort === 'string' && (efforts === undefined || efforts.indexOf(effort) !== -1)
+  return keepEffort
+    ? { provider: mapped, model: selection.model, reasoningEffort: effort }
+    : { provider: mapped, model: selection.model }
+}
 
 export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
   var sessionId = props.sessionId
@@ -84,9 +115,41 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
   // 当前选择：有目录服务时以它为准（官方那边 store.current 就是
   // `projected.next ?? catalog.default`，已经算好默认落点）；
   // 没有目录服务（plan-test）时按官方同一口径拼：本地乐观值 → 会话投影 → 宿主默认
-  var selection: ModelSelection | undefined = directoryCurrent !== undefined && directoryCurrent !== null
+  var rawSelection: ModelSelection | undefined = directoryCurrent !== undefined && directoryCurrent !== null
     ? directoryCurrent
     : (lastSel ?? projectionSelection ?? httpDefault)
+  // 老会话里记的可能是已经被接管掉的那条路由（deepseek-official），折到现路由上显示与取数
+  var selection = aliasSelection(rawSelection, groups)
+
+  // 折过之后还要把会话记录也改过来：宿主在 prompt() 里校验 `routeServed(provider)`，
+  // 记着死 id 的会话连消息都发不出去（no adapter serves provider …）。只在映射目标确实
+  // 存在时做一次，失败也不打扰用户（下次读投影还会再试）。
+  var migratedRef = react.useRef('')
+  react.useEffect(
+    function () {
+      if (rawSelection === undefined || rawSelection === null) return
+      if (selection === undefined || selection === null) return
+      if (rawSelection.provider === selection.provider && rawSelection.model === selection.model) return
+      var key = rawSelection.provider + '|' + rawSelection.model + '>' + selection.provider + '|' + selection.model
+      if (migratedRef.current === key) return
+      migratedRef.current = key
+      var request: ModelSelection = selection.reasoningEffort === undefined
+        ? { provider: selection.provider, model: selection.model }
+        : { provider: selection.provider, model: selection.model, reasoningEffort: selection.reasoningEffort }
+      var call = typeof props.select === 'function'
+        ? props.select(request)
+        : submitSelection(sessionId, request.provider, request.model, request.reasoningEffort)
+      call
+        .then(function (ok) {
+          if (ok !== false) setLastSel(request)
+        })
+        .catch(function () {
+          migratedRef.current = '' /* 这次没成，下次读投影时再试 */
+        })
+    },
+    [rawSelection === undefined || rawSelection === null ? '' : rawSelection.provider + '/' + rawSelection.model,
+      selection === undefined || selection === null ? '' : selection.provider + '/' + selection.model],
+  )
 
   react.useEffect(
     function () {

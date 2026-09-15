@@ -256,6 +256,29 @@ rowsCheck('没密钥时把原因带出来',
 rowsCheck('缺 ok 但有 account.error 也算失败', refreshFailure({ account: { error: '解析失败' } }) === '解析失败')
 rowsCheck('既没 ok 也没原因时给兜底文案', refreshFailure(undefined) === '未知错误')
 
+// ---- 老 provider id 的别名（会话里记着 deepseek-official 的那些）----
+// 官方 llm-deepseek 时代的会话记的是 deepseek-official，那条路由已经被本插件接管掉了：
+// 不折的话宿主 prompt() 会直接拒（no adapter serves provider …），连消息都发不出去。
+const { aliasSelection } = moduleExports
+const catalog = [
+  { id: 'deepseek', name: 'DeepSeek', models: [{ id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', reasoning: { efforts: ['low', 'high', 'max'], default: 'high' } }] },
+]
+rowsCheck('老 id + 模型都在目录里 → 折到现在的路由',
+  JSON.stringify(aliasSelection({ provider: 'deepseek-official', model: 'deepseek-v4-flash' }, catalog))
+    === JSON.stringify({ provider: 'deepseek', model: 'deepseek-v4-flash' }))
+rowsCheck('档位在新模型支持时带过去',
+  aliasSelection({ provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'max' }, catalog).reasoningEffort === 'max')
+rowsCheck('档位在新模型没有时丢掉（两套适配器档位表不一定一致）',
+  aliasSelection({ provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'minimal' }, catalog).reasoningEffort === undefined)
+rowsCheck('目标 provider 不在目录里 → 原样返回，不乱指',
+  aliasSelection({ provider: 'deepseek-official', model: 'deepseek-v4-flash' }, [{ id: 'kimi-coding', name: 'Kimi', models: [] }]).provider === 'deepseek-official')
+rowsCheck('模型对不上 → 原样返回',
+  aliasSelection({ provider: 'deepseek-official', model: 'deepseek-v2' }, catalog).provider === 'deepseek-official')
+rowsCheck('目录还没加载时不折', aliasSelection({ provider: 'deepseek-official', model: 'deepseek-v4-flash' }, undefined).provider === 'deepseek-official')
+rowsCheck('不是别名的原样返回',
+  aliasSelection({ provider: 'kimi-coding', model: 'kimi-k2' }, catalog).provider === 'kimi-coding')
+rowsCheck('没有选择时还是 undefined', aliasSelection(undefined, catalog) === undefined)
+
 if (failures > 0) throw new Error(`桥接明细有 ${failures} 条断言没过`)
 
 console.log('\n冒烟通过：模型座位 + 设置页标签两个座位已注册，模型座位用负 priority 遮蔽官方占用者；' +
