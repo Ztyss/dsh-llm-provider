@@ -212,9 +212,9 @@
         <div class="v">后台下载的 pi-ai（dsh 自带的是 0.84.4）。模型清单、各家协议实现都在这儿。</div>
       </div>
       <div class="item" style="background:rgba(255,255,255,.9)">
-        <span class="k">package.json 里的 dependencies</span>
-        <div class="v">锁死一个<b>验证过的</b> pi-ai 版本，装在 <code>&lt;插件&gt;/node_modules</code> 里。
-          热更新不下到 / 下了但不合格时，就用它——这是兜底那份，热更新不会覆盖它。</div>
+        <span class="k">vendor/node_modules/（兜底依赖）</span>
+        <div class="v"><code>vendor/package.json</code> 锁死一个<b>验证过的</b> pi-ai 版本。
+          热更新不下到 / 下了但不合格时就用它——它和热更新目录互不覆盖。</div>
       </div>
     </div>
   </div>
@@ -222,7 +222,7 @@
 
 <div class="note info">
   <b>用哪一份？启动时逐个"体检"挑出来的。</b><br>
-  候选三档按优先级排：热更新下来的（新→旧）→ 内置依赖 → dsh 自带。
+  候选三档按优先级排：热更新下来的（新→旧）→ 兜底依赖 → dsh 自带。
   体检就是照着那份代码的 <code>import</code> 需求生成一个探针模块试一遍，第一个通过的中选。<br>
   为什么不"先加载、失败了再退回"：Node 加载失败的 ESM 会留下半初始化记录，同一个文件没法重试。
   所以判断只能在加载之前做。选中兜底那份时不挂软链——删掉它，Node 自然往上找到 <code>node_modules</code>。
