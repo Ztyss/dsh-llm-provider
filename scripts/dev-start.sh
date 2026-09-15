@@ -9,7 +9,7 @@ set -euo pipefail
 TASK=""
 for arg in "$@"; do
   case "$arg" in
-    -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) grep '^#' "$0" | grep -v '^#!' | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)
       if [ -z "$TASK" ]; then TASK="$arg"; else
         echo "多余参数: $arg" >&2; exit 2
