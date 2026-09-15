@@ -133,9 +133,10 @@ node lib/adapters/run.js kimi-coding --key sk-xx
 node test/routes.mjs                    # 路由发现的单元测试
 node test/credential-check.mjs          # 凭据体检的单元测试
 node test/catalog-patch.mjs             # 目录补丁 + 「只打自己 vendor」的准入判断
+node test/cordis-patch.mjs              # patch 层：禁用 llm-deepseek 就必须自己声明路由
 node test/client-smoke.mjs              # 浏览器端接线冒烟（假 loader + 桩 react）
 
-npm test                                # 上面四条一起跑（自测/合入用的就是这条）
+npm test                                # 上面五条一起跑（自测/合入用的就是这条）
 ```
 
 开发流程（主线不开发、全部走 worktree）见 `AGENTS.md`，脚本是 `scripts/dev-start.sh` /
@@ -194,8 +195,20 @@ id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启
 | 删掉的 | 原来干什么 | 现在 |
 |---|---|---|
 | `bridge.js` 里给兜底目标打目录补丁 | 写脏 dsh 全局安装的 pi-ai 数据文件 | 兜底时跳过，见上一节 |
-| `index.js` 的 `ensureDeepseekRoute()` | 启动时往 settings 补一条 deepseek 路由 | 只读检查；缺了由 `/provider/status` 的 `deepseekRouteMissing` 报出来，用户自己用「添加 Provider」补 |
+| `index.js` 的 `ensureDeepseekRoute()` | 启动时往 settings 补一条 deepseek 路由 | 路由改在 `cordis.patch.yml` 的插件 config 里声明（见下），settings 里缺了由 `/provider/status` 的 `deepseekRouteMissing` 报出来 |
 | `index.js` 的 `syncRouteDisplayNames()` | 启动时往 settings 补 provider 显示名 | 删除。界面上的名字由 `lib/routes.js` 的 `labelOf()` 实时解析，不依赖写入 |
+
+### DeepSeek 的路由放哪了
+
+内置 `llm-deepseek` 被 `cordis.patch.yml` 禁用，DeepSeek 走 pi-ai 的 `deepseek` 路由——这条路由
+需要有人声明。**声明在 `cordis.patch.yml` 里插件条目的 `config.providers.deepseek`**，不写进
+`settings.yaml`。
+
+依据是 dsh 的 settings 组合顺序（`dsh-settings/lib/index.js` 的 `resolve()`）：
+**schema 默认 → 插件 config（base 层）→ 用户 settings.yaml 层**，逐层深合并。所以：
+
+- 路由由插件提供，任何装了本插件的机器开箱就有 DeepSeek，不用迁移、不用写宿主配置；
+- 用户想改（换端点、换凭据名）就在 `settings.yaml` 里写同名 key，覆盖 base 层。
 
 ## 后续：实时模型参数增强（TODO）
 
@@ -267,7 +280,7 @@ id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启
 | `lib/adapters/*` | 计费适配器（9 家，每家一个文件 + 注册表 + CLI 跑测器） |
 | `lib/client.js` | 浏览器端：模型选择器（官方蓝本两级层级）+ 设置页 Provider 标签（卡片/添加/删除） |
 | `lib/settings-source.js` | 直读 settings.yaml 的 llm-pi-ai 段（兜底） |
-| `test/*.mjs` | 路由发现、凭据体检、目录补丁、客户端接线四个离线测试 |
+| `test/*.mjs` | 路由发现、凭据体检、目录补丁、patch 层、客户端接线五个离线测试 |
 | `scripts/test-profile.sh` | plan-test 测试环境一键脚本（起服务 + 打开浏览器） |
 | `scripts/dev-*.sh` / `main-lock.sh` | worktree 并行开发流程：开任务分支、自测打标记、串行合入 main（见 `AGENTS.md`） |
 | `research/kimi-console-api.md` | kimi 控制台接口逆向记录（未接入） |

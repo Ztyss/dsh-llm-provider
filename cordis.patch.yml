@@ -1,8 +1,8 @@
 # dsh-provider 的 bundle patch 层。
 # 1) 禁用内置 llm-pi-ai 行：ctx.llm.registerAdapter 对同名路由直接抛 DUPLICATE_ADAPTER，
 #    没有遮蔽机制，所以桥接要接手路由只能在这一层禁用官方行。
-# 2) 禁用内置 llm-deepseek 行：DeepSeek 统一走 pi-ai 的 deepseek 路由（见 lib/index.js
-#    的 ensureDeepseekRoute 自动迁移，复用 DEEPSEEK_API_KEY），全世界只留 pi-ai 一套 adapter。
+# 2) 禁用内置 llm-deepseek 行：DeepSeek 统一走 pi-ai 的 deepseek 路由，全世界只留
+#    pi-ai 一套 adapter。那条路由由下面的 config 声明（复用 DEEPSEEK_API_KEY）。
 # 3) 把本插件插进 profile 插件树；本插件内部的桥接副本完全接管 llm-pi-ai 的
 #    行为（settings 段、模型发现、模型选择器目录），对用户不可见地换到了新版 pi-ai。
 #
@@ -22,3 +22,15 @@
 - insert:
     - id: dsh-provider
       name: dsh-provider
+      # DeepSeek 走 pi-ai 的路由在这里声明：内置 llm-deepseek 被本文件禁用，得有人
+      # 接手。放插件自己的 config（dsh 的 settings 组合是「schema 默认 → 这里 → 用户
+      # settings.yaml 层」，见 dsh-settings 的 mergeLayers）而不是启动时往 settings
+      # 写——插件不写宿主配置。用户想改就在 settings.yaml 里写同名的
+      # llm-pi-ai.providers.deepseek，会覆盖这里的值。
+      config:
+        providers:
+          deepseek:
+            displayName: DeepSeek
+            apiKeyEnv: DEEPSEEK_API_KEY
+            api: openai-completions
+            baseURL: https://api.deepseek.com
