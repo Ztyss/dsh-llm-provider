@@ -106,7 +106,7 @@ dsh 的模型目录来自打包时固定的旧版 pi-ai（实测装的是 0.84.4
 **源码是 TypeScript，在 `src/`；`lib/` 是构建产物，不入库。**
 
 ```sh
-npm install        # 一次：装 typescript / tsdown / @types/node
+scripts/install-deps.sh   # 一次：装 typescript / tsdown / @types/node（见下）
 npm run build      # = tsdown，src/*.ts → lib/*.js
 npm run watch      # 改代码自动重建
 npm run typecheck  # = tsc --noEmit（构建不查类型，要单独跑）
@@ -120,6 +120,10 @@ npm run typecheck  # = tsc --noEmit（构建不查类型，要单独跑）
 | `lib/client.js` | `src/client.ts` | 浏览器端。单文件 CJS + `window.__ModuleLoader__.load({...})` 外壳——**那三行外壳由构建的 `banner`/`footer`/`intro` 加上**，源码里不写（跟官方插件同一套做法，见官方的 `packages/client/tsdown.client.ts`） |
 
 插件是 profile 里 `link:` 进来的，跑的就是 `lib/`——**改完源码忘了构建，跑的还是旧代码**。
+
+装依赖走 `scripts/install-deps.sh` 而不是直接 `npm install`：仓库的 `node_modules/@deepseek-ai`
+是一条手工软链（指向 `$DSH_HOME/profiles/node_modules/@deepseek-ai`），插件运行时靠它解析宿主
+提供的包；npm 会顺着这条链去 reify 里面两百个包，直接 EPERM。脚本的做法是装之前挪开、装完放回去。
 
 ## 装法
 

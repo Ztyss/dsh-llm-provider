@@ -35,11 +35,11 @@ WT=".worktrees/$SLUG"
 git worktree add "$WT" -b "$BRANCH"
 
 # TypeScript 项目：worktree 里没有 node_modules，先装依赖（装不上不致命，给出手动命令）
-if ! (cd "$WT" && npm install --no-audit --no-fund --loglevel=error); then
+if ! (cd "$WT" && bash scripts/install-deps.sh --loglevel=error); then
   echo "" >&2
   echo "依赖没装上——worktree 里没法 npm run build。" >&2
-  echo "手动装一次：cd $WT && npm install" >&2
-  echo "（若报 ~/.npm 权限问题：npm install --cache=<某个可写目录>）" >&2
+  echo "手动装一次：cd $WT && scripts/install-deps.sh" >&2
+  echo "（若报 ~/.npm 权限问题：加 --cache=<某个可写目录>）" >&2
 fi
 
 cat <<EOF
