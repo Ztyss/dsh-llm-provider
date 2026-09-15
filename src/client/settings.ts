@@ -29,13 +29,13 @@ import type { AddProviderPanelProps, BridgeRow, CatalogModel, FieldEvent, Headli
 function piAiSourceLabel(source: unknown): string {
   if (source === 'dependency') return '兜底依赖'
   if (source === 'dsh') return 'dsh 自带'
-  return '热更新'
+  return '已下载'
 }
 
 function piAiSourceHint(source: unknown): string {
-  if (source === 'dependency') return '热更新那份没下来或兼容性检查没过，用的是 vendor/package.json 锁定的兜底版本'
-  if (source === 'dsh') return '自己那份还没就位，暂时用 dsh 装的那份（版本较旧）'
-  return 'vendor/pi-ai/<版本>/ 里热更新下来的版本'
+  if (source === 'dependency') return '插件 vendor/ 下手动安装的兜底版本（可选档；没装就会落到 dsh 自带那份）'
+  if (source === 'dsh') return 'dsh 自己装的那份 pi-ai，版本随 dsh 发布走（不一定比上游旧）'
+  return '按需下载并验证过的版本，放在 vendor/pi-ai/<版本>/；换版本需重启 dsh'
 }
 
 /**

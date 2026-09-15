@@ -22,7 +22,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { activePiAiRoot, loadBridge, vendorDir } from './bridge.js'
 import { loadModelDetails, type ModelDetail } from './model-details.js'
-import { checkAndUpdate } from './updater.js'
+import { checkAndUpdate, startBackgroundCheck } from './updater.js'
 import { labelOf, providerRoutes, websiteOf, type ProviderRoute } from './routes.js'
 import { presetsWithMeta } from './provider-presets.js'
 import { findAdapter } from './adapters/registry.js'
@@ -438,8 +438,11 @@ export function apply(ctx: PluginContext, config: unknown): void {
     'dsh-llm-provider: /provider/test route',
   )
 
-  // 上游更新只有手动触发（设置页按钮 → POST /provider/update）：自动检查已移除，
-  // 替换必须验证通过（tarball 完整性 + 兼容性体检），见 updater.ts 头部注释。
+  // 启动时后台顺带查一次上游（6 小时节流，DSH_PROVIDER_UPDATE=off 可关）：有更新就下好、
+  // 验证通过后标待重启，下次启动生效——新装的机器不用手点「检查更新」。手动入口仍在
+  // （设置页按钮 → POST /provider/update），替换一律要求验证通过，见 updater.ts 头部注释。
+  startBackgroundCheck(logger, bridge.ok ? bridge.piAiVersion : undefined)
+
   logger?.info?.('dsh-llm-provider active: GET /plan/status, GET /provider/status, POST /provider/update')
 }
 

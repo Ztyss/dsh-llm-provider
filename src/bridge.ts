@@ -351,14 +351,19 @@ export function loadBridge(): BridgeLoadResult {
     if (needsCopy) copyFileSync(srcBundle, bridgeLib)
     writeFileSync(join(bridgeDir, 'package.json'), BRIDGE_PACKAGE_JSON)
 
-    // 2. 挑一份能用的 pi-ai：候选按优先级排（热更新的新→旧 → 内置依赖 → dsh 自带），
+    // 2. 挑一份能用的 pi-ai：候选按优先级排（热更新的新→旧 → 插件自带依赖 → dsh 自带），
     //    逐个体检，第一个通过的就是这次用的。**体检必须在加载之前**——ESM 加载失败后
     //    同一个文件没法重试，所以不能"先试再退"。
+    //
+    //    目录不存在的档直接跳过，不算"体检没通过"：那是这一档没安装（可选档），不是兼容性
+    //    问题。以前把它写进 rejected，界面上就出现「跳过 兜底依赖：兼容性检查没通过」这种
+    //    看着像故障、其实一切正常的行。
     const requirements = piAiRequirements(readFileSync(bridgeLib, 'utf8'))
     const rejected: RejectedCandidate[] = []
     let chosen: PiAiCandidate | undefined
     let probeUnverified = false
     for (const candidate of piAiCandidates()) {
+      if (!existsSync(candidate.root)) continue
       const probe = probePiAi(requirements, candidate.root, candidate.key)
       if (probe.ok) {
         chosen = candidate
