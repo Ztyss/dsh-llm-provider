@@ -199,14 +199,14 @@ rowsCheck('检查过就报版本号', piAiUpstreamText({ latest: '0.86.0', lastC
 const efforts = { efforts: ['low', 'high', 'max'], default: 'high' }
 rowsCheck('会话定了档位就显示该档位', reasoningTextOf('max', efforts, 'high') === 'Max')
 rowsCheck('会话没定档位时落目录默认档', reasoningTextOf(undefined, efforts, 'high') === 'High')
-rowsCheck('目录没默认档也没档位表时给「服务商默认」', reasoningTextOf(undefined, { efforts: [] }, undefined) === '服务商默认')
+rowsCheck('目录没默认档也没档位表时给「Default」', reasoningTextOf(undefined, { efforts: [] }, undefined) === 'Default')
 rowsCheck('目录里没有这个模型时照会话档位显示', reasoningTextOf('max', undefined, undefined) === 'Max')
 rowsCheck('档位表是 null 也照会话档位显示', reasoningTextOf('low', null, undefined) === 'Low')
 rowsCheck('目录里没有这个模型、会话也没定档位时不显示', reasoningTextOf(undefined, undefined, undefined) === undefined)
 
 // ---- 默认档位与目录默认选择（纯函数，不渲染）----
 // 官方口径：`current.reasoningEffort ?? reasoning.defaultEffort`——目录没声明默认档就显示
-// 「服务商默认」，不能拿档位表首档顶替（那等于替用户选了一个他没选过的档位）。
+// 「Default」（官方 zh/en 字典里都是这个字面值），不能拿档位表首档顶替（那等于替用户选了一个他没选过的档位）。
 rowsCheck('目录声明了默认档就用它', defaultEffortOf({ reasoning: { efforts: ['low', 'high'], default: 'high' } }) === 'high')
 rowsCheck('目录没声明默认档时不用首档兜底', defaultEffortOf({ reasoning: { efforts: ['low', 'high'] } }) === undefined)
 rowsCheck('没有档位表就没有默认档', defaultEffortOf({ reasoning: undefined }) === undefined)

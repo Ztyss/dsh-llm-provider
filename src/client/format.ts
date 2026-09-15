@@ -27,7 +27,9 @@ export function effortLabel(effort: unknown): string | undefined {
  * 模型没显式选强度时的落点：只认目录里声明的默认档（官方同款：
  * `current.reasoningEffort ?? reasoning.defaultEffort`）。
  * 早先还拿档位表首档兜底，那等于替用户选了一个他没选过的档位——
- * 目录没声明默认档时该显示「服务商默认」，让服务商自己决定。
+ * 目录没声明默认档时该显示「Default」，让服务商自己决定。文案照官方：
+ * ui-model-selection 的 `effort.providerDefault` 在 zh/en 字典里都是字面 "Default"
+ * （reference/dsh-src/packages/client/ui-model-selection/src/client/locales.ts）。
  */
 export function defaultEffortOf(model: unknown): string | undefined {
   if (model === null || typeof model !== 'object') return undefined
@@ -51,7 +53,7 @@ export function reasoningTextOf(chosenEffort: unknown, modelReasoning: unknown, 
   if (modelReasoning === undefined || modelReasoning === null) return chosen
   if (chosen !== undefined) return chosen
   var fallback = effortLabel(providerDefault)
-  return fallback === undefined ? '服务商默认' : fallback
+  return fallback === undefined ? 'Default' : fallback
 }
 
 /** 相对时间（上次刷新指示器）：<10s 显示刚刚，<1min 显示 <1min，之后按分钟精度 m / h+m / d。 */

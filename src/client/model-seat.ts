@@ -2,7 +2,7 @@
  * composer 的模型座位（仿官方 ModelSelect 两级层级）：
  *   触发器胶囊（模型名 + 思考强度 + Chevron）→ 根菜单两行（模型 / 推理等级，值右对齐 + ›）
  *   → 模型面板（我们的增强：搜索 + provider 过滤 + 能力徽章，样式走官方 token）
- *   → 推理等级面板（服务商默认 + 档位，选中打勾）。
+ *   → 推理等级面板（Default + 档位，选中打勾）。
  */
 import react from 'react'
 import { accountsById, findModel, loadModelCatalog, loadModelDetailMap, loadPlanStatus, normalizeGroups, selectionCell, submitSelection, unwrap, usePolledSnapshot } from './data.js'
@@ -252,39 +252,15 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
   function chooseModel(groupId: string, modelId: string) {
     if (selection !== undefined && selection !== null
       && selection.provider === groupId && selection.model === modelId) {
-      // 点的还是当前模型：退回根面板（官方行为，不关闭）
+      // 点的还是当前模型：直接收起（官方行为：选中项再点一次 = 确认并关闭）
+      setOpen(false)
       setPane('root')
       return
     }
-    var model = findModel(groups, groupId, modelId)
     // 只提交 provider/model，档位交给宿主（官方同款：宿主 resolveCallConfig 决定，
-    // 再把最终选择回写投影）。自己塞一个档位等于伪造一次「用户选了这档」
-    var req: ModelSelection = { provider: groupId, model: modelId }
-    // 无推理档位的模型：选完即关；有的：提交后退回根面板，让用户接着调推理等级
-    if (model === undefined || model.reasoning === undefined) {
-      void submit(req)
-      return
-    }
-    if (busy) return
-    setBusy(true)
-    var request = typeof props.select === 'function'
-      ? props.select(req)
-      : submitSelection(sessionId, req.provider, req.model, req.reasoningEffort)
-    void request
-      .then(function (ok) {
-        if (ok === false) throw new Error('宿主拒绝了这次切换')
-        setError(null)
-        setLastSel(req)
-        setPane('root')
-        return true
-      })
-      .catch(function (cause) {
-        setError(cause && cause.message ? String(cause.message) : String(cause))
-        return false
-      })
-      .then(function () {
-        setBusy(false)
-      })
+    // 再把最终选择回写投影）。自己塞一个档位等于伪造一次「用户选了这档」。
+    // 选完即关（官方行为）：想接着调档位就重新打开菜单，官方也是这么走的。
+    void submit({ provider: groupId, model: modelId })
   }
 
   function chooseEffort(effort: string | undefined) {
@@ -492,12 +468,12 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
     )
   }
 
-  // ---- 推理等级面板：服务商默认 + 档位，选中打勾 ----
+  // ---- 推理等级面板：Default + 档位，选中打勾 ----
   var effortPane = null
   if (pane === 'effort' && reasoning !== undefined) {
     var choices: EffortChoice[] = []
     if (defaultEffortOf(currentModel) === undefined) {
-      choices.push({ effort: undefined, label: '服务商默认' })
+      choices.push({ effort: undefined, label: 'Default' })
     }
     var effList = reasoning.efforts
     for (var ec = 0; ec < effList.length; ec += 1) {
