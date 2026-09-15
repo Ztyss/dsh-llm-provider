@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dsh-provider · 架构图</title>
+<style>
+  :root {
+    --ink: #1c2433; --ink2: #5a6472; --line: #e3e7ee;
+    --bg: #f5f6f8; --card: #ffffff;
+    --accent: #3b5bdb; --accent-soft: #e7ecfb;
+    --ok: #2f9e44; --ok-soft: #e6f4ea;
+    --warn: #e8890c; --warn-soft: #fdf1e0;
+    --bad: #e03131; --bad-soft: #fdecec;
+    --gap: #b05cc0; --gap-soft: #f6eafa;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.75 -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px 96px; }
+
+  header.hero {
+    background: linear-gradient(160deg, #232c3f 0%, #2c3a63 55%, #3b5bdb 130%);
+    color: #fff; padding: 64px 0 56px; margin-bottom: 40px;
+  }
+  header.hero .wrap { padding-bottom: 0; }
+  .hero h1 { font-size: 34px; margin: 0 0 6px; letter-spacing: .5px; }
+  .hero .sub { opacity: .82; font-size: 15px; max-width: 760px; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px;
+    border-radius: 999px; font-size: 12.5px; background: rgba(255,255,255,.14);
+    border: 1px solid rgba(255,255,255,.22);
+  }
+  .pill b { font-weight: 600; }
+
+  h2 {
+    font-size: 22px; margin: 56px 0 6px; padding-top: 8px;
+    border-top: 1px solid var(--line);
+  }
+  h2 .n {
+    display: inline-grid; place-items: center; width: 26px; height: 26px; margin-right: 10px;
+    border-radius: 8px; background: var(--accent); color: #fff; font-size: 14px;
+    vertical-align: 2px;
+  }
+  h3 { font-size: 16px; margin: 28px 0 8px; }
+  p { margin: 10px 0; }
+  .lead { color: var(--ink2); font-size: 14.5px; margin: 6px 0 20px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 22px; margin: 16px 0;
+  }
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+  }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); }
+  .badge.bug { background: var(--bad-soft); color: var(--bad); }
+  .badge.warn { background: var(--warn-soft); color: var(--warn); }
+  .badge.info { background: var(--accent-soft); color: var(--accent); }
+  .badge.muted { background: #eef0f3; color: var(--ink2); }
+  code { font-family: var(--mono); font-size: .86em; background: #eef1f5; padding: 1.5px 6px; border-radius: 5px; }
+
+  /* ---------- 图 1：插件树 ---------- */
+  .tree { display: flex; flex-direction: column; gap: 10px; }
+  .row {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 13px 18px;
+  }
+  .row .nm { font-family: var(--mono); font-size: 13px; font-weight: 600; min-width: 140px; }
+  .row .ds { color: var(--ink2); font-size: 13.5px; }
+  .row .sp { margin-left: auto; }
+  .row.on { border-color: #cfe6d6; box-shadow: inset 3px 0 0 var(--ok); }
+  .row.off { background: #fafbfc; box-shadow: inset 3px 0 0 #c9cfd8; }
+  .row.off .nm, .row.off .ds { color: #9aa2ae; }
+  .tree .cap { font-size: 12.5px; color: var(--ink2); padding-left: 4px; }
+
+  /* ---------- 图 2：内部分区 ---------- */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .split { grid-template-columns: 1fr; } }
+  .pane { border: 1px solid; border-radius: 14px; padding: 16px 18px; }
+  .pane h4 { margin: 0 0 4px; font-size: 14.5px; }
+  .pane .who { font-size: 12.5px; margin-bottom: 12px; }
+  .pane.ours { background: var(--ok-soft); border-color: #cfe6d6; }
+  .pane.ours .who { color: var(--ok); }
+  .pane.notours { background: var(--warn-soft); border-color: #f3d9ae; }
+  .pane.notours .who { color: #b8720a; }
+  .items { display: flex; flex-direction: column; gap: 7px; }
+  .item {
+    background: rgba(255,255,255,.72); border: 1px solid rgba(0,0,0,.06);
+    border-radius: 9px; padding: 9px 12px; font-size: 13.2px;
+  }
+  .item .k { font-family: var(--mono); font-size: 12.2px; font-weight: 600; }
+  .item .v { color: var(--ink2); font-size: 12.6px; }
+
+  /* ---------- 图 3 / 4：流程 ---------- */
+  .flow { display: flex; align-items: stretch; gap: 8px; flex-wrap: nowrap; margin: 8px 0 4px; }
+  .flow .node {
+    flex: 1 1 0; min-width: 0; background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px 13px;
+  }
+  .flow .node .t { font-weight: 700; font-size: 13.2px; margin-bottom: 3px; }
+  .flow .node .d { color: var(--ink2); font-size: 12.2px; line-height: 1.55; }
+  .flow .arr { align-self: center; color: #aab2bf; font-size: 16px; flex: none; }
+  @media (max-width: 720px) {
+    .flow { flex-wrap: wrap; }
+    .flow .node { flex: 1 1 140px; }
+  }
+  .flow .node.hi { border-color: #cfe6d6; background: #f4fbf6; }
+  .flow .node.ghost { border-style: dashed; background: transparent; }
+
+  .backline {
+    margin: 10px 0 0; padding: 9px 14px; border-radius: 10px;
+    background: var(--accent-soft); color: var(--accent); font-size: 13px;
+  }
+
+  ul.tight { margin: 8px 0; padding-left: 22px; }
+  ul.tight li { margin: 6px 0; }
+  .note {
+    background: var(--warn-soft); border: 1px solid #f3d9ae; border-radius: 12px;
+    padding: 14px 18px; font-size: 14px; margin: 16px 0;
+  }
+  .note b { color: var(--ink); }
+  .note.info { background: var(--accent-soft); border-color: #c9d5f5; }
+  footer { margin-top: 72px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--ink2); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <h1>dsh-provider · 架构图</h1>
+    <div class="sub">四张图说清现在的结构：dsh 里跑着谁、dsh-provider 里面装了什么、
+      一次模型调用怎么走、界面上的数据从哪来。</div>
+    <div class="meta-row">
+      <span class="pill">整理日期 <b>2026-09-15</b></span>
+      <span class="pill">对应 <b>main @ 7815d31 之后</b></span>
+      <span class="pill">配套 <b>README.md · REQUIREMENTS.md</b></span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<h2><span class="n">1</span>dsh 里现在跑着谁</h2>
+<p class="lead">dsh 的插件是一张平铺的名单。名单里有一格专门管"所有大模型"——它自己不会调模型，
+只负责收别人的接入。谁想供模型，就插到这一格上。</p>
+
+<div class="card">
+  <div class="tree">
+    <div class="row on">
+      <span class="nm">llm</span>
+      <span class="ds">管所有大模型的那一格。自己不供模型，只提供"接入位"。</span>
+      <span class="sp"><span class="badge ok">在跑</span></span>
+    </div>
+    <div class="row on">
+      <span class="nm">dsh-provider</span>
+      <span class="ds">我们的插件。插在上面那一格上，供模型。</span>
+      <span class="sp"><span class="badge ok">在跑</span></span>
+    </div>
+    <div class="row off">
+      <span class="nm">llm-pi-ai</span>
+      <span class="ds">原来供 pi-ai 那 41 家模型的。被我们关掉了。</span>
+      <span class="sp"><span class="badge muted">已关闭</span></span>
+    </div>
+    <div class="row off">
+      <span class="nm">llm-deepseek</span>
+      <span class="ds">原来单独供 DeepSeek 的。也被关掉了，DeepSeek 改走 dsh-provider。</span>
+      <span class="sp"><span class="badge muted">已关闭</span></span>
+    </div>
+  </div>
+  <div class="cap" style="margin-top:12px">关掉上面两个、只留自己，是因为接入位不支持"覆盖"——同一个名字被人先占了，后面再插就直接报错。</div>
+</div>
+
+<p>所以供给模型的口子现在只有一个：<b>dsh-provider</b>。</p>
+
+<h2><span class="n">2</span>dsh-provider 里面装了什么</h2>
+<p class="lead">盒子里分三块：我们自己写的、从别处拷来的那份代码、我们自己下载的 pi-ai 库。</p>
+
+<div class="split">
+  <div class="pane ours">
+    <h4>我们自己写的</h4>
+    <div class="who">放在 <code>lib/</code></div>
+    <div class="items">
+      <div class="item"><span class="k">lib/index.js</span><div class="v">插件入口。启动时把供模型的活转交出去，另外开 8 个网页接口。</div></div>
+      <div class="item"><span class="k">lib/adapters/</span><div class="v">查各家 provider 的余额/额度，9 家各一个文件。</div></div>
+      <div class="item"><span class="k">lib/client.js</span><div class="v">浏览器端：模型选择器、设置页的 Provider 标签。</div></div>
+      <div class="item"><span class="k">lib/routes.js 等</span><div class="v">路由发现、凭据体检、候选清单。</div></div>
+      <div class="item"><span class="k">cordis.patch.yml</span><div class="v">关掉上面那两格、插入自己、声明 DeepSeek 的地址。</div></div>
+    </div>
+  </div>
+  <div class="pane notours">
+    <h4>不是我们写的</h4>
+    <div class="who">放在 <code>vendor/llm-bridge/</code></div>
+    <div class="items">
+      <div class="item">
+        <span class="k">lib/index.js（拷来的）</span>
+        <div class="v">真正干活的：注册接入位、发请求、收流、翻译格式。跟模型说话的全在这儿。</div>
+      </div>
+      <div class="item">
+        <span class="k">node_modules/@earendil-works/pi-ai</span>
+        <div class="v">一条软链，指向下面那份 pi-ai。它存在只为了让上面那份代码里的
+          <code>import "…pi-ai"</code> 落到我们自己的 pi-ai 上。</div>
+      </div>
+      <div class="item" style="background:rgba(255,255,255,.9)">
+        <span class="k">vendor/pi-ai/0.85.1/</span>
+        <div class="v">我们从网上下载的 pi-ai（dsh 自带的是 0.84.4）。模型清单、各家协议实现都在这儿。这份是"我们的"。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note info">
+  <b>为什么非要拷一份？</b><br>
+  那份代码里写的是包名（<code>"@earendil-works/pi-ai"</code>），不是路径。包名由 Node 按"文件在哪儿"往上找。
+  放在原来的目录，找到的就是 dsh 自带的旧 pi-ai；拷到我们自己的目录，往上找就找到我们的软链、落到新版 pi-ai。<br>
+  不拷贝的唯一办法是去改 dsh 全局安装里的 pi-ai —— 那是往宿主目录写东西，不允许。
+</div>
+
+<h2><span class="n">3</span>一次模型调用怎么走</h2>
+<p class="lead">从 agent 决定用哪个模型开始，到真正发出 HTTP 请求。</p>
+
+<div class="card">
+  <div class="flow">
+    <div class="node">
+      <div class="t">① agent 循环</div>
+      <div class="d">决定这轮用哪个 provider / 模型</div>
+    </div>
+    <div class="arr">→</div>
+    <div class="node">
+      <div class="t">② 管大模型那一格</div>
+      <div class="d">按 provider 名字挑出该由谁负责</div>
+    </div>
+    <div class="arr">→</div>
+    <div class="node hi">
+      <div class="t">③ dsh-provider 注册的接入</div>
+      <div class="d">启动时注册进去的那个 adapter</div>
+    </div>
+    <div class="arr">→</div>
+    <div class="node hi">
+      <div class="t">④ 我们的 pi-ai</div>
+      <div class="d">0.85.1，出模型清单和协议实现</div>
+    </div>
+    <div class="arr">→</div>
+    <div class="node ghost">
+      <div class="t">⑤ 模型服务商</div>
+      <div class="d">真正发 HTTP，收流</div>
+    </div>
+  </div>
+  <div class="backline">← 返回的流按原路回到 ①，逐块吐给界面</div>
+</div>
+
+<div class="note">
+  <b>注意：这次调用里，dsh-provider 自己写的那部分代码一行都不跑。</b><br>
+  <code>lib/adapters/</code>、<code>lib/client.js</code>、那 8 个接口全都不参与。
+  插件的作用只在<b>启动那一刻</b>——把 ③ 那个接入注册进 ②。之后每次调用走的是 ③④ 的代码。
+</div>
+
+<p>密钥也是 ③ 自己去取，不经过我们的代码。我们写的取密钥逻辑只服务于余额查询。</p>
+
+<h2><span class="n">4</span>界面上的数据从哪来</h2>
+<p class="lead">模型选择器和设置页 Provider 标签，数据不走上面那条调用链。</p>
+
+<div class="card">
+  <div class="flow">
+    <div class="node">
+      <div class="t">浏览器</div>
+      <div class="d">模型选择器<br>Provider 标签页</div>
+    </div>
+    <div class="arr">→</div>
+    <div class="node">
+      <div class="t">8 个网页接口</div>
+      <div class="d">同源 fetch，都在 <code>lib/index.js</code> 里</div>
+    </div>
+    <div class="arr">→</div>
+    <div class="node">
+      <div class="t">两类数据源</div>
+      <div class="d">① 各家余额接口<br>② 我们自己 pi-ai 里的模型文件</div>
+    </div>
+  </div>
+</div>
+
+<h2><span class="n">5</span>三句话记住</h2>
+<ul class="tight">
+  <li><b>位置是我们的，代码不是。</b>供给模型的那一格现在属于 dsh-provider，但里面干活的代码是拷贝来的。</li>
+  <li><b>我们自己的代码管界面和余额。</b>跟模型说话这件事，我们没写一行。</li>
+  <li><b>没有退路。</b>原来两个供模型的都关了，只剩 dsh-provider 一个。它的代码加载不出来，就一个模型都用不了。</li>
+</ul>
+
+<footer>
+  <div>dsh-provider 架构图 · 2026-09-15</div>
+</footer>
+
+</div>
+</body>
+</html>
