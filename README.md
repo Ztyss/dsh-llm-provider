@@ -128,7 +128,12 @@ node lib/adapters/run.js kimi-coding --key sk-xx
 node test/routes.mjs                    # 路由发现的单元测试
 node test/credential-check.mjs          # 凭据体检的单元测试
 node test/client-smoke.mjs              # 浏览器端接线冒烟（假 loader + 桩 react）
+
+npm test                                # 上面三条一起跑（自测/合入用的就是这条）
 ```
+
+开发流程（主线不开发、全部走 worktree）见 `AGENTS.md`，脚本是 `scripts/dev-start.sh` /
+`dev-finish.sh` / `dev-merge.sh`。
 
 ### Kimi 控制台接口（仅调研记录，未接入）
 
@@ -240,6 +245,7 @@ id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启
 | `lib/settings-source.js` | 直读 settings.yaml 的 llm-pi-ai 段（兜底） |
 | `test/*.mjs` | 路由发现、凭据体检、客户端接线三个离线测试 |
 | `scripts/test-profile.sh` | plan-test 测试环境一键脚本（起服务 + 打开浏览器） |
+| `scripts/dev-*.sh` / `main-lock.sh` | worktree 并行开发流程：开任务分支、自测打标记、串行合入 main（见 `AGENTS.md`） |
 | `research/kimi-console-api.md` | kimi 控制台接口逆向记录（未接入） |
 
 `node_modules/@deepseek-ai` 是指向 `~/.dsh/profiles/node_modules/@deepseek-ai` 的符号链接，

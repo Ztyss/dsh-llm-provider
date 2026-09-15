@@ -7,15 +7,19 @@
 # 测试 profile（~/.dsh/profiles/plan-test）与官方 web 用同样的 bundle 组，
 # 但禁用官方 ui-model-selection——模型座位由 dsh-provider 独立接管。
 # profile 文件由本脚本幂等生成，手改会被下次运行覆盖（要改就改这里）。
+#
+# 并行开发时每个 worktree 起一个自己的实例（端口/profile/日志都别撞）：
+#   PORT=3082 PROFILE=plan-test-foo LOG=/tmp/dsh-plan-foo.log scripts/test-profile.sh
+# 不设就用下面的默认值（3081 / plan-test）。
 set -euo pipefail
 
-PORT=3081
-PROFILE="plan-test"
+PORT="${PORT:-3081}"
+PROFILE="${PROFILE:-plan-test}"
 DSH_HOME_DIR="${DSH_HOME:-$HOME/.dsh}"
 PROFILE_DIR="$DSH_HOME_DIR/profiles/$PROFILE"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-LOG="/tmp/dsh-plan-test.log"
+LOG="${LOG:-/tmp/dsh-plan-test.log}"
 
 stop() {
   local pids

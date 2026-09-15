@@ -1,6 +1,9 @@
 # 依赖与运行时产物
 node_modules/
 
+# 开发用 worktree（scripts/dev-start.sh 创建，一个任务一个）
+.worktrees/
+
 # 第三方源码（各自有独立 git 仓库，仅本地参考）
 dsh-src/
 research/cc-switch/
