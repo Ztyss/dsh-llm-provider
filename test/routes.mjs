@@ -30,27 +30,41 @@ const llm = {
   ],
 }
 
-const merged = providerRoutes(piAiSettings, '/nonexistent', llm)
+const merged = providerRoutes(piAiSettings, llm)
 check('配置过的 pi-ai 路由都在', [...merged.keys()].sort(), ['kimi-coding', 'zai-coding-cn', 'deepseek-official'].sort())
 check('未配置的 catalog provider 不进面板', merged.has('openai'), false)
 check('原生路由用已知默认凭据名', merged.get('deepseek-official').apiKeyEnv, 'DEEPSEEK_API_KEY')
 check('原生路由带友好名', merged.get('deepseek-official').label, 'DeepSeek')
-check('settings 优先于文件兜底', merged.get('kimi-coding').apiKeyEnv, 'KIMI_CODING_API_KEY')
+check('get() 给出的凭据名带上了', merged.get('kimi-coding').apiKeyEnv, 'KIMI_CODING_API_KEY')
 check('settings 里的协议带到路由上（卡片展开体要展示）', merged.get('kimi-coding').api, 'anthropic-messages')
 check('settings 没写协议就是 undefined，不编造', merged.get('zai-coding-cn').api, undefined)
 check('原生路由没有协议', merged.get('deepseek-official').api, undefined)
 
 // 场景：llm 服务不可用（老 dsh）→ 只靠 settings
-const noLlm = providerRoutes(piAiSettings, '/nonexistent', undefined)
+const noLlm = providerRoutes(piAiSettings, undefined)
 check('llm 缺席时不崩，仍给出 pi-ai 路由', [...noLlm.keys()].sort(), ['kimi-coding', 'zai-coding-cn'])
 
-// 场景：settings 读不到（README 记录的命名空间未注册 bug）→ 退回读文件；文件不存在则空
-const fileFallback = providerRoutes(undefined, '/nonexistent-dsh-home', llm)
-check('settings 与文件都没有时仍能给出原生路由', [...fileFallback.keys()], ['deepseek-official'])
+// 场景：命名空间没注册（get() 取不到）→ 退回 section()，它直接读 dsh 解析好的文档
+const documentOnly = {
+  get: () => undefined,
+  section: (ns) => (ns === 'llm-pi-ai' ? { providers: { 'moonshotai-cn': { apiKeyEnv: 'MOONSHOTAI_CN_API_KEY' } } } : undefined),
+}
+check('命名空间没注册时退回 section()', [...providerRoutes(documentOnly, llm).keys()].sort(), ['moonshotai-cn', 'deepseek-official'].sort())
 
-// 场景：settings.get 抛错
-const throwing = providerRoutes({ get: () => { throw new Error('boom') } }, '/nonexistent-dsh-home', llm)
-check('settings 抛错被吞掉且不影响原生路由', [...throwing.keys()], ['deepseek-official'])
+// 场景：get() 有值就用它——它是合并后的结果，含插件 config base 层那条 deepseek，
+// 而 section() 只有用户写过的那些，拿它当首选会漏掉 DeepSeek
+const bothWays = {
+  get: () => ({ providers: { deepseek: { apiKeyEnv: 'DEEPSEEK_API_KEY' } } }),
+  section: () => ({ providers: { 'kimi-coding': { apiKeyEnv: 'KIMI_CODING_API_KEY' } } }),
+}
+check('get() 优先于 section()', [...providerRoutes(bothWays, undefined).keys()], ['deepseek'])
+
+// 场景：两条路都拿不到 → 只剩原生路由
+check('两条路都空时仍能给出原生路由', [...providerRoutes(undefined, llm).keys()], ['deepseek-official'])
+
+// 场景：get() 和 section() 都抛（section 对非对象节会抛 TypeError）
+const throwing = { get: () => { throw new Error('boom') }, section: () => { throw new TypeError('must be an object') } }
+check('两条路抛错都被吞掉且不影响原生路由', [...providerRoutes(throwing, llm).keys()], ['deepseek-official'])
 
 check('labelOf 已知 provider 用 pi-ai 名', labelOf('zai-coding-cn'), 'Z.AI Coding CN')
 check('labelOf 未知 provider 按 id 拼', labelOf('my-gateway'), 'My Gateway')
