@@ -164,7 +164,7 @@ export function dropPlanAccount(id: string) {
 export function apiCall(method: string, args: unknown, failMessage?: string): Promise<any> {
   return postJson('/api/' + method, {
     type: 'client-request',
-    rpcId: 'dsh-provider-' + String(Date.now()) + '-' + String(Math.random()).slice(2, 8),
+    rpcId: 'dsh-llm-provider-' + String(Date.now()) + '-' + String(Math.random()).slice(2, 8),
     method: method,
     payload: { args: args },
   }).then(function (envelope) {

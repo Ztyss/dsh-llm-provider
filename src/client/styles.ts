@@ -275,7 +275,7 @@ var css =
   '.pv_capVideo{color:#7c3aed;background:rgba(124,58,237,.12)}' +
   '.pv_capReason{color:#b8860b;background:rgba(217,162,0,.15)}'
 
-var tagId = 'dsh-provider/plan.css'
+var tagId = 'dsh-llm-provider/plan.css'
 
 /**
  * 挂样式：手写 style 标签（带 data-plugin-css 标记，重复调用幂等）。
@@ -288,7 +288,7 @@ export function installCss(): void {
   if (typeof document === 'undefined') return
   if (document.querySelector('style[data-plugin-css=' + JSON.stringify(tagId) + ']') !== null) return
   var tag = document.createElement('style')
-  tag.dataset.plugin = 'dsh-provider'
+  tag.dataset.plugin = 'dsh-llm-provider'
   tag.dataset.pluginCss = tagId
   tag.textContent = css
   document.head.appendChild(tag)

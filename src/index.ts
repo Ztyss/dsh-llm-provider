@@ -1,5 +1,5 @@
 /**
- * dsh-provider 宿主端。
+ * dsh-llm-provider 宿主端。
  *
  * 两件事：
  *   1. LLM 桥接（src/bridge.ts + src/updater.ts）：把官方 llm-pi-ai 适配器跑在
@@ -254,7 +254,7 @@ export function apply(ctx: PluginContext, config: unknown): void {
         })()
       },
     }),
-    'dsh-provider: /plan/status route',
+    'dsh-llm-provider: /plan/status route',
   )
 
   ctx.effect(
@@ -312,7 +312,7 @@ export function apply(ctx: PluginContext, config: unknown): void {
         })
       },
     }),
-    'dsh-provider: /provider/status route',
+    'dsh-llm-provider: /provider/status route',
   )
 
   ctx.effect(
@@ -331,7 +331,7 @@ export function apply(ctx: PluginContext, config: unknown): void {
         })()
       },
     }),
-    'dsh-provider: /provider/update route',
+    'dsh-llm-provider: /provider/update route',
   )
 
   // 模型详情（悬浮卡）：pi-ai 数据文件的全量元数据，60 秒缓存
@@ -347,7 +347,7 @@ export function apply(ctx: PluginContext, config: unknown): void {
         json(res, 200, { models: modelDetailsCache.value, fetchedAt: new Date().toISOString() })
       },
     }),
-    'dsh-provider: /provider/models route',
+    'dsh-llm-provider: /provider/models route',
   )
 
   // 可添加的供应商预设（Provider 标签页「+ 添加」的候选清单，含已配置标记）
@@ -363,7 +363,7 @@ export function apply(ctx: PluginContext, config: unknown): void {
         json(res, 200, { presets: presetsWithMeta(configured) })
       },
     }),
-    'dsh-provider: /provider/presets route',
+    'dsh-llm-provider: /provider/presets route',
   )
 
   // 刷新单个 provider 的余量：实查并顺手更新全局缓存里的这一条（徽标等其他读者也能看到新值）
@@ -385,7 +385,7 @@ export function apply(ctx: PluginContext, config: unknown): void {
         json(res, 200, { ok: account.error === undefined && account.authConfigured !== false, account })
       }),
     }),
-    'dsh-provider: /provider/refresh route',
+    'dsh-llm-provider: /provider/refresh route',
   )
 
   // 删除 provider：unset llm-pi-ai.providers.<id> + 清掉对应凭据；内置原生路由拒绝
@@ -421,7 +421,7 @@ export function apply(ctx: PluginContext, config: unknown): void {
         json(res, 200, { ok: true, keyCleared })
       }),
     }),
-    'dsh-provider: /provider/remove route',
+    'dsh-llm-provider: /provider/remove route',
   )
 
   // 检测 provider：用存的 key 实查一次余量（复用计费适配器，key 不出宿主）
@@ -435,12 +435,12 @@ export function apply(ctx: PluginContext, config: unknown): void {
         json(res, 200, { ok, account })
       }),
     }),
-    'dsh-provider: /provider/test route',
+    'dsh-llm-provider: /provider/test route',
   )
 
   // 上游更新只有手动触发（设置页按钮 → POST /provider/update）：自动检查已移除，
   // 替换必须验证通过（tarball 完整性 + 兼容性体检），见 updater.ts 头部注释。
-  logger?.info?.('dsh-provider active: GET /plan/status, GET /provider/status, POST /provider/update')
+  logger?.info?.('dsh-llm-provider active: GET /plan/status, GET /provider/status, POST /provider/update')
 }
 
 /** 读一版被跳过的记录（status.json 里的 latestRejected）。 */

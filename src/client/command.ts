@@ -61,6 +61,6 @@ export function registerModelCommand(scope: ClientScope): void {
         return function () {}
       }
     },
-    'dsh-provider: /model contribution',
+    'dsh-llm-provider: /model contribution',
   )
 }

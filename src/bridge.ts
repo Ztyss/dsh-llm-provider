@@ -32,7 +32,7 @@ const piAiVersionsDir = join(vendorDir, 'pi-ai')
 const statusFile = join(vendorDir, 'status.json')
 
 const BRIDGE_PACKAGE_JSON = JSON.stringify({
-  name: 'dsh-provider-llm-bridge',
+  name: 'dsh-llm-provider-llm-bridge',
   version: '0.0.0',
   type: 'module',
   main: 'lib/index.js',

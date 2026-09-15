@@ -1,5 +1,5 @@
 /**
- * dsh-provider 浏览器端入口。
+ * dsh-llm-provider 浏览器端入口。
  *
  * 挂在 composer 的 `conversation.input.model` 座位：模型选择器（当前模型 + 思考强度）。
  * 额度数据来自宿主端同源路由 `GET /plan/status`；
@@ -15,7 +15,7 @@
  *   styles.ts    —— CSS 与样式挂载、测试环境角标
  *   i18n.ts      —— 翻译（官方 locale 优先，本地字典兜底）
  *   icons.ts     —— 官方图标库的 SVG 拷贝
- *   diag.ts      —— window.__dshProvider 诊断
+ *   diag.ts      —— window.__dshLlmProvider 诊断
  *
  * lib/client.js 由 tsdown 产出（见 tsdown.config.ts 的 client 段），外面那层
  * window.__ModuleLoader__.load 外壳是构建配置里的 banner/footer/intro，源码里不写。
@@ -62,10 +62,10 @@ export function apply(ctx: ClientContext) {
   try {
     if (ctx.locale !== undefined && ctx.locale !== null && typeof ctx.locale.register === 'function') {
       try {
-        ctx.locale.register('dsh-provider', LOCAL_DICT)
+        ctx.locale.register('dsh-llm-provider', LOCAL_DICT)
       } catch (dup) { /* 已注册过（客户端热重载）：旧字典还有效 */ }
       if (typeof ctx.locale.bind === 'function') {
-        var bound = ctx.locale.bind('dsh-provider')
+        var bound = ctx.locale.bind('dsh-llm-provider')
         setT(function (key: string) {
           var value = bound(key)
           return value === key ? localT(key) : value

@@ -6,8 +6,8 @@ import type { AnyRecord } from '../types.js'
 export function recordDiagnostic(key: string, value: unknown): void {
   try {
     var holder = window as unknown as AnyRecord
-    var bucket = holder.__dshProvider as AnyRecord | undefined
-    if (bucket === undefined) bucket = holder.__dshProvider = {}
+    var bucket = holder.__dshLlmProvider as AnyRecord | undefined
+    if (bucket === undefined) bucket = holder.__dshLlmProvider = {}
     bucket[key] = value
   } catch (cause) {
     /* 没有 window 就算了 */
