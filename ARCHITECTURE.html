@@ -204,15 +204,28 @@
       </div>
       <div class="item">
         <span class="k">node_modules/@earendil-works/pi-ai</span>
-        <div class="v">一条软链，指向下面那份 pi-ai。它存在只为了让上面那份代码里的
+        <div class="v">一条软链，指向下面那份热更新的 pi-ai。它存在只为了让上面那份代码里的
           <code>import "…pi-ai"</code> 落到我们自己的 pi-ai 上。</div>
       </div>
       <div class="item" style="background:rgba(255,255,255,.9)">
-        <span class="k">vendor/pi-ai/0.85.1/</span>
-        <div class="v">我们从网上下载的 pi-ai（dsh 自带的是 0.84.4）。模型清单、各家协议实现都在这儿。这份是"我们的"。</div>
+        <span class="k">vendor/pi-ai/&lt;版本&gt;/</span>
+        <div class="v">后台下载的 pi-ai（dsh 自带的是 0.84.4）。模型清单、各家协议实现都在这儿。</div>
+      </div>
+      <div class="item" style="background:rgba(255,255,255,.9)">
+        <span class="k">package.json 里的 dependencies</span>
+        <div class="v">锁死一个<b>验证过的</b> pi-ai 版本，装在 <code>&lt;插件&gt;/node_modules</code> 里。
+          热更新不下到 / 下了但不合格时，就用它——这是兜底那份，热更新不会覆盖它。</div>
       </div>
     </div>
   </div>
+</div>
+
+<div class="note info">
+  <b>用哪一份？启动时逐个"体检"挑出来的。</b><br>
+  候选三档按优先级排：热更新下来的（新→旧）→ 内置依赖 → dsh 自带。
+  体检就是照着那份代码的 <code>import</code> 需求生成一个探针模块试一遍，第一个通过的中选。<br>
+  为什么不"先加载、失败了再退回"：Node 加载失败的 ESM 会留下半初始化记录，同一个文件没法重试。
+  所以判断只能在加载之前做。选中兜底那份时不挂软链——删掉它，Node 自然往上找到 <code>node_modules</code>。
 </div>
 
 <div class="note info">
@@ -289,7 +302,8 @@
 <ul class="tight">
   <li><b>位置是我们的，代码不是。</b>供给模型的那一格现在属于 dsh-provider，但里面干活的代码是拷贝来的。</li>
   <li><b>我们自己的代码管界面和余额。</b>跟模型说话这件事，我们没写一行。</li>
-  <li><b>没有退路。</b>原来两个供模型的都关了，只剩 dsh-provider 一个。它的代码加载不出来，就一个模型都用不了。</li>
+  <li><b>没有退路，但有兜底。</b>原来两个供模型的都关了，只剩 dsh-provider 一个。它的代码加载不出来
+    就一个模型都用不了——所以插件启动时会先体检挑一份能用的 pi-ai，坏的版本根本不会被切过去。</li>
 </ul>
 
 <footer>

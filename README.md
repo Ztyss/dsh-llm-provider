@@ -50,13 +50,50 @@ dsh 的模型目录来自打包时固定的旧版 pi-ai（实测装的是 0.84.4
 - 内置的 llm-pi-ai 行由 `cordis.patch.yml` 禁用（provider 路由注册没有遮蔽机制，同名直接抛
   `DUPLICATE_ADAPTER`），本插件完全接管：
   settings.yaml 的 `llm-pi-ai.providers` 段、Web Models 设置页、模型选择器行为都不变。
+- 用哪一份 pi-ai 是**加载之前体检挑出来的**，不是"先试再退"（Node 对加载失败的 ESM
+  会留下半初始化记录，同一个文件没法重试，见下面「选 pi-ai」一节）。
 - 升级生效时机：换软链后需重启 dsh（`GET /provider/status` 的 `needsRestart` 会提示）。
-  回滚 = 把软链指回旧版本目录。
-- `vendor/pi-ai/` 为空时（新克隆、worktree）兜底用 dsh 全局装的那份 pi-ai，此时
-  `/provider/status` 报 `piAiVersion: "profile 兜底"`——**跑的是旧目录，不是最新版**，
-  目录补丁也在这条路上跳过（不写宿主的文件）。
+  回滚不用手改软链——把那份热更新版本删掉即可，下次启动自动落回内置依赖。
 
 已验证（2026-09-12）：自动下载 0.85.1 → 桥接加载 → 新目录生效（gpt-6-astra 等 70 个新模型可见）。
+
+## 选 pi-ai：三档候选
+
+启动时 `loadBridge()` 按优先级列候选，**逐个体检**，挑第一个通过的：
+
+| 档 | 目录 | 何时用到 |
+|---|---|---|
+| `vendor/pi-ai/<版本>/` | 插件自己的 vendor（updater 下的） | 有新版本时，新 → 旧逐个试 |
+| 内置依赖 | `<插件>/node_modules/@earendil-works/pi-ai` | 热更新没下到 / 下了但不合格 |
+| dsh 自带 | `$DSH_HOME/profiles/node_modules/@earendil-works/pi-ai` | 裸克隆、依赖还没装 |
+
+`package.json` 里 **`dependencies` 锁定 `@earendil-works/pi-ai` 的版本**，那一份就是"验证过的
+兜底"。它和热更新目录互不覆盖：热更新只往 `vendor/pi-ai/<新版本>/` 里写。
+
+> 依赖要装在**插件自己的目录**里（`link:` 装法不会替你装依赖，得在这个目录跑一次
+> `npm install`）。别用 `npm ci`——它会把 `node_modules/@deepseek-ai` 那条手工软链一起清掉，
+> 而桥接副本上的 dsh 包是靠它解析的。worktree 里不装也没关系，会落到"dsh 自带"那一档。
+
+### 体检（`probePiAi`）
+
+从桥接副本源码抠出它对 pi-ai 的 import（5 个子路径、10 个具名导出），照着生成一份探针
+文件，放进自己的临时目录、配一条指向候选的软链，再 require 它。解析规则与拷贝完全一致，
+但模块 URL 不同——所以一个候选失败不影响下一个，也不会污染真正的拷贝。
+
+**为什么不能"先加载，失败了再退回"**：实测 Node 对加载失败的 ESM 会留下半初始化记录，
+同一个文件再 require 只报 `Cannot require() ES Module ... because it is not yet fully loaded`。
+所以判断必须在加载之前做，这也是整个设计的前提。
+
+体检不过的候选会被列出来（`/provider/status` 的 `bridge.rejected`），不会切过去。
+
+### 回退怎么发生
+
+- 中选的是内置依赖档时**不挂软链**：删掉它，那份拷贝自然往上找到 `node_modules`。
+  这就是"回退"，不用另外指一条链。
+- 热更新版本坏了 → 体检拦住 → 软链压根没指过去 → 跑的还是内置依赖那份 → 不会出现
+  "重启一次就起不来、还得手动删目录"。
+
+一次体检约 75ms，正常启动只体检一档。
 
 ## 装法
 
@@ -134,9 +171,10 @@ node test/routes.mjs                    # 路由发现的单元测试
 node test/credential-check.mjs          # 凭据体检的单元测试
 node test/catalog-patch.mjs             # 目录补丁 + 「只打自己 vendor」的准入判断
 node test/cordis-patch.mjs              # patch 层：禁用 llm-deepseek 就必须自己声明路由
+node test/pi-ai-probe.mjs               # pi-ai 体检：需求解析 + 挡住不兼容的候选
 node test/client-smoke.mjs              # 浏览器端接线冒烟（假 loader + 桩 react）
 
-npm test                                # 上面五条一起跑（自测/合入用的就是这条）
+npm test                                # 上面六条一起跑（自测/合入用的就是这条）
 ```
 
 开发流程（主线不开发、全部走 worktree）见 `AGENTS.md`，脚本是 `scripts/dev-start.sh` /
@@ -179,9 +217,9 @@ id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启
 |---|---|---|
 | `kimi-for-coding` | name `Kimi K2.7 Code`→`Kimi K2.8 Preview`；contextWindow `262144`→`1048576` | [Kimi Code 模型文档](https://www.kimi.com/code/docs/kimi-code/models.html)：该 id 已升级为 K2.8 Preview，上下文 1M（pi-ai 0.85.1 仍写 K2.7/256k） |
 
-**只打自己 vendor 里那份**（`isVendoredRoot()`）：`vendor/pi-ai/` 为空时桥接会兜底用 dsh 全局
-装的那份 pi-ai，那条路上补丁直接跳过——那是别的程序的文件，一个字节都不改（2026-09-15 实践：
-从 worktree 起实例时写脏过一次全局安装，已还原）。
+**只打自己 vendor 里那份**（`isVendoredRoot()`）：回退到内置依赖或 dsh 自带那份时补丁直接跳过——
+那两份分别属于包管理器和别的程序，一个字节都不改（2026-09-15 实践：从 worktree 起实例时写脏过
+一次 dsh 全局安装，已还原）。代价是回退后 Kimi 那条修正不生效，目录旧一点，好过改别人的包。
 
 `/provider/status` 返回 `catalogPatches`，Provider 标签里也会逐条展示（悬停看依据）。
 
