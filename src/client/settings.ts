@@ -14,11 +14,11 @@ import {
   loadModelDetailMap,
   loadPlanStatus,
   loadProviderStatus,
+  mergePlanAccount,
+  onPlanChange,
   postJson,
   withKey,
   withKeys,
-  withoutAccount,
-  withRefreshedAccount,
 } from './data.js'
 import { dotClass, formatContext, fuzzyMatch, headlineChips, linkTextOf, relativeTime, resetCountdownText, shortName, toneColor, worstPercent } from './format.js'
 import { caretSvg } from './icons.js'
@@ -569,6 +569,17 @@ export function ProviderSettingsSection() {
       })
   }, [])
 
+  // 卡片跟着共享额度快照走：座位那边的轮询、别的入口触发的重拉，都会经由这条广播到达这里。
+  // 不订阅的话，卡片会停在"自己上次拉的"那一份上，跟触发器显示的数字不一致。
+  react.useEffect(
+    function () {
+      return onPlanChange(function (payload) {
+        setPlan(payload)
+      })
+    },
+    [],
+  )
+
   react.useEffect(
     function () {
       refresh(false)
@@ -616,12 +627,10 @@ export function ProviderSettingsSection() {
     reloadPresets()
   }
 
-  // 删除 provider 的收尾：不打上游（余量没变），只本地移除 + 重载预设/目录
+  // 删除 provider 的收尾：不打上游（余量没变），只本地移除 + 重载预设/目录。
+  // 本组件的 plan 状态由 onPlanChange 那条广播更新，这里不用再自己算一遍。
   function onProviderRemoved(account: PlanAccount) {
     dropPlanAccount(account.id)
-    setPlan(function (prev: unknown) {
-      return withoutAccount(prev, account.id)
-    })
     setCatTick(function (t: number) { return t + 1 })
     reloadPresets()
   }
@@ -668,9 +677,9 @@ export function ProviderSettingsSection() {
     postJson('/provider/refresh', { providerId: account.id })
       .then(function (res) {
         if (res !== null && res !== undefined && res.account !== undefined) {
-          setPlan(function (prev: unknown) {
-            return withRefreshedAccount(prev, res.account)
-          })
+          // 并进共享快照：广播会把新值同时送到本组件、座位指示器与 /model 命令——
+          // 以前只改本组件的 state，那两处会停在旧值上直到 60 秒缓存过期。
+          mergePlanAccount(res.account)
           showToast('✓ ' + shortName(account) + ' 余量已刷新' + refreshSummary(res.account), true)
           return
         }

@@ -5,7 +5,7 @@
  *   → 推理等级面板（Default + 档位，选中打勾）。
  */
 import react from 'react'
-import { accountsById, findModel, loadModelCatalog, loadModelDetailMap, loadPlanStatus, normalizeGroups, selectionCell, submitSelection, unwrap, usePolledSnapshot } from './data.js'
+import { accountsById, findModel, loadModelCatalog, loadModelDetailMap, loadPlanStatus, normalizeGroups, onPlanChange, selectionCell, submitSelection, unwrap, usePolledSnapshot } from './data.js'
 import { recordDiagnostic } from './diag.js'
 import { defaultEffortOf, dotClass, effortLabel, formatContext, fuzzyMatch, quotaShortOf, quotaTipOf, reasoningTextOf, toneColor, worstPercent } from './format.js'
 import { caretSvg, checkSvg, chevronRightSvg } from './icons.js'
@@ -112,6 +112,17 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
       }
     },
     [selectionCellRef],
+  )
+
+  // 共享额度快照一变就跟着换（设置页单卡刷新、删掉某家 provider）——不用等自己那 60 秒轮询，
+  // 否则同一份余量在设置页和触发器上会各自显示不同的值。
+  react.useEffect(
+    function () {
+      return onPlanChange(function (payload) {
+        setAccounts(accountsById(payload))
+      })
+    },
+    [],
   )
 
   /**

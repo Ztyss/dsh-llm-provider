@@ -218,6 +218,28 @@ rowsCheck('默认选择没档位时就是没有档位', normalizeSelection({ pro
 rowsCheck('默认选择形状不对当作没有', normalizeSelection({ provider: 'deepseek' }) === undefined)
 rowsCheck('默认选择为空当作没有', normalizeSelection(null) === undefined)
 
+// ---- 共享额度快照的广播（设置页刷新/删除后，座位指示器与 /model 命令要立刻跟上）----
+// 以前删除走缓存、单卡刷新只改设置页自己的 state，同一个余量数字能同时存在两个值，
+// 直到 60 秒缓存过期为止。
+const { onPlanChange, mergePlanAccount, dropPlanAccount } = moduleExports
+const broadcasts = []
+const stopListening = onPlanChange((payload) => { broadcasts.push(payload) })
+
+mergePlanAccount({ id: 'kimi-coding', balances: [{ label: '余额', value: '¥1.00' }], windows: [], fetchedAt: 'a' })
+rowsCheck('单卡刷新会广播新快照', broadcasts.length === 1)
+rowsCheck('快照里没有这一家时补上（不是丢掉）', Array.isArray(broadcasts[0].accounts) && broadcasts[0].accounts.some((a) => a.id === 'kimi-coding'))
+
+mergePlanAccount({ id: 'kimi-coding', balances: [{ label: '余额', value: '¥2.00' }], windows: [], fetchedAt: 'b' })
+const same = broadcasts[1].accounts.filter((a) => a.id === 'kimi-coding')
+rowsCheck('同一家再刷是原地覆盖', broadcasts.length === 2 && same.length === 1 && same[0].balances[0].value === '¥2.00')
+
+dropPlanAccount('kimi-coding')
+rowsCheck('删除某家也会广播且把它剔掉', broadcasts.length === 3 && broadcasts[2].accounts.every((a) => a.id !== 'kimi-coding'))
+
+stopListening()
+mergePlanAccount({ id: 'deepseek', balances: [], windows: [], fetchedAt: 'c' })
+rowsCheck('退订之后不再收到', broadcasts.length === 3)
+
 if (failures > 0) throw new Error(`桥接明细有 ${failures} 条断言没过`)
 
 console.log('\n冒烟通过：模型座位 + 设置页标签两个座位已注册，模型座位用负 priority 遮蔽官方占用者；' +

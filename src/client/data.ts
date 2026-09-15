@@ -35,13 +35,46 @@ export function postJson(url: string, body?: unknown): Promise<any> {
 
 /** 额度快照：60 秒内复用，force 绕过（和宿主端缓存同拍）。 */
 var planCache: { at: number; value: unknown } = { at: 0, value: null }
+
+/** 快照订阅者：设置页刷新/删除某一家之后，座位指示器与 /model 命令要立刻跟上。 */
+type PlanListener = (payload: unknown) => void
+var planListeners: PlanListener[] = []
+
+/**
+ * 订阅共享额度快照。每次快照被写入（重拉、单卡刷新、删除某家）都会收到新值。
+ * @param listener - 收到新快照的回调。
+ * @returns 退订函数（组件卸载时调）。
+ */
+export function onPlanChange(listener: PlanListener): () => void {
+  planListeners.push(listener)
+  return function () {
+    planListeners = planListeners.filter(function (entry) { return entry !== listener })
+  }
+}
+
+/**
+ * 写入共享快照并广播。所有写入都走这里——以前删除走缓存、单卡刷新只改页面 state，
+ * 于是同一个数字在设置页和座位指示器上能同时存在两个值（差到缓存过期为止）。
+ * @param value - 新的快照值。
+ * @returns 同一个值，便于调用方直接拿来 setState。
+ */
+function writePlanCache(value: unknown): unknown {
+  planCache = { at: Date.now(), value: value }
+  var listeners = planListeners.slice()
+  for (var i = 0; i < listeners.length; i += 1) {
+    try {
+      listeners[i](value)
+    } catch (cause) { /* 某个订阅者出错不该拖累其他读者 */ }
+  }
+  return value
+}
+
 export function loadPlanStatus(force: boolean): Promise<any> {
   if (!force && planCache.value !== null && Date.now() - planCache.at < 60000) {
     return Promise.resolve(planCache.value)
   }
   return getJson('/plan/status' + (force === true ? '?refresh=1' : '')).then(function (payload) {
-    planCache = { at: Date.now(), value: payload }
-    return payload
+    return writePlanCache(payload)
   })
 }
 
@@ -91,23 +124,37 @@ export function withoutAccount(payload: unknown, id: string): unknown {
   }
 }
 
-/** 快照里替换一家（单卡刷新用：宿主实查回传的新账户盖掉旧值，并更新 fetchedAt）。 */
-export function withRefreshedAccount(payload: unknown, fresh: AnyRecord): unknown {
-  if (payload === null || payload === undefined || typeof payload !== 'object') return payload
-  var record = payload as AnyRecord
-  if (!Array.isArray(record.accounts)) return payload
-  return {
-    ...record,
-    accounts: record.accounts.map(function (account) {
-      return account.id === fresh.id ? fresh : account
-    }),
-    fetchedAt: new Date().toISOString(),
+/**
+ * 把宿主实查回来的一个账户并进共享快照并广播（单卡刷新用）。
+ * 列表里已经有这一家就盖掉，没有就补上——补上这条是必要的：刷新可能发生在
+ * 首次拉取失败、或这一家刚被加进来（还没进快照）的时候。
+ * @param fresh - `/provider/refresh` 回传的 account。
+ */
+export function mergePlanAccount(fresh: AnyRecord): unknown {
+  var current = planCache.value
+  var base: AnyRecord = current === null || current === undefined || typeof current !== 'object'
+    ? {}
+    : current as AnyRecord
+  var accounts = Array.isArray(base.accounts) ? base.accounts : []
+  var known = false
+  for (var i = 0; i < accounts.length; i += 1) {
+    var entry = accounts[i]
+    if (entry !== null && typeof entry === 'object' && (entry as AnyRecord).id === fresh.id) known = true
   }
+  return writePlanCache({
+    ...base,
+    accounts: known
+      ? accounts.map(function (account) {
+          return (account as AnyRecord).id === fresh.id ? fresh : account
+        })
+      : accounts.concat([fresh]),
+    fetchedAt: new Date().toISOString(),
+  })
 }
 
-/** 从客户端缓存里剔除一家。 */
+/** 从客户端缓存里剔除一家并广播（删除 provider 后用：不打上游、不让卡片复活）。 */
 export function dropPlanAccount(id: string) {
-  planCache.value = withoutAccount(planCache.value, id)
+  writePlanCache(withoutAccount(planCache.value, id))
 }
 
 /**
