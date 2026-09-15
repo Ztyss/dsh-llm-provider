@@ -191,6 +191,36 @@ function tipCap(text: unknown, cls: string) {
 }
 
 /**
+ * 「添加供应商」下拉里一项的状态：已配置**且密钥在**才禁选。
+ * 路由配好了但还没密钥（插件自带 config 就声明了 deepseek 这种）仍可选中——选中它就是走一遍
+ * 表单把密钥存进去，否则用户既加不了新的、也补不了那一条缺的 key。
+ */
+export function presetPickState(preset: ProviderPreset): { disabled: boolean; tag: string | null } {
+  if (preset.configured !== true) return { disabled: false, tag: null }
+  if (preset.missingKey === true) return { disabled: false, tag: '缺密钥' }
+  return { disabled: true, tag: '已配置' }
+}
+
+/**
+ * 「刷新余量 / 保存密钥」之后的结果判定：成功返回 undefined，失败给出原因。
+ *
+ * 宿主这两条路由一律回 200，成败看 body 的 ok；凭据没值时 ok=false，原因挂在 account.error
+ * 上（"DEEPSEEK_API_KEY 没有值"）。以前只判 account 在不在，于是没配 key 也会弹一句
+ * "✓ 余量已刷新"，跟卡片上那句"未配置 key"直接打架。
+ */
+export function refreshFailure(result: unknown): string | undefined {
+  var record = result === null || result === undefined ? {} : (result as AnyRecord)
+  if (record.ok === true) return undefined
+  var account = record.account
+  if (account !== null && typeof account === 'object') {
+    var reason = (account as AnyRecord).error
+    if (reason !== undefined && reason !== null && String(reason) !== '') return String(reason)
+  }
+  if (record.error !== undefined && record.error !== null) return String(record.error)
+  return '未知错误'
+}
+
+/**
  * 添加 provider：选预设 → 填密钥/端点 → 测试 → 通过才能添加。
  * 测试走官方 llm/discoverModels 草稿探测（不落盘）；写入走官方同一套控制器
  * （settings/mutate 写 llm-pi-ai.providers 段 + credentials/set 存密钥），
@@ -331,6 +361,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
   for (var pk = 0; pk < presets.length; pk += 1) {
     ;(function (preset) {
       if (pickFilter.trim() !== '' && fuzzyMatch(pickFilter, preset.label + ' ' + preset.id) !== true) return
+      var pick = presetPickState(preset)
       pickItems.push(
         react.createElement(
           'button',
@@ -338,16 +369,16 @@ function AddProviderPanel(props: AddProviderPanelProps) {
             key: preset.id,
             type: 'button',
             className: 'pv_pickItem',
-            disabled: preset.configured === true,
+            disabled: pick.disabled,
             onClick: function () {
               pickPreset(preset.id)
               setPickOpen(false)
             },
           },
           preset.label,
-          preset.configured === true
-            ? react.createElement('span', { className: 'plan_tag', style: { marginLeft: '6px' } }, '已配置')
-            : null,
+          pick.tag === null
+            ? null
+            : react.createElement('span', { className: 'plan_tag', style: { marginLeft: '6px' } }, pick.tag),
         ),
       )
     })(presets[pk])
@@ -530,6 +561,13 @@ export function ProviderSettingsSection() {
   var setDelConfirm = delState[1]
   var refreshingState = react.useState({})
   var setRefreshing = refreshingState[1]
+  // 卡片里"补密钥"的输入草稿与保存中标记（都按 provider id 存）
+  var keyDraftState = react.useState({})
+  var keyDrafts = keyDraftState[0]
+  var setKeyDrafts = keyDraftState[1]
+  var savingKeyState = react.useState({})
+  var savingKey = savingKeyState[0]
+  var setSavingKey = savingKeyState[1]
   var toastState = react.useState(null)
   var toast = toastState[0]
   var setToast = toastState[1]
@@ -679,16 +717,62 @@ export function ProviderSettingsSection() {
         if (res !== null && res !== undefined && res.account !== undefined) {
           // 并进共享快照：广播会把新值同时送到本组件、座位指示器与 /model 命令。
           mergePlanAccount(res.account)
-          showToast('✓ ' + shortName(account) + ' 余量已刷新' + refreshSummary(res.account), true)
-          return
         }
-        showToast('✗ ' + shortName(account) + ' 刷新失败：' + String((res && res.error) || '未知错误'), false)
+        var failure = refreshFailure(res)
+        if (failure === undefined) {
+          showToast('✓ ' + shortName(account) + ' 余量已刷新' + refreshSummary(res.account), true)
+        } else {
+          showToast('✗ ' + shortName(account) + ' 刷新失败：' + failure, false)
+        }
       })
       .catch(function (cause) {
         showToast('✗ ' + shortName(account) + ' 刷新失败：' + String(cause && cause.message ? cause.message : cause), false)
       })
       .then(function () {
         setRefreshingFlag(account.id, false)
+      })
+  }
+
+  /**
+   * 卡片里直接补密钥：路由已经在了（插件自己的 config 就声明了 deepseek），缺的只是凭据。
+   * 存进官方同一个凭据仓库（credentials/set，与添加面板同一条 RPC），随后立刻实测一次余量。
+   */
+  function saveKey(account: PlanAccount) {
+    var ref = account.apiKeyEnv === undefined ? '' : String(account.apiKeyEnv)
+    var draft = keyDrafts[account.id]
+    var value = draft === undefined ? '' : String(draft).trim()
+    if (ref === '') {
+      showToast('✗ ' + shortName(account) + ' 这条路由没有凭据名，无法存密钥', false)
+      return
+    }
+    if (value === '') {
+      showToast('✗ ' + shortName(account) + ' 先填密钥', false)
+      return
+    }
+    setSavingKey(function (prev: AnyRecord) { return withKey(prev, account.id, true) })
+    apiCall('credentials/set', { ref: ref, value: value })
+      .then(function () {
+        setKeyDrafts(function (prev: AnyRecord) { return withKey(prev, account.id, '') })
+        return postJson('/provider/refresh', { providerId: account.id })
+      })
+      .then(function (res) {
+        if (res !== null && res !== undefined && res.account !== undefined) mergePlanAccount(res.account)
+        var failure = refreshFailure(res)
+        if (failure === undefined) {
+          showToast('✓ ' + shortName(account) + ' 密钥已保存，' + refreshSummary(res.account), true)
+        } else {
+          showToast('✓ 密钥已保存，但余量没查通：' + failure, false)
+        }
+        // 预设清单里这一家的「缺密钥」标记要跟着消失
+        reloadPresets()
+      })
+      .catch(function (cause) {
+        var message = String(cause && cause.message ? cause.message : cause)
+        // 配置已经在了、只存凭据也可能失败：分开报，免得用户以为整家都没配上
+        showToast('✗ 密钥保存失败：' + message, false)
+      })
+      .then(function () {
+        setSavingKey(function (prev: AnyRecord) { return withKey(prev, account.id, false) })
       })
   }
 
@@ -810,17 +894,46 @@ export function ProviderSettingsSection() {
             react.createElement('span', { className: 'pv_field' }, String(account.id)),
           ),
         )
-        // API 密钥行：掩码提示（宿主派生前3+后4，值不出宿主）
+        // API 密钥行：配好了显示掩码提示（宿主派生前3+后4，值不出宿主）；
+        // 只有路由、还没密钥时这里就是唯一能补 key 的地方（官方 Models 页已被本插件的
+        // cordis.patch.yml 禁用，别处没有入口）。原生路由（source: native）也走同一条
+        // credentials/set：凭据名就是它的 apiKeyEnv。
+        var keyless = account.authConfigured === false && typeof account.apiKeyEnv === 'string' && account.apiKeyEnv !== ''
         bodyRows.push(
           react.createElement(
             'div',
             { className: 'pv_line pv_row', key: 'key' },
             react.createElement('span', null, 'API 密钥'),
-            react.createElement(
-              'span',
-              { className: 'pv_field' },
-              account.keyHint !== undefined ? account.keyHint : (account.authConfigured === false ? '未配置' : '已配置'),
-            ),
+            keyless
+              ? react.createElement(
+                  'span',
+                  { className: 'pv_pick', style: { display: 'inline-flex', alignItems: 'center', gap: '6px', flex: '1 1 auto' } },
+                  react.createElement('input', {
+                    className: 'pv_field pv_key',
+                    style: { flex: '1 1 auto' },
+                    type: 'password',
+                    placeholder: 'sk-…',
+                    value: keyDrafts[account.id] === undefined ? '' : String(keyDrafts[account.id]),
+                    disabled: savingKey[account.id] === true,
+                    onChange: function (event: FieldEvent) {
+                      var next = event.target.value
+                      setKeyDrafts(function (prev: AnyRecord) { return withKey(prev, account.id, next) })
+                    },
+                  }),
+                  react.createElement('button', {
+                    type: 'button',
+                    className: 'pv_action',
+                    style: { marginLeft: '0', flex: '0 0 auto' },
+                    disabled: savingKey[account.id] === true,
+                    title: '存进 ' + String(account.apiKeyEnv) + ' 并立刻实测一次余量',
+                    onClick: function () { saveKey(account) },
+                  }, savingKey[account.id] === true ? '保存中…' : '保存'),
+                )
+              : react.createElement(
+                  'span',
+                  { className: 'pv_field' },
+                  account.keyHint !== undefined ? account.keyHint : '已配置',
+                ),
           ),
         )
         if (account.baseUrl !== undefined) {
