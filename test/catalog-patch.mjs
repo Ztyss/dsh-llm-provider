@@ -1,8 +1,9 @@
-// 目录补丁测试：验证 applyCatalogPatches 正确应用且幂等。
+// 目录补丁测试：验证 applyCatalogPatches 正确应用且幂等，以及准入判断 isVendoredRoot。
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { applyCatalogPatches, CATALOG_PATCHES } from '../lib/bridge.js'
+import { applyCatalogPatches, CATALOG_PATCHES, isVendoredRoot, vendorDir } from '../lib/bridge.js'
+import { resolveDshHome } from '../lib/settings-source.js'
 
 let failures = 0
 function check(name, cond) {
@@ -38,6 +39,15 @@ check('第二次应用 changed=false', second[0].changed === false)
 // 数据文件缺失时不炸
 const emptyRoot = mkdtempSync(join(tmpdir(), 'pi-ai-empty-'))
 check('缺文件时安全跳过', applyCatalogPatches(emptyRoot).length === 0)
+
+// 打补丁的准入判断：只有自己 vendor 里那份能改。
+// 兜底用的 dsh 全局 pi-ai 是别的程序的文件，写它会污染宿主安装（实测发生过）。
+check('vendor 里的版本目录 → 可打', isVendoredRoot(join(vendorDir, 'pi-ai', '0.85.1')) === true)
+check('dsh 全局那份 → 不打',
+  isVendoredRoot(join(resolveDshHome(), 'profiles', 'node_modules', '@earendil-works', 'pi-ai')) === false)
+check('同前缀但不是 vendor/pi-ai/ → 不打', isVendoredRoot(join(vendorDir, 'pi-ai-evil')) === false)
+check('vendor/pi-ai 自己（版本目录的上一级）→ 不打', isVendoredRoot(join(vendorDir, 'pi-ai')) === false)
+check('undefined → 不打', isVendoredRoot(undefined) === false)
 
 console.log(failures === 0 ? '\n目录补丁测试全部通过' : `\n${failures} 个失败`)
 process.exit(failures === 0 ? 0 : 1)

@@ -52,6 +52,9 @@ dsh 的模型目录来自打包时固定的旧版 pi-ai（实测装的是 0.84.4
   settings.yaml 的 `llm-pi-ai.providers` 段、Web Models 设置页、模型选择器行为都不变。
 - 升级生效时机：换软链后需重启 dsh（`GET /provider/status` 的 `needsRestart` 会提示）。
   回滚 = 把软链指回旧版本目录。
+- `vendor/pi-ai/` 为空时（新克隆、worktree）兜底用 dsh 全局装的那份 pi-ai，此时
+  `/provider/status` 报 `piAiVersion: "profile 兜底"`——**跑的是旧目录，不是最新版**，
+  目录补丁也在这条路上跳过（不写宿主的文件）。
 
 已验证（2026-09-12）：自动下载 0.85.1 → 桥接加载 → 新目录生效（gpt-6-astra 等 70 个新模型可见）。
 
@@ -129,9 +132,10 @@ node lib/adapters/run.js kimi-coding --key sk-xx
 
 node test/routes.mjs                    # 路由发现的单元测试
 node test/credential-check.mjs          # 凭据体检的单元测试
+node test/catalog-patch.mjs             # 目录补丁 + 「只打自己 vendor」的准入判断
 node test/client-smoke.mjs              # 浏览器端接线冒烟（假 loader + 桩 react）
 
-npm test                                # 上面三条一起跑（自测/合入用的就是这条）
+npm test                                # 上面四条一起跑（自测/合入用的就是这条）
 ```
 
 开发流程（主线不开发、全部走 worktree）见 `AGENTS.md`，脚本是 `scripts/dev-start.sh` /
@@ -174,7 +178,24 @@ id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启
 |---|---|---|
 | `kimi-for-coding` | name `Kimi K2.7 Code`→`Kimi K2.8 Preview`；contextWindow `262144`→`1048576` | [Kimi Code 模型文档](https://www.kimi.com/code/docs/kimi-code/models.html)：该 id 已升级为 K2.8 Preview，上下文 1M（pi-ai 0.85.1 仍写 K2.7/256k） |
 
+**只打自己 vendor 里那份**（`isVendoredRoot()`）：`vendor/pi-ai/` 为空时桥接会兜底用 dsh 全局
+装的那份 pi-ai，那条路上补丁直接跳过——那是别的程序的文件，一个字节都不改（2026-09-15 实践：
+从 worktree 起实例时写脏过一次全局安装，已还原）。
+
 `/provider/status` 返回 `catalogPatches`，Provider 标签里也会逐条展示（悬停看依据）。
+
+## 边界：插件不写宿主
+
+启动期（模块加载 + `apply`）只写插件自己的 `vendor/` 目录；对 dsh 安装目录、`settings.yaml`、
+`credentials` 一律只读。写宿主只发生在用户显式操作时：界面上添加/删除 provider。
+
+曾经有两处例外，都已删除（2026-09-15）：
+
+| 删掉的 | 原来干什么 | 现在 |
+|---|---|---|
+| `bridge.js` 里给兜底目标打目录补丁 | 写脏 dsh 全局安装的 pi-ai 数据文件 | 兜底时跳过，见上一节 |
+| `index.js` 的 `ensureDeepseekRoute()` | 启动时往 settings 补一条 deepseek 路由 | 只读检查；缺了由 `/provider/status` 的 `deepseekRouteMissing` 报出来，用户自己用「添加 Provider」补 |
+| `index.js` 的 `syncRouteDisplayNames()` | 启动时往 settings 补 provider 显示名 | 删除。界面上的名字由 `lib/routes.js` 的 `labelOf()` 实时解析，不依赖写入 |
 
 ## 后续：实时模型参数增强（TODO）
 
@@ -220,8 +241,8 @@ id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启
   与「添加供应商」表单同一组信息，缺的字段整行不显示）；添加走 settings/mutate + credentials/set
   （先测试连通才能添加），删除同理；余量不支持时该行不显示而不是报错。
 - **命名全面切到 pi-ai 注册表**（`lib/pi-ai-names.js`）：显示名一律调 pi-ai 自己的 `*Provider()`
-  工厂拿（41 家全量，带缓存）；`syncRouteDisplayNames()` 把 pi-ai 名补进 settings 的 displayName
-  （只补缺失，不覆盖用户自定义）；CURATED 表只剩排序优先级，不起名字。
+  工厂拿（41 家全量，带缓存）；CURATED 表只剩排序优先级，不起名字。**不再往 settings 写
+  displayName**（见「边界」一节），宿主界面因此显示路由 id，界面内部显示 id（2026-09-15 决定）。
 - **pi-ai 目录外只留 Custom Gateway**：添加时可路由 ID、端点、协议（OpenAI / Anthropic 下拉）全
   自定义；stepfun/siliconflow/novita/volcengine-ark 四家预设连同适配器已删除。
 - **计费适配器收敛到 9 家**（对齐 CC Switch 源码调研）。
@@ -235,8 +256,8 @@ id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启
 
 | 文件 | 作用 |
 |---|---|
-| `lib/index.js` | 宿主入口：挂桥接插件 + 计费/状态/预设/添加/删除路由 + 显示名对齐 pi-ai |
-| `lib/bridge.js` | 桥接装载：拷 bundle、管理 pi-ai 软链、目录补丁、require 副本 |
+| `lib/index.js` | 宿主入口：挂桥接插件 + 计费/状态/预设/添加/删除路由 |
+| `lib/bridge.js` | 桥接装载：拷 bundle、管理 pi-ai 软链、目录补丁（只打自己 vendor）、require 副本 |
 | `lib/updater.js` | 上游更新器：registry 检查、下载、装依赖、切版本 |
 | `lib/routes.js` | provider 路由发现（settings + 原生适配器目录合并）+ 官网链接映射 + labelOf 兜底 |
 | `lib/pi-ai-names.js` | pi-ai 注册表名字读取（id → name，缓存；所有显示名的唯一来源） |
@@ -246,7 +267,7 @@ id → 字段覆盖」修正 vendored 目录（幂等，写在磁盘上，重启
 | `lib/adapters/*` | 计费适配器（9 家，每家一个文件 + 注册表 + CLI 跑测器） |
 | `lib/client.js` | 浏览器端：模型选择器（官方蓝本两级层级）+ 设置页 Provider 标签（卡片/添加/删除） |
 | `lib/settings-source.js` | 直读 settings.yaml 的 llm-pi-ai 段（兜底） |
-| `test/*.mjs` | 路由发现、凭据体检、客户端接线三个离线测试 |
+| `test/*.mjs` | 路由发现、凭据体检、目录补丁、客户端接线四个离线测试 |
 | `scripts/test-profile.sh` | plan-test 测试环境一键脚本（起服务 + 打开浏览器） |
 | `scripts/dev-*.sh` / `main-lock.sh` | worktree 并行开发流程：开任务分支、自测打标记、串行合入 main（见 `AGENTS.md`） |
 | `research/kimi-console-api.md` | kimi 控制台接口逆向记录（未接入） |
