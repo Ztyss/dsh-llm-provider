@@ -177,9 +177,10 @@ node test/routes.mjs                    # 路由发现的单元测试
 node test/credential-check.mjs          # 凭据体检的单元测试
 node test/cordis-patch.mjs              # patch 层：禁用 llm-deepseek 就必须自己声明路由
 node test/pi-ai-probe.mjs               # pi-ai 体检：需求解析 + 挡住不兼容的候选
-node test/client-smoke.mjs              # 浏览器端接线冒烟（假 loader + 桩 react）
+node test/vendor-status.mjs             # vendor/status.json 的合并语义（undefined = 删键）
+node test/client-smoke.mjs              # 浏览器端接线冒烟 + pi-ai 桥接明细的出词
 
-npm test                                # 上面五条一起跑（自测/合入用的就是这条）
+npm test                                # 上面六条一起跑（自测/合入用的就是这条）
 ```
 
 开发流程（主线不开发、全部走 worktree）见 `AGENTS.md`，脚本是 `scripts/dev-start.sh` /
@@ -328,7 +329,7 @@ pi-ai 的目录数据是静态快照，上游模型升级后会滞后。插件�
 | `lib/adapters/*` | 计费适配器（9 家，每家一个文件 + 注册表 + CLI 跑测器） |
 | `lib/client.js` | 浏览器端：模型选择器（官方蓝本两级层级）+ 设置页 Provider 标签（卡片/添加/删除） |
 | `lib/settings-source.js` | 直读 settings.yaml 的 llm-pi-ai 段（兜底） |
-| `test/*.mjs` | 路由发现、凭据体检、patch 层、pi-ai 体检、客户端接线五个离线测试 |
+| `test/*.mjs` | 路由发现、凭据体检、patch 层、pi-ai 体检、状态合并、客户端接线六个离线测试 |
 | `scripts/test-profile.sh` | plan-test 测试环境一键脚本（起服务 + 打开浏览器） |
 | `scripts/dev-*.sh` / `main-lock.sh` | worktree 并行开发流程：开任务分支、自测打标记、串行合入 main（见 `AGENTS.md`） |
 | `research/kimi-console-api.md` | kimi 控制台接口逆向记录（未接入） |

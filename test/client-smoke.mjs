@@ -138,5 +138,52 @@ if (!(typeof seat.options.priority === 'number' && seat.options.priority < 0)) {
 if (duplicated.commandRegistered) throw new Error('官方 /model 还在时不该抢注册')
 if (!free.commandRegistered) throw new Error('官方行禁用后我们的 /model 应该注册成功')
 
+// ---- 「pi-ai 桥接」标签页的明细行（纯函数，不渲染）----
+const { piAiBridgeRows, piAiUpstreamText } = moduleExports
+let failures = 0
+function rowsCheck(name, cond) {
+  console.log((cond ? '  ok ' : '  FAIL ') + name)
+  if (!cond) failures += 1
+}
+
+const healthy = piAiBridgeRows(
+  { active: true, piAiVersion: '0.85.1', source: 'dependency', rejected: [] },
+  { latest: '0.85.1', lastCheck: new Date().toISOString() },
+)
+rowsCheck('健康的桥接只出一行版本', healthy.length === 1)
+rowsCheck('版本行带来源档位', healthy[0].value === '0.85.1（兜底依赖）')
+rowsCheck('版本行带来源说明', typeof healthy[0].title === 'string' && healthy[0].title.length > 0)
+
+const fellBack = piAiBridgeRows(
+  { active: true, piAiVersion: '0.85.1', source: 'dependency', rejected: [{ version: '0.86.0', error: '不提供导出 createModels' }] },
+  { latest: '0.86.0' },
+)
+const skipRow = fellBack.find((r) => r.key === 'skip-0')
+rowsCheck('被跳过的版本单列一行', skipRow !== undefined)
+rowsCheck('跳过行带警告色', skipRow.warn === true)
+rowsCheck('跳过行把原因挂在 title 上', skipRow.title === '不提供导出 createModels')
+
+const pending = piAiBridgeRows(
+  { active: true, piAiVersion: '0.85.1', source: '0.85.1' },
+  { latest: '0.86.0', pending: '0.86.0' },
+)
+rowsCheck('待生效版本提示重启', pending.some((r) => r.key === 'pending' && r.text.indexOf('重启 dsh') !== -1))
+rowsCheck('热更新档标成「热更新」', pending[0].value === '0.85.1（热更新）')
+
+const rejectedByUpdater = piAiBridgeRows(
+  { active: true, piAiVersion: '0.85.1', source: '0.85.1' },
+  { latest: '0.87.0', rejected: { version: '0.87.0', error: '子路径没了' } },
+)
+rowsCheck('体检没过的那版也列出来', rejectedByUpdater.some((r) => r.key === 'rejected' && r.title === '子路径没了'))
+
+const broken = piAiBridgeRows({ active: false, error: '没有能用的 pi-ai：…' }, undefined)
+rowsCheck('桥接挂掉时只报错误行', broken.length === 1 && broken[0].bad === true)
+rowsCheck('没有 bridge 时不出行', piAiBridgeRows(undefined, undefined).length === 0)
+
+rowsCheck('没检查过上游时说「未检查」', piAiUpstreamText(undefined) === '上游 未检查')
+rowsCheck('检查过就报版本号', piAiUpstreamText({ latest: '0.86.0', lastCheck: new Date().toISOString() }).indexOf('0.86.0') !== -1)
+
+if (failures > 0) throw new Error(`桥接明细有 ${failures} 条断言没过`)
+
 console.log('\n冒烟通过：模型座位 + 设置页标签两个座位已注册，模型座位用负 priority 遮蔽官方占用者；' +
-  '/model 在官方占用时让位、空闲时接管')
+  '/model 在官方占用时让位、空闲时接管；pi-ai 桥接明细按版本/来源/跳过原因出正确的行')
