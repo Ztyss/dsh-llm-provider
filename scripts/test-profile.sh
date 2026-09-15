@@ -71,7 +71,8 @@ EOF
     path: !!js dshHomePath('session-query.sqlite')
     openAt: first-search
 
-# 官方模型管理三件套全禁用（见 REQUIREMENTS.md §9）
+# 官方模型管理三件套全禁用（见 REQUIREMENTS.md §9）。本插件的 bundle patch 已经禁了它们，
+# 这里再禁一次是为了「裸基线」形态：把 dsh-provider 从 profile 里摘掉重启时，官方行也不回来。
 - id: llm-pi-ai
   disabled: true
 - id: ui-model-selection

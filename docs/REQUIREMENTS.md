@@ -53,8 +53,8 @@ dsh（DeepSeek Harness）打包时固定了旧版 pi-ai，模型目录滞后上�
 | 编号 | 需求 | 落点 | 状态 |
 |---|---|---|---|
 | FR-3.1 | 额度徽标 + 账户面板：当前 provider 余量摘要常显，点开看各账户余额/窗口/重置时间/报警 | `conversation.input.right`（list） | ✅ 已实现，真机验证（2026-09-13） |
-| FR-3.2 | 模型座位接管：搜索（跨 provider）、provider chips 过滤（带余量指示点）、每行能力徽章（视觉/推理）与上下文标注、当前标记、点选即切 | `conversation.input.model`（single，priority -10 遮蔽官方占用者） | ✅ 已实现，真机验证 |
-| FR-3.3 | `/model` 命令带余额渲染：官方 `ui-model-selection` 行被禁用后由本插件接管；官方在时静默让位 | `commandUi.register` | ✅ 已实现（让位路径真机验证；接管路径待验） |
+| FR-3.2 | 模型座位接管：搜索（跨 provider）、provider chips 过滤（带余量指示点）、每行能力徽章（视觉/推理）与上下文标注、当前标记、点选即切 | `conversation.input.model`（single；官方 `ui-model-selection` 由本插件 bundle patch 禁用，`priority: -10` 保留作兼容） | ✅ 已实现，真机验证 |
+| FR-3.3 | `/model` 命令带余额渲染：官方 `ui-model-selection` 行由 bundle patch 禁用，本插件为唯一贡献者；代码保留「同名即让位」兜底 | `commandUi.register` | ✅ 已实现（接管路径待真机复验） |
 | FR-3.4 | 设置页 Provider 标签：桥接状态、pi-ai 版本、上游版本与检查更新按钮、额度明细、凭据体检结论 | `settings.section`（list，新增 section） | ✅ 已实现，真机验证 |
 | FR-3.5 | 数据面与官方同一条路：模型目录走 `session/modelCatalog`、切换走 `session/selectModel`、余额走 `/plan/status`；优先用官方 `modelDirectories` 客户端服务，缺席时退回同源 HTTP/RPC | — | ✅ 已实现 |
 | FR-3.6 | 座位接线可诊断：`window.__dshProvider` 暴露 applied/modelDirectories/face/seat 状态 | — | ✅ 已实现 |
@@ -79,7 +79,8 @@ dsh（DeepSeek Harness）打包时固定了旧版 pi-ai，模型目录滞后上�
 - **不用 chat completion 请求当探针**：烧 credit 且有 ToS 风险。
 - **不接入 Kimi 控制台 JWT 接口**：逆向结论留在 `reference/kimi-console-api.md` 备查，不接入。
 - **key 值不出宿主进程**：浏览器端只拿结论和元信息。
-- **不改官方插件文件**：接管通过 cordis.patch 禁用行 + slot 优先级遮蔽，官方其余行为保持原样。
+- **不改官方插件文件**：接管一律通过 cordis.patch 禁用官方行（`llm-pi-ai` / `llm-deepseek` /
+  `ui-model-selection` / `ui-settings-models`），官方其余行为保持原样。
 
 ## 5. 硬约束
 
@@ -127,12 +128,18 @@ dsh（DeepSeek Harness）打包时固定了旧版 pi-ai，模型目录滞后上�
 与现有实现的关系：额度端点轮询回答「账户还剩多少」（小时级刷新），本缺口回答「这次会话用了多少、
 刚才是为什么失败的」（秒级/事件级），两者互补不替代。
 
-## 8. 已知缺陷（review 发现，待修）
+## 8. 已知缺陷与随禁用行一起退役的能力
 
-- `/provider/status` 读取的状态文件与 updater 写入的不一致：needsRestart/latestVersion 写在
-  `vendor/status.json`，路由读的是 `vendor/updater-state.json`，导致设置页「已下载待重启」提示、
-  上游版本显示、needsRestart 横幅永不出现。修法：`readStateFile` 合并两个文件。
-- 详见对话 review 记录（2026-09-13）。
+**已修**（2026-09-15 review）：
+- `/provider/status` 读的状态文件与 updater 写入的不一致 → `readVendorState()` 现在两个文件都读。
+- 补位形态下模型目录只在座位挂载时拉一次，设置页删掉 provider 后菜单里还留着 → 打开菜单即重拉。
+- 额度快照在设置页与座位各留一份副本 → 改成单一源 + 广播订阅。
+
+**随官方行禁用而退役、需要自己补的**（用户已知情并接受，先记着）：
+- 官方 `ui-settings-models` 的**逐模型清单编辑**（`ModelListEditor` / `DeepSeekModelsEditor` /
+  `CustomProviderCard`）：现在只能手改 settings.yaml 的 `llm-pi-ai.providers.<id>.models`。
+- 官方 `ui-model-selection` 推给 composer 的**「当前模型不可路由」置灰**（`conversation.blocks`）：
+  当前 provider 被删掉后，输入框不再自动置灰，要等下一条消息在 LLM 层失败才发现。
 
 ## 9. 插件组架构方向（2026-09-14 决策）
 
@@ -178,6 +185,6 @@ patch 禁用对应官方行，由本插件按官方插件规范完整补位。�
 - `scripts/test-profile.sh` 一键起测试实例（固定端口 3081、自动开浏览器、
   `DSH_PROVIDER_TEST=1` 时浏览器端打「测」角标——见 `/provider/status` 的 `testMode` 字段）。
 - 三态：补位（脚本默认）/ 裸基线（摘掉 profile 里的 dsh-provider 依赖重启）/ 官方完整（3080）。
-- plan-test profile 的 patch 层禁用官方模型三件套：`llm-pi-ai` / `ui-model-selection` /
-  `ui-settings-models`（前两者的禁用曾分别由 dsh-provider bundle patch 与旧 patch 层完成，
-  现统一收口到 profile 层，保证裸基线下也不回来）。
+- 官方模型管理三件套（`llm-pi-ai` / `ui-model-selection` / `ui-settings-models`）由**本插件的
+  bundle patch** 统一禁用（`cordis.patch.yml`，对所有挂本插件的 profile 生效）；
+  plan-test 的 profile patch 再禁一次，供「裸基线」形态（摘掉 dsh-provider）对照。
