@@ -2,12 +2,12 @@
 
 > 定位：**as-is 基线**——固化「当前这套系统承诺做什么」，作为以后每次改动的参照。
 > 未实现但被确认为正式需求的内容，集中在 §7「需求缺口清单」，不在正文假装已实现。
-> 设计原理与实现细节见 `README.md`，调研证据见 `research/`（每条结论带 [READ]/[RAN]/置信度标注）。
+> 设计原理与实现细节见 `README.md`，调研证据见 `reference/`（每条结论带 [READ]/[RAN]/置信度标注）。
 
 ## 1. 背景与目标
 
 dsh（DeepSeek Harness）打包时固定了旧版 pi-ai，模型目录滞后上游；且 dsh 没有任何额度/余额设施
-（调研结论：从零建，见 `research/dsh-plugin-architecture.md` §7）。本插件以 dsh 第三方插件形态解决三件事：
+（调研结论：从零建，见 `reference/dsh-plugin-architecture.md` §7）。本插件以 dsh 第三方插件形态解决三件事：
 
 1. **新模型立即可用**：自动跟进 `@earendil-works/pi-ai` 上游，新版本发布后无需等 dsh 发版即可用上。
 2. **额度/余额可见可查**：为各 LLM provider 提供额度/余额查询，在 GUI 里直接看到「还剩多少」。
@@ -71,13 +71,13 @@ dsh（DeepSeek Harness）打包时固定了旧版 pi-ai，模型目录滞后上�
 
 ## 4. 非目标（Non-goals）
 
-明确**不做**的事（多来自 `research/provider-quota-apis.md` 的硬结论）：
+明确**不做**的事（多来自 `reference/provider-quota-apis.md` 的硬结论）：
 
 - **不依赖浏览器登录态/token**：所有额度查询只吃各家 API key（Tier 1 原则）。
 - **Qwen Token Plan 不做轮询**：无公开 API-key 端点，且 ToS 明示仅限官方工具交互使用。
 - **不基于 rate-limit 响应头做额度推断**：五家均不返回相关头。
 - **不用 chat completion 请求当探针**：烧 credit 且有 ToS 风险。
-- **不接入 Kimi 控制台 JWT 接口**：逆向结论留在 `research/kimi-console-api.md` 备查，不接入。
+- **不接入 Kimi 控制台 JWT 接口**：逆向结论留在 `reference/kimi-console-api.md` 备查，不接入。
 - **key 值不出宿主进程**：浏览器端只拿结论和元信息。
 - **不改官方插件文件**：接管通过 cordis.patch 禁用行 + slot 优先级遮蔽，官方其余行为保持原样。
 
@@ -165,7 +165,7 @@ patch 禁用对应官方行，由本插件按官方插件规范完整补位。�
 
 ### 9.3 对标与缺口继承
 
-- 功能对标 CC Switch（源码调研在 `research/cc-switch/`）：额度窗口展示形态两相验证；
+- 功能对标 CC Switch（源码调研在 `reference/cc-switch/`）：额度窗口展示形态两相验证；
   我们独有的差异项：上游模型自动更新（桥接）。
 - **数值与展示口径以 CC Switch 为准，不画蛇添足**（2026-09-14）：它显示什么我们显示什么，
   不展示额外字段（例：Kimi 加油包/充值包余额——口径与 CC Switch 不一致且数据存疑，已移除）。

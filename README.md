@@ -191,7 +191,7 @@ npm test                                # 上面七条一起跑（自测/合入�
 
 控制台的接口能给更可靠的 remaining/窗口占比，但鉴权要网页登录态的 JWT（不吃 sk- key）。
 按"不依赖浏览器 token"的原则，插件**不接入**它；逆向结论留在
-`research/kimi-console-api.md` 备查。
+`reference/kimi-console-api.md` 备查。
 
 ## HTTP 接口
 
@@ -298,7 +298,7 @@ pi-ai 的目录数据是静态快照，上游模型升级后会滞后。插件�
   - 推理等级按会话已定的档位显示，不要求目录里收录这个模型：会话存着的 provider 可能不在
     本 profile 的目录里（原生路由没注册、模型下线的历史会话），此时档位行只读——档位可选项本来
     就来自目录，没收录就没得选（官方在这条路径上整行不渲染，是有意放宽的差异）；
-  - 取数与写回跟官方 ui-model-selection 同一口径（对着 dsh-src 逐条核对）：当前选择取
+  - 取数与写回跟官方 ui-model-selection 同一口径（对着 reference/dsh-src 逐条核对）：当前选择取
     `会话投影 next ?? 目录 default`；默认档只认目录声明的 `defaultEffort`，没有就显示「服务商默认」，
     不拿档位表首档顶替；切模型只提交 provider/model，档位由宿主 `resolveCallConfig` 决定并回写投影；
   - 增强项：provider chips 带最小余量指示点（悬停看 5h/7d 明细）、模型行带能力徽章
@@ -340,7 +340,7 @@ pi-ai 的目录数据是静态快照，上游模型升级后会滞后。插件�
 | `test/*.mjs` | 路由发现、凭据体检、patch 层、pi-ai 体检、候选清单、状态合并、客户端接线七个离线测试 |
 | `scripts/test-profile.sh` | plan-test 测试环境一键脚本（起服务 + 打开浏览器） |
 | `scripts/dev-*.sh` / `main-lock.sh` | worktree 并行开发流程：开任务分支、自测打标记、串行合入 main（见 `AGENTS.md`） |
-| `research/kimi-console-api.md` | kimi 控制台接口逆向记录（未接入） |
+| `reference/kimi-console-api.md` | kimi 控制台接口逆向记录（未接入） |
 
 `node_modules/@deepseek-ai` 是指向 `~/.dsh/profiles/node_modules/@deepseek-ai` 的符号链接，
 供开发时单独 import 用。

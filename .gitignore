@@ -5,8 +5,8 @@ node_modules/
 .worktrees/
 
 # 第三方源码（各自有独立 git 仓库，仅本地参考）
-dsh-src/
-research/cc-switch/
+reference/dsh-src/
+reference/cc-switch/
 
 # 桥接与上游 pi-ai 的运行时产物（loadBridge/updater 自动生成，可随时重建）
 vendor/pi-ai/
