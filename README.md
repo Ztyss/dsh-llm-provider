@@ -1,4 +1,4 @@
-# dsh-llm-provider
+# @dsh-one/dsh-llm-provider
 
 给 dsh 提供 LLM 服务的第三方插件。它在 dsh 官方模型栈的四个位置接管：pi-ai 适配器（`llm-pi-ai`）、DeepSeek 原生适配器（`llm-deepseek`）、模型选择器（`ui-model-selection`）、官方 Models 设置页（`ui-settings-models`），并补齐官方没有的额度查询与 Provider 管理界面。
 
@@ -29,8 +29,8 @@
 scripts/install-deps.sh
 # 2. 构建（lib/ 是产物，不入库）
 npm run build
-# 3. profile 里链接：~/.dsh/profiles/<profile>/node_modules/dsh-llm-provider -> 本仓库路径
-#    并在 profile 的 package.json dependencies 里写 "dsh-llm-provider": "link:<路径>"
+# 3. profile 里链接：~/.dsh/profiles/<profile>/node_modules/@dsh-one/dsh-llm-provider -> 本仓库路径
+#    并在 profile 的 package.json dependencies 里写 "@dsh-one/dsh-llm-provider": "link:<路径>"
 dsh web     # 重启生效（插件树变了必须重启）
 ```
 

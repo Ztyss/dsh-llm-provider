@@ -44,7 +44,7 @@ ensure_profile() {
   "name": "dsh-profile-plan-test",
   "private": true,
   "dependencies": {
-    "dsh-llm-provider": "link:$PROJECT_ROOT",
+    "@dsh-one/dsh-llm-provider": "link:$PROJECT_ROOT",
     "dsh-sidekick": "link:$DSH_HOME_DIR/workspaces/dsh-mobile/plugin"
   },
   "dsh": {
@@ -53,7 +53,7 @@ ensure_profile() {
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-web-app",
         "dsh-sidekick",
-        "dsh-llm-provider"
+        "@dsh-one/dsh-llm-provider"
       ]
     }
   }
@@ -80,7 +80,8 @@ EOF
 - id: ui-settings-models
   disabled: true
 EOF
-  ln -sfn "$PROJECT_ROOT" "$PROFILE_DIR/node_modules/dsh-llm-provider"
+  mkdir -p "$PROFILE_DIR/node_modules/@dsh-one"
+  ln -sfn "$PROJECT_ROOT" "$PROFILE_DIR/node_modules/@dsh-one/dsh-llm-provider"
   if [ -d "$DSH_HOME_DIR/workspaces/dsh-mobile/plugin" ]; then
     ln -sfn "$DSH_HOME_DIR/workspaces/dsh-mobile/plugin" "$PROFILE_DIR/node_modules/dsh-sidekick"
   fi
