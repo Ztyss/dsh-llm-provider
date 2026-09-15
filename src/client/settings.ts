@@ -677,8 +677,7 @@ export function ProviderSettingsSection() {
     postJson('/provider/refresh', { providerId: account.id })
       .then(function (res) {
         if (res !== null && res !== undefined && res.account !== undefined) {
-          // 并进共享快照：广播会把新值同时送到本组件、座位指示器与 /model 命令——
-          // 以前只改本组件的 state，那两处会停在旧值上直到 60 秒缓存过期。
+          // 并进共享快照：广播会把新值同时送到本组件、座位指示器与 /model 命令。
           mergePlanAccount(res.account)
           showToast('✓ ' + shortName(account) + ' 余量已刷新' + refreshSummary(res.account), true)
           return

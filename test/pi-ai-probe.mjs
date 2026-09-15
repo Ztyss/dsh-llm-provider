@@ -67,7 +67,7 @@ check('子路径消失被挡住', probePiAi(requirements, noSubpath, 'nosub').ok
 // ---- 体检：目录不存在被挡住 ----
 // 断言错误文案是「目录不存在」而不是别的：这句只可能来自 probePiAi 开头那句显式检查。
 // 少了那句检查，探针会给不存在的候选建一条断链，Node 顺着往上找可能撞上主软链上那份
-// 能用的 pi-ai，把不合格的候选误判成通过（实测踩过）。
+// 能用的 pi-ai，把不合格的候选误判成通过。
 const missing = probePiAi(requirements, join(tmpdir(), 'pi-ai-不存在-xyz'), 'missing')
 check('目录不存在被挡住', missing.ok === false)
 check('拒绝理由是「目录不存在」而不是顺着断链往上找到了别的', missing.error === '目录不存在')

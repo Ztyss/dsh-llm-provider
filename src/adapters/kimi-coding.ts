@@ -1,10 +1,10 @@
 /**
  * Kimi Coding Plan：GET https://api.kimi.com/coding/v1/usages
  * 没有官方文档，端点由 CodexBar / OpenTokenUsage 等开源项目交叉验证，本地实测可用。
- * 展示口径与 CC Switch 对齐（reference/cc-switch coding_plan.rs:113-205）：
+ * 展示口径与 CC Switch 对齐。
  *   - 5 小时窗口：limits[].detail 的 limit/remaining/resetTime
  *   - 订阅周期（周）窗：usage 的 limit/remaining/resetTime
- * 刻意不展示 boosterWallet（加油包）余额——与 CC Switch 不一致且数据口径存疑（2026-09-14 决定）。
+ * 刻意不展示 boosterWallet（加油包）余额——与 CC Switch 口径不一致且数据存疑。
  */
 import { account, asIso, describeHttpError, fail, getJson, num, percentLeftOf } from './shared.js'
 import { asRecord } from '../types.js'

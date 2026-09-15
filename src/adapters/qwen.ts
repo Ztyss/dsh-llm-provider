@@ -19,7 +19,7 @@ export default {
 
   async query({ id, displayName, baseUrl }: AdapterQueryInput): Promise<AccountStatus> {
     // consoleUrl 不在 AccountStatus 契约里（客户端渲染跳转链接读的是 websiteUrl，插件层还会兜底填），
-    // 但它是历史字段，删掉会改下发给浏览器的 JSON：这里只按"契约外字段"标注，运行时原样保留。
+    // 但删掉会改下发给浏览器的 JSON：这里只按"契约外字段"标注，运行时原样保留。
     const fields: Partial<AccountStatus> & { consoleUrl: string } = {
       authConfigured: true,
       baseUrl,

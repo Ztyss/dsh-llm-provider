@@ -53,8 +53,8 @@ export function onPlanChange(listener: PlanListener): () => void {
 }
 
 /**
- * 写入共享快照并广播。所有写入都走这里——以前删除走缓存、单卡刷新只改页面 state，
- * 于是同一个数字在设置页和座位指示器上能同时存在两个值（差到缓存过期为止）。
+ * 写入共享快照并广播。所有写入都走这里，快照只有一个源头——设置页卡片、座位指示器与
+ * `/model` 命令读的都是它，不会各自停在旧值上。
  * @param value - 新的快照值。
  * @returns 同一个值，便于调用方直接拿来 setState。
  */
@@ -311,7 +311,6 @@ export function normalizeGroups(rawGroups: unknown): CatalogGroup[] {
       if (typeof model === 'string') models.push({ id: model, name: model })
       else if (model !== null && typeof model === 'object') {
         var modelRecord = model as AnyRecord
-        // 原先是这个 else-if 的条件；写成 continue 是因为它本来就是循环体最后一段
         if (typeof modelRecord.id !== 'string') continue
         var entry: CatalogModel = {
           id: modelRecord.id,

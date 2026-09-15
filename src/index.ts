@@ -9,14 +9,13 @@
  *   2. 计费接口（src/adapters/）：按 provider 查额度/余额，挂在
  *      GET /plan/status；适配器各自独立文件，node lib/adapters/run.js 可单独跑测。
  *
- * 之所以用自建 HTTP 路由而不是官方的 Typert Remote：试过了，那套生成器是给 dsh 单体仓库
- * 写的（只认 <root>/packages/ 下的包、装饰器来源必须在已注册包里），单包插件走不通。
- * 详见 README「为什么是自建路由」。自建路由和 GUI 同源，浏览器端直接 fetch。
+ * 之所以用自建 HTTP 路由而不是官方的 Typert Remote：那套生成器是给 dsh 单体仓库写的
+ * （只认 <root>/packages/ 下的包、装饰器来源必须在已注册包里），单包插件走不通。
+ * 自建路由和 GUI 同源，浏览器端直接 fetch。
  *
  * **边界：插件启动不碰宿主的东西。** 对 dsh 安装目录、settings.yaml、credentials 一律
  * 只读；写只发生在两处——插件自己的 vendor/ 目录（下载 pi-ai、拷桥接副本），以及用户
- * 在界面上显式操作时（添加/删除 provider）。曾经有两处启动期自动写全局配置的逻辑
- * （补 deepseek 路由、补显示名），已删除，见 README「边界」一节。
+ * 在界面上显式操作时（添加/删除 provider）。
  */
 import Schema from '@deepseek-ai/schemastery'
 import { readFileSync } from 'node:fs'
@@ -139,7 +138,7 @@ export function apply(ctx: PluginContext, config: unknown): void {
       if (result.websiteUrl === undefined) result.websiteUrl = websiteUrl
       if (result.keyHint === undefined) result.keyHint = keyHint
       if (result.deletable === undefined) result.deletable = route.source === 'llm-pi-ai'
-      result.membership = undefined // 等级不展示（2026-09-14 决定），适配器原始数据保留在适配器内
+      result.membership = undefined // 等级不展示，适配器原始数据保留在适配器内
       return { ...routeMeta, ...result }
     }
     if (!credential.configured) {
@@ -155,7 +154,7 @@ export function apply(ctx: PluginContext, config: unknown): void {
       if (result.websiteUrl === undefined) result.websiteUrl = websiteUrl
       if (result.keyHint === undefined) result.keyHint = keyHint
       if (result.deletable === undefined) result.deletable = route.source === 'llm-pi-ai'
-      result.membership = undefined // 等级不展示（2026-09-14 决定），适配器原始数据保留在适配器内
+      result.membership = undefined // 等级不展示，适配器原始数据保留在适配器内
       return { ...routeMeta, ...result }
     } catch (error) {
       return {
@@ -294,8 +293,8 @@ export function apply(ctx: PluginContext, config: unknown): void {
           routes,
           // 只读体检：DeepSeek 走 pi-ai 必须在 settings 的 llm-pi-ai.providers 里有一条
           // deepseek 路由（原生 llm-deepseek 被 cordis.patch.yml 禁用了，全靠这条）。
-          // 这条路由以前是插件启动时自动补写的，现在只读不写——缺了就报出来，用户自己用
-          // 「添加 Provider」补。不能静默：缺了 DeepSeek 会从模型列表里消失，看不出原因。
+          // 插件不写宿主配置：缺了就报出来，由用户用「添加 Provider」补。不能静默——
+          // 缺了 DeepSeek 会从模型列表里消失，看不出原因。
           deepseekRouteMissing: bridge.ok && !routes.some((route) => route.id === 'deepseek'),
           // 更新状态（界面「pi-ai 桥接」标签页用）：
           //   latest   —— 上次检查时上游的最新版
@@ -455,8 +454,8 @@ function readRejected(value: unknown): { version: string | undefined; error: str
  * 读插件在 vendor/ 下的两个状态文件：
  *   status.json        —— 谁装到哪一版、体检结论（bridge.ts 与 updater.ts 写）
  *   updater-state.json —— 上次检查上游的时间（updater.ts 写）
- * 以前只读后者，于是 needsRestart / latestVersion 从来没露出来过，界面上「上游 X」和
- * 「有新版本待生效」两行一直是空的——UI 读的字段根本不在那个文件里。
+ * 界面要的字段分在两个文件里（needsRestart / latestVersion 在 status.json，
+ * lastCheck 在 updater-state.json），所以两个都要读。
  */
 function readVendorState(): { status: AnyRecord; updater: AnyRecord } {
   const read = (name: string): AnyRecord => {

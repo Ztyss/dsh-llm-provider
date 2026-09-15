@@ -1,7 +1,7 @@
 /**
  * pi-ai 桥接层：让 dsh 的官方 llm-pi-ai 适配器跑在我们自己维护的新版 pi-ai 上。
  *
- * 原理（2026-09-12 实验验证）：
+ * 原理：
  *   官方已装的 @deepseek-ai/dsh-llm-pi-ai/lib/index.js 是单文件 bundle，对
  *   @earendil-works/pi-ai 全部走 bare specifier 外部导入（含 api/*.lazy、
  *   providers/all 这些 lazy 协议实现）。把这份 bundle 拷进本插件的
@@ -14,9 +14,8 @@
  * 用哪份 pi-ai 是**加载前先体检**挑出来的，不是"先试再退"：ESM 加载失败后同一个文件
  * 没法重试（Node 会报 "not yet fully loaded"）。候选与体检见 piAiCandidates/probePiAi。
  *
- * 边界：本模块只写插件自己的 vendor/ 目录，pi-ai 本身的文件一个字节都不改
- * （曾经往它的 data/*.json 打过"目录补丁"，2026-09-15 拆掉——改第三方包的文件不可复现，
- * 也没法保证跟 lockfile 对得上）。
+ * 边界：本模块只写插件自己的 vendor/ 目录，pi-ai 本身的文件一个字节都不改——改第三方包的
+ * 文件不可复现，也没法保证跟 lockfile 对得上。
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -224,10 +223,10 @@ export function bridgeRequirements(): PiAiRequirement[] {
  * 体检一个 pi-ai 候选：那份拷贝要的子路径和具名导出，这份 pi-ai 给不给得出。
  *
  * **为什么不直接试着加载拷贝**：Node 对加载失败的 ESM 会留下半初始化记录，同一个文件
- * 再 require 只会报 "not yet fully loaded"（2026-09-15 实测）——也就是说"先试再退"这条路
- * 走不通，必须在加载之前判。所以体检换个模块来做：照着需求生成一份探针文件，放进自己的
- * 临时目录里，配一条指向候选的软链。解析规则与拷贝完全一致（同一个父目录、同一条链），
- * 但模块 URL 不同，失败不污染拷贝。
+ * 再 require 只会报 "not yet fully loaded"——也就是说"先试再退"这条路走不通，必须在加载
+ * 之前判。所以体检换个模块来做：照着需求生成一份探针文件，放进自己的临时目录里，配一条
+ * 指向候选的软链。解析规则与拷贝完全一致（同一个父目录、同一条链），但模块 URL 不同，
+ * 失败不污染拷贝。
  *
  * 探针目录按候选命名：同一候选复用同一条 URL（结论一致），不同候选互不干扰。
  * @param requirements - {@link piAiRequirements} 的结果。
@@ -236,8 +235,7 @@ export function bridgeRequirements(): PiAiRequirement[] {
  */
 export function probePiAi(requirements: readonly PiAiRequirement[], root: string, key: string): ProbeResult {
   // 候选目录不在就直接判死，**且绝不能建断链**：探针目录在 vendor/llm-bridge/ 下面，
-  // 断链会让 Node 继续往上找，一路找到主软链上那份能用的 pi-ai，把不合格的候选误判成通过
-  // （实测踩过：内置依赖被移走后仍然"通过"，最后在真正加载时才炸）。
+  // 断链会让 Node 继续往上找，一路找到主软链上那份能用的 pi-ai，把不合格的候选误判成通过。
   if (!existsSync(root)) return { ok: false, error: '目录不存在' }
   // 需求没解析出来（bundle 换了打包格式）就没法验证：放行，但标 unverified——
   // 调用方（loadBridge / updater）据此知道这是「没体检」，不是「体检通过」。

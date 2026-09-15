@@ -83,8 +83,7 @@ export function providerRoutes(
   //                要的就是这个合并结果（DeepSeek 那条来自插件的 base 层，用户没写过）。
   //                但它要求命名空间已注册，而 llm-pi-ai 的注册是在它自己 apply 里做的，
   //                那一步之前（或它 apply 抛错时）就取不到。
-  //   section() —— 直接读 settings 文档里那一节的原始内容，不要求注册，正好补上面那个空档。
-  //                以前这里是自己解析 settings.yaml（93 行手写 YAML），纯属绕远路：
+  //   section() —— 直接读 settings 文档里那一节的原始内容，不要求注册，正好补上面那个空档：
   //                那份文档本来就是 dsh 解析好放在那儿的。
   const resolved = safeObject(() => asRecord(asRecord(settings?.get?.('llm-pi-ai'))['providers']))
   const piAiProviders = Object.keys(resolved).length > 0
