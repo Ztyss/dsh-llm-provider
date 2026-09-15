@@ -114,22 +114,29 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
     [selectionCellRef],
   )
 
+  /**
+   * 拉一次目录。官方目录服务缺席（补位形态，profile 禁用了官方 ui-model-selection）时，
+   * 这是我们唯一的数据源，宿主那边是每次 RPC 实时构建的（`listProviders()` 按已配置路由报）。
+   * @param alive - 可选；返回 false 表示组件已卸载，丢弃结果。
+   */
+  function pullCatalog(alive?: () => boolean): void {
+    void loadModelCatalog()
+      .then(function (next) {
+        if (alive !== undefined && !alive()) return
+        setGroups(next.groups)
+        setHttpDefault(next.default)
+      })
+      .catch(function (cause) {
+        if (alive !== undefined && !alive()) return
+        setError(cause && cause.message ? String(cause.message) : String(cause))
+      })
+  }
+
   react.useEffect(
     function () {
       var cancelled = false
-      if (typeof props.load === 'function') {
-        props.load()
-      } else {
-        loadModelCatalog()
-          .then(function (next) {
-            if (cancelled) return
-            setGroups(next.groups)
-            setHttpDefault(next.default)
-          })
-          .catch(function (cause) {
-            if (!cancelled) setError(cause && cause.message ? String(cause.message) : String(cause))
-          })
-      }
+      if (typeof props.load === 'function') props.load()
+      else pullCatalog(function () { return !cancelled })
       // 能力徽章/上下文标注的数据源：生效 pi-ai 包的模型详情
       loadModelDetailMap()
         .then(function (map) {
@@ -169,7 +176,11 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
   react.useEffect(
     function () {
       if (!open) return undefined
+      // 目录每次都重拉：官方服务在时它自己订阅了 settings/document-updated，
+      // 会跟着设置变更失效；官方服务缺席时只有下面这一拉——不拉的话，在设置页删掉
+      // provider 后再打开菜单，列表里还挂着已经删掉的供应商（宿主那边其实已经不报了）。
       if (typeof props.load === 'function') props.load()
+      else pullCatalog()
       if (pane === 'model' && searchRef.current !== null && searchRef.current !== undefined) {
         try {
           searchRef.current.focus()
