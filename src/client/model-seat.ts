@@ -292,20 +292,26 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
     ? null
     : react.createElement(
         'span',
-        { className: 'ms_tQuota', title: quotaTipOf(currentAccount) },
+        { className: 'ms_tQuota', title: quotaTipOf(currentAccount), key: 'q' },
         react.createElement('span', { className: dotClass(currentAccount) }),
         currentQuotaText === undefined
           ? null
-          : react.createElement('span', { style: { color: toneColor(worstPercent(currentAccount)) } }, currentQuotaText),
+          : react.createElement(
+              'span',
+              { className: 'ms_tQuotaText', style: { color: toneColor(worstPercent(currentAccount)) } },
+              currentQuotaText,
+            ),
       )
-  // 有当前选择时把「供应商 / 模型」拆成两段，好让余量紧跟在供应商后面；
-  // 没有选择（加载中 / 选择模型）时还是一段文案
+  // 有当前选择时按「供应商 余量 / 模型」分段（余量紧跟在供应商后面），没有选择
+  // （加载中 / 选择模型）时还是一段文案。分段也是为了窄屏能按段降级：
+  // 空间不够先丢余量数字、再丢 provider，模型名与档位保住（见 styles.ts 的断点）。
   var triggerLabel = selection === undefined || selection === null
     ? [react.createElement('span', { className: 'ms_tLabel', key: 'all' }, modelLabel)]
     : [
-        react.createElement('span', { className: 'ms_tLabel', key: 'p' }, String(selection.provider)),
+        react.createElement('span', { className: 'ms_tProvider', key: 'p' }, String(selection.provider)),
         triggerQuota,
-        react.createElement('span', { className: 'ms_tLabel', key: 'm' }, '/ ' + String(selection.model)),
+        react.createElement('span', { className: 'ms_tSlash', key: 's' }, '/ '),
+        react.createElement('span', { className: 'ms_tModel', key: 'm' }, String(selection.model)),
       ]
 
   var trigger = react.createElement(
