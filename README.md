@@ -31,7 +31,7 @@ dsh plugin --profile web add @dsh-one/dsh-llm-provider
 dsh web     # restart required: the plugin tree changed
 ```
 
-pnpm's release cooldown means a version published minutes ago is not picked up yet. Pin the version to install it right away: `dsh plugin --profile web add @dsh-one/dsh-llm-provider@0.1.0`. The same applies to alpha builds (`@0.1.0-alpha.5`).
+Add `@<version>` to the package name to install one specific version.
 
 To work on this repository, link the checkout into the profile instead:
 
@@ -96,7 +96,7 @@ Which pi-ai gets used is decided by the [compatibility check](#compatibility-che
 | Pinned dependency | `vendor/node_modules/@earendil-works/pi-ai` | optional; used when installed (`cd vendor && npm install`) |
 | Bundled with dsh | found along the official bundle's `node_modules` chain (no hardcoded path) | neither of the above is installed, or fails the check |
 
-Sources that are not installed are skipped silently. A source is only listed as skipped, with a reason, when it exists but fails the compatibility check. The pi-ai that ships with dsh follows dsh's own release cycle and is not necessarily older than upstream — dsh 0.1.5-rc.1 ships 0.85.1, which was the newest at the time.
+Sources that are not installed are skipped silently. A source is only listed as skipped, with a reason, when it exists but fails the compatibility check. The pi-ai that ships with dsh follows dsh's own release cycle and is not necessarily older than upstream.
 
 Neither of the last two directories is hardcoded. The official bundle is resolved along the module resolution chain in this order: the profile's `node_modules`, the dsh installation tree (including the `node_modules` nested inside the dsh package), then this plugin. pi-ai is resolved the same way, starting from the bundle that was found. A different dsh layout (bundle inside its own install directory, dependencies hoisted elsewhere) therefore does not make a source disappear.
 
@@ -210,11 +210,11 @@ Quota lookups are separate free HTTP calls and add no tokens to model requests. 
 
 ## Known gaps
 
-Retired together with the official rows, not yet reimplemented:
+Capabilities the official rows provided that this plugin has no replacement for:
 
-- **Per-model list editing.** `ModelListEditor`, `DeepSeekModelsEditor` and `CustomProviderCard` from the official Models page are gone with it; per-model parameters now have to be edited by hand in `llm-pi-ai.providers.<id>` in `settings.yaml`.
-- **"Current model not routable" greying.** The official `ui-model-selection` pushed that state to the composer; with it disabled, the input no longer greys out automatically when the current provider has been removed.
-- **Official onboarding.** The DeepSeek onboarding flow that came with the Models page is gone as well.
+- **Per-model list editing.** `ModelListEditor`, `DeepSeekModelsEditor` and `CustomProviderCard` are not available; per-model parameters have to be edited by hand in `llm-pi-ai.providers.<id>` in `settings.yaml`.
+- **"Current model not routable" greying.** The official `ui-model-selection` greys out the composer when the current model cannot be routed. With that row disabled, the input stays active even when the current provider is not configured.
+- **Official onboarding.** The DeepSeek onboarding flow of the Models page has no replacement.
 
 Not implemented:
 

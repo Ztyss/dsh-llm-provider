@@ -31,7 +31,7 @@ dsh plugin --profile web add @dsh-one/dsh-llm-provider
 dsh web     # 插件树变了，必须重启
 ```
 
-pnpm 有发布冷却，几分钟前刚发的版本不会被选中，要立刻装就写死版本号：`dsh plugin --profile web add @dsh-one/dsh-llm-provider@0.1.0`。alpha 同理（`@0.1.0-alpha.5`）。
+包名后加 `@<版本>` 就是装指定版本。
 
 改本仓库代码时，把 checkout 链接进 profile：
 
@@ -96,7 +96,7 @@ dsh 的模型目录来自它打包时那份 pi-ai。桥接让它跑在插件自�
 | 固定依赖 | `vendor/node_modules/@earendil-works/pi-ai` | 可选，装了就用（`cd vendor && npm install`） |
 | dsh 自带 | 沿官方 bundle 的 `node_modules` 链找到的那份（不写死路径） | 前两个都没装，或检查不通过 |
 
-没安装的来源直接跳过。只有**存在但检查不通过**时才列进「被跳过」并给出原因。dsh 自带那份的版本随 dsh 发布走，不一定比上游旧——dsh 0.1.5-rc.1 带的 0.85.1 当时就是上游最新。
+没安装的来源直接跳过。只有**存在但检查不通过**时才列进「被跳过」并给出原因。dsh 自带那份的版本随 dsh 发布走，不一定比上游旧。
 
 后两个来源的目录都不写死。官方 bundle 按这个顺序沿解析链找：profile 的 `node_modules`、dsh 安装树（含嵌在 dsh 包里的 `node_modules`）、最后是本插件。pi-ai 从找到的那份 bundle 位置继续沿解析链找。所以 dsh 换布局（bundle 放进自己的安装目录、依赖提升到别处）不会让某个来源凭空消失。
 
@@ -210,11 +210,11 @@ npm run typecheck  # tsc --noEmit
 
 ## 已知缺口
 
-随官方行禁用而退役、还没自己补上的：
+官方那些行提供、本插件还没有替代的能力：
 
-- **逐模型清单编辑**。官方 Models 页的 `ModelListEditor` / `DeepSeekModelsEditor` / `CustomProviderCard` 一起退役了，现在改逐模型参数只能手改 `settings.yaml` 的 `llm-pi-ai.providers.<id>`。
-- **「当前模型不可路由」置灰**。官方 `ui-model-selection` 会往 composer 推这个状态，禁用后当前供应商被删掉时输入框不再自动置灰。
-- **官方引导流程**。随 Models 页一起消失的 DeepSeek 引导也没有了。
+- **逐模型清单编辑**。`ModelListEditor` / `DeepSeekModelsEditor` / `CustomProviderCard` 没有替代：改逐模型参数只能手改 `settings.yaml` 的 `llm-pi-ai.providers.<id>`。
+- **「当前模型不可路由」置灰**。官方 `ui-model-selection` 会在当前模型无法路由时把 composer 置灰；那一行被禁用后，当前供应商没配好时输入框照样能用。
+- **官方引导流程**。Models 页带的 DeepSeek 引导没有替代。
 
 没做的功能：
 
