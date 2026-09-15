@@ -32,6 +32,9 @@ var css =
   '.ms_tLabel{min-width:0;overflow:hidden;text-overflow:ellipsis}' +
   '.ms_tEffort{flex-shrink:1000;min-width:0;overflow:hidden;text-overflow:ellipsis;' +
   'color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary))}' +
+  // 触发器里供应商段后面的余量（点 + 百分比/余额）：不参与收缩，窄了先让名称省略
+  '.ms_tQuota{flex:0 0 auto;display:inline-flex;align-items:center;gap:3px;font-size:11px;line-height:16px;' +
+  'color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary))}' +
   '.ms_chev{flex:0 0 auto;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary));' +
   'transition:transform .12s ease}' +
   '.ms_chevOpen{transform:rotate(180deg)}' +

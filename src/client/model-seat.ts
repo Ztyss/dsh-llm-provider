@@ -7,7 +7,7 @@
 import react from 'react'
 import { accountsById, findModel, loadModelCatalog, loadModelDetailMap, loadPlanStatus, normalizeGroups, selectionCell, submitSelection, unwrap, usePolledSnapshot } from './data.js'
 import { recordDiagnostic } from './diag.js'
-import { defaultEffortOf, dotClass, effortLabel, formatContext, fuzzyMatch, quotaTipOf, reasoningTextOf, toneColor, worstPercent } from './format.js'
+import { defaultEffortOf, dotClass, effortLabel, formatContext, fuzzyMatch, quotaShortOf, quotaTipOf, reasoningTextOf, toneColor, worstPercent } from './format.js'
 import { caretSvg, checkSvg, chevronRightSvg } from './icons.js'
 import type { CatalogModel, EffortChoice, FieldEvent, ModelSelection, ModelSwitchSeatProps } from './types.js'
 
@@ -141,6 +141,28 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
       }
     },
     [props.load],
+  )
+
+  // 触发器上的供应商余量：不等菜单打开就先拉一次额度（客户端 60 秒缓存兜住，
+  // 和宿主端缓存同拍），之后每分钟补一次——长时间开着页面，余量也自己往前走。
+  react.useEffect(
+    function () {
+      var cancelled = false
+      function pull() {
+        loadPlanStatus(false)
+          .then(function (payload) {
+            if (!cancelled) setAccounts(accountsById(payload))
+          })
+          .catch(function () { /* 额度拿不到就不显示余量，不影响选模型 */ })
+      }
+      pull()
+      var timer = setInterval(pull, 60000)
+      return function () {
+        cancelled = true
+        clearInterval(timer)
+      }
+    },
+    [],
   )
 
   // 打开时刷新目录、聚焦搜索框；点外部 / Escape 关闭（Escape 先退回根面板）
@@ -285,6 +307,31 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
         : String(selection.provider) + '/' + String(selection.model))
   var triggerText = effortText === undefined ? modelLabel : modelLabel + ' · ' + effortText
 
+  // 供应商那段的余量指示：跟模型面板里的 provider chip 同一套取数与配色——
+  // 最紧窗口百分比（没窗口就钱包余额），点按 10%/30% 分红黄绿；悬浮显示各窗口明细。
+  // 当前 provider 的账户还没拿到（或这个 provider 查不了）时不显示，不影响别的内容。
+  var currentAccount = selection === undefined || selection === null ? undefined : accounts[selection.provider]
+  var currentQuotaText = quotaShortOf(currentAccount)
+  var triggerQuota = currentAccount === undefined
+    ? null
+    : react.createElement(
+        'span',
+        { className: 'ms_tQuota', title: quotaTipOf(currentAccount) },
+        react.createElement('span', { className: dotClass(currentAccount) }),
+        currentQuotaText === undefined
+          ? null
+          : react.createElement('span', { style: { color: toneColor(worstPercent(currentAccount)) } }, currentQuotaText),
+      )
+  // 有当前选择时把「供应商 / 模型」拆成两段，好让余量紧跟在供应商后面；
+  // 没有选择（加载中 / 选择模型）时还是一段文案
+  var triggerLabel = selection === undefined || selection === null
+    ? [react.createElement('span', { className: 'ms_tLabel', key: 'all' }, modelLabel)]
+    : [
+        react.createElement('span', { className: 'ms_tLabel', key: 'p' }, String(selection.provider)),
+        triggerQuota,
+        react.createElement('span', { className: 'ms_tLabel', key: 'm' }, '/ ' + String(selection.model)),
+      ]
+
   var trigger = react.createElement(
     'button',
     {
@@ -297,7 +344,7 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
         else show()
       },
     },
-    react.createElement('span', { className: 'ms_tLabel' }, modelLabel),
+    triggerLabel,
     effortText === undefined ? null : react.createElement('span', { className: 'ms_tEffort' }, effortText),
     react.createElement('span', { className: 'ms_chev' + (open ? ' ms_chevOpen' : '') }, caretSvg(open)),
   )
@@ -351,12 +398,7 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
     for (var ck = 0; ck < groups.length; ck += 1) {
       ;(function (g) {
         var acc = accounts[g.id]
-        var minP = worstPercent(acc)
-        var quotaText = minP !== undefined
-          ? String(minP) + '%'
-          : (acc !== undefined && acc !== null && Array.isArray(acc.balances) && acc.balances.length > 0
-              ? acc.balances[0].value
-              : undefined)
+        var quotaText = quotaShortOf(acc)
         chips.push(
           react.createElement(
             'button',
@@ -372,7 +414,7 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
             g.id,
             quotaText === undefined
               ? null
-              : react.createElement('span', { style: { color: toneColor(minP) } }, ' ' + quotaText),
+              : react.createElement('span', { style: { color: toneColor(worstPercent(acc)) } }, ' ' + quotaText),
           ),
         )
       })(groups[ck])

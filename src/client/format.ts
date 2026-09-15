@@ -121,6 +121,18 @@ export function summaryOf(account: PlanAccount | undefined | null): string {
   return shortName(account)
 }
 
+/**
+ * 余量短文案（模型面板的 provider chip 与模型座位触发器共用）：最紧窗口的剩余百分比，
+ * 没有窗口就看钱包余额。查不了 / 没配 key 时不给数字——那种情况由指示点颜色表达。
+ */
+export function quotaShortOf(account: PlanAccount | undefined | null): string | undefined {
+  if (account === undefined || account === null) return undefined
+  var percent = worstPercent(account)
+  if (percent !== undefined) return String(percent) + '%'
+  var balances = Array.isArray(account.balances) ? account.balances : []
+  return balances.length > 0 ? balances[0].value : undefined
+}
+
 /** 一行里的余额短文案（给模型行/过滤 chip 复用）。 */
 export function quotaTextOf(account: PlanAccount | undefined | null): string | undefined {
   if (account === undefined || account === null) return undefined
