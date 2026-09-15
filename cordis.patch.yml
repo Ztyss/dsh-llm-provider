@@ -17,9 +17,9 @@
 #    它会再拉一份目录、还会推 composer 的「当前模型不可路由」置灰状态，两套状态机并存只会
 #    互相打架。整行禁用后，我们自己的目录路径就是唯一路径。核对过 client/ 全量引用：没有
 #    别的插件依赖它提供的 modelDirectories 服务，禁掉不会让谁卡在 pending。
-# 4) ui-settings-models：官方 Models 页退役，Provider 的「配置+展示一体」在本插件的 Provider
-#    标签里做。随之退役的还有它独有的逐模型清单编辑（ModelListEditor / DeepSeekModelsEditor /
-#    CustomProviderCard）——记在 README「已知限制与后续工作」一节。
+# 4) ui-settings-models：官方 Models 页禁用，「配置+展示一体」在本插件的「模型服务」标签里做。
+#    它独有的逐模型清单编辑（ModelListEditor / DeepSeekModelsEditor / CustomProviderCard）
+#    没有替代——记在 README「已知缺口」一节。
 - id: llm-pi-ai
   disabled: true
 

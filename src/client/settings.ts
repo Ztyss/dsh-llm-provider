@@ -205,8 +205,8 @@ export function presetPickState(preset: ProviderPreset): { disabled: boolean; ta
  * 「刷新余量 / 保存密钥」之后的结果判定：成功返回 undefined，失败给出原因。
  *
  * 宿主这两条路由一律回 200，成败看 body 的 ok；凭据没值时 ok=false，原因挂在 account.error
- * 上（"DEEPSEEK_API_KEY 没有值"）。以前只判 account 在不在，于是没配 key 也会弹一句
- * "✓ 余量已刷新"，跟卡片上那句"未配置 key"直接打架。
+ * 上（"DEEPSEEK_API_KEY 没有值"）。只判 account 在不在会在没配 key 时弹一句"✓ 余量已刷新"，
+ * 跟卡片上那句"未配置 key"直接打架。
  */
 export function refreshFailure(result: unknown): string | undefined {
   var record = result === null || result === undefined ? {} : (result as AnyRecord)
@@ -491,7 +491,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
               readOnly: true,
             }),
       ),
-      // 凭据名：单独一行小字（原先挤在协议行右侧像个按钮标签）
+      // 凭据名：单独一行小字，不挤在协议行右侧
       react.createElement(
         'div',
         { className: 'pv_line pv_row' },
