@@ -34,11 +34,20 @@ export interface CatalogGroup {
   models: CatalogModel[]
 }
 
-/** /provider/models 里的一条模型详情（生效 pi-ai 包的元数据），按模型 id 建索引。 */
+/** /provider/models 里的一条模型详情（pi-ai 目录 + route 声明的能力），按 provider + id 建索引。 */
 export interface ModelDetail {
   id?: string
+  /** 这条详情属于哪家路由。跨 provider 重名（claude-opus-5 这种）全靠它区分。 */
+  provider?: string
+  api?: string
+  baseUrl?: string
   contextWindow?: number
   maxTokens?: number
+  /**
+   * 视觉 / 视频 / 推理能力：`true` 支持，`false` 明确不支持，`undefined` **未知**。
+   * 界面只给 `true` 打徽章，全是 undefined 时详情卡写「能力未知」——
+   * 「没查过」不能当成「不支持」渲染。
+   */
   vision?: boolean
   video?: boolean
   reasoning?: boolean

@@ -7,6 +7,7 @@ import type { AnyRecord } from '../types.js'
 import {
   STATUS_UNAVAILABLE,
   apiCall,
+  detailKeyOf,
   dropPlanAccount,
   findById,
   getJson,
@@ -133,17 +134,45 @@ function headlineChip(chip: HeadlineChip, key: number) {
   return react.createElement('span', { key: String(key), className: 'pv_chipItem' }, parts)
 }
 
+/** 能力徽章文案 → 样式类（模型行与详情卡共用一套）。 */
+var CAP_CLASS: Record<string, string> = { '视觉': 'pv_capVision', '推理': 'pv_capReason', '视频': 'pv_capVideo' }
+
+/**
+ * 一条详情里**已知为真**的能力（顺序：视觉、推理、视频），离线可测的纯函数。
+ *
+ * 只认 `true`：`false` 是「明确不支持」，`undefined` 是「没查过」（自定义模型 id 在 pi-ai
+ * 目录里查不到、route 也没声明模态时就是这样）。两者都不出徽章，但它们是两回事——
+ * 详情卡里必须分开写，否则等于把「没查过」渲染成「没有视觉」。
+ */
+export function capabilityBadges(detail: ModelDetail | undefined): string[] {
+  var badges: string[] = []
+  if (detail === undefined || detail === null) return badges
+  if (detail.vision === true) badges.push('视觉')
+  if (detail.reasoning === true) badges.push('推理')
+  if (detail.video === true) badges.push('视频')
+  return badges
+}
+
+/** 能力字段有没有出处：三样全是 undefined 就是「未知」，界面得说明白。 */
+export function capabilitiesKnown(detail: ModelDetail | undefined): boolean {
+  if (detail === undefined || detail === null) return false
+  return detail.vision !== undefined || detail.video !== undefined || detail.reasoning !== undefined
+}
+
+/** 详情索引里取一条：键是 provider + id（见 data.ts 的 detailKeyOf，跨 provider 重名靠它分开）。 */
+function detailOf(detailsById: Record<string, ModelDetail> | undefined | null, provider: string, modelId: string) {
+  if (detailsById === undefined || detailsById === null) return undefined
+  return detailsById[detailKeyOf(provider, modelId)]
+}
+
 /** 模型行：名称 + 能力徽章（视觉/推理/视频）+ 上下文标签，悬浮出 Cherry 式详情卡。 */
-function modelRow(model: CatalogModel, account: PlanAccount, detailsById: Record<string, ModelDetail> | undefined | null) {
-  var detail = detailsById === undefined || detailsById === null ? undefined : detailsById[model.id]
+export function modelRow(model: CatalogModel, account: PlanAccount, detailsById: Record<string, ModelDetail> | undefined | null) {
+  var detail = detailOf(detailsById, account.id, model.id)
   var cw = detail !== undefined && detail.contextWindow !== undefined ? detail.contextWindow : model.contextWindow
   var ctx = formatContext(cw)
-  var caps = []
-  if (detail !== undefined) {
-    if (detail.vision === true) caps.push(react.createElement('span', { key: 'v', className: 'pv_capMini pv_capVision' }, '视觉'))
-    if (detail.reasoning === true) caps.push(react.createElement('span', { key: 'r', className: 'pv_capMini pv_capReason' }, '推理'))
-    if (detail.video === true) caps.push(react.createElement('span', { key: 't', className: 'pv_capMini pv_capVideo' }, '视频'))
-  }
+  var caps = capabilityBadges(detail).map(function (label) {
+    return react.createElement('span', { key: label, className: 'pv_capMini ' + CAP_CLASS[label] }, label)
+  })
   return react.createElement(
     'div',
     { className: 'pv_mRow', key: 'm-' + model.id },
@@ -156,21 +185,30 @@ function modelRow(model: CatalogModel, account: PlanAccount, detailsById: Record
 }
 
 /** Cherry 式模型详情卡：服务商 / 模型 ID / 能力标记 / 上下文 / 最大输出 / 思维链。 */
-function modelTip(model: CatalogModel, account: PlanAccount, detail: ModelDetail | undefined) {
+export function modelTip(model: CatalogModel, account: PlanAccount, detail: ModelDetail | undefined) {
   var rows = [react.createElement('div', { className: 'pv_tipTitle', key: 't' }, model.name)]
   rows.push(tipLine('服务商', shortName(account), 'p'))
   rows.push(tipLine('模型 ID', model.id, 'id'))
+  var badges = capabilityBadges(detail)
+  if (badges.length > 0) {
+    rows.push(react.createElement('div', { className: 'pv_tipCaps', key: 'c' }, badges.map(function (label) {
+      return tipCap(label, CAP_CLASS[label])
+    })))
+  }
+  // 能力没出处就明说：写「关闭」等于替用户断言它不支持，比留白更误导
+  if (!capabilitiesKnown(detail)) {
+    rows.push(react.createElement('div', { className: 'pv_tipDim', key: 'caps-unknown' }, '能力未知'))
+  }
   if (detail !== undefined) {
-    var caps = []
-    if (detail.vision === true) caps.push(tipCap('视觉', 'pv_capVision'))
-    if (detail.video === true) caps.push(tipCap('视频', 'pv_capVideo'))
-    if (detail.reasoning === true) caps.push(tipCap('推理', 'pv_capReason'))
-    if (caps.length > 0) rows.push(react.createElement('div', { className: 'pv_tipCaps', key: 'c' }, caps))
-    if (detail.contextWindow !== undefined) rows.push(tipLine('上下文窗口', detail.contextWindow.toLocaleString('en-US'), 'cw'))
+    // 窗口兜底到目录里的值——和模型行的算法一致：有出处的那份优先
+    var cw = detail.contextWindow !== undefined ? detail.contextWindow : model.contextWindow
+    if (cw !== undefined) rows.push(tipLine('上下文窗口', cw.toLocaleString('en-US'), 'cw'))
     if (detail.maxTokens !== undefined) rows.push(tipLine('最大输出', detail.maxTokens.toLocaleString('en-US'), 'mt'))
-    rows.push(tipLine('思维链', detail.reasoning === true
-      ? (Array.isArray(detail.thinkingLevels) && detail.thinkingLevels.length > 0 ? detail.thinkingLevels.join('、') : '自动')
-      : '关闭', 'tk'))
+    rows.push(tipLine('思维链', detail.reasoning === undefined
+      ? '未知'
+      : (detail.reasoning === true
+        ? (Array.isArray(detail.thinkingLevels) && detail.thinkingLevels.length > 0 ? detail.thinkingLevels.join('、') : '自动')
+        : '关闭'), 'tk'))
   } else {
     rows.push(react.createElement('div', { className: 'pv_tipDim', key: 'dim' }, '该模型没有本地元数据'))
   }

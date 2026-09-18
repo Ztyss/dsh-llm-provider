@@ -86,13 +86,39 @@ export function loadProviderStatus() {
 /** 桥接状态拿不到时的占位：设置页据此渲染错误行，界面不至于空着。 */
 export var STATUS_UNAVAILABLE = { bridge: { active: false, error: '宿主端状态不可用' } }
 
-/** 模型详情（生效 pi-ai 包的全量元数据），按模型 id 建索引：悬浮详情卡与能力徽章共用。 */
+/**
+ * 详情索引的键：`provider/id`。
+ *
+ * 不能用模型 id 单键：pi-ai 目录里跨 provider 重名是常态（实测 claude-opus-5 同时属于
+ * anthropic / cloudflare-ai-gateway / openrouter 等 7 家），单键索引会被后读到的那份盖掉，
+ * 于是另一家的行挂上这家的能力。provider id 是 kebab-case 短标识，不会含 `/`。
+ */
+export function detailKeyOf(provider: string, id: string): string {
+  return String(provider) + '/' + String(id)
+}
+
+/**
+ * /provider/models 的 models 数组 → 索引（键见 detailKeyOf）。
+ * 缺 provider/id 的条目直接跳过：塞半条进去只会在别的家那行显示错的能力。
+ */
+export function indexModelDetails(models: unknown): Record<string, ModelDetail> {
+  var map: Record<string, ModelDetail> = {}
+  if (!Array.isArray(models)) return map
+  for (var i = 0; i < models.length; i += 1) {
+    var entry = models[i]
+    if (entry === null || typeof entry !== 'object') continue
+    var record = entry as AnyRecord
+    if (typeof record.provider !== 'string' || typeof record.id !== 'string') continue
+    map[detailKeyOf(record.provider, record.id)] = record as unknown as ModelDetail
+  }
+  return map
+}
+
+/** 模型详情（pi-ai 目录 + route 声明的能力），按 provider + id 建索引：悬浮详情卡与能力徽章共用。 */
 export function loadModelDetailMap(): Promise<Record<string, ModelDetail>> {
   return getJson('/provider/models').then(function (payload) {
-    var map: Record<string, ModelDetail> = {}
-    if (payload === null || payload === undefined || !Array.isArray(payload.models)) return map
-    for (var i = 0; i < payload.models.length; i += 1) map[payload.models[i].id] = payload.models[i]
-    return map
+    var models = payload === null || payload === undefined ? undefined : payload.models
+    return indexModelDetails(models)
   })
 }
 

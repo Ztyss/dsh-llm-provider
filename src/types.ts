@@ -57,6 +57,18 @@ export interface LlmDirectoryEntry {
 
 export interface LlmService {
   listConfigurableProviders?: () => LlmDirectoryEntry[]
+  /**
+   * 一条 route 实际服务的模型，条目里带 `inputModalities`。这是模型能力的**第一来源**：
+   * 适配器已经把「route 声明 → 内置目录 → 路由默认值」解析完了（官方 llm-pi-ai 里就是
+   * `declaredInput(entry.input) ?? base?.input ?? defaultInput`），再自己解析一遍 settings
+   * 等于养第二份实现，迟早和真正发货的那份对不上。
+   *
+   * 缺席（老宿主没这个方法）或抛错（settings 里写了路由、适配器没起来）都要能退：
+   * 退到「能力未知」，不能退到「不支持」。
+   */
+  listModels?: (provider: string) => Promise<unknown>
+  /** 一个 route/model 的精确元数据（上下文窗口、默认输出上限、思考档位）。同样允许缺席/抛错。 */
+  resolveModelInfo?: (provider: string, model: string) => Promise<unknown>
 }
 
 /** settings 的一次写操作（跟宿主 mutate 的入参形状一致）。 */

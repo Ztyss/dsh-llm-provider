@@ -21,7 +21,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { activePiAiRoot, loadBridge, vendorDir } from './bridge.js'
-import { loadModelDetails, type ModelDetail } from './model-details.js'
+import { enrichModelDetails, loadModelDetails, type ModelDetail } from './model-details.js'
 import { checkAndUpdate, startBackgroundCheck } from './updater.js'
 import { labelOf, providerRoutes, websiteOf, type ProviderRoute } from './routes.js'
 import { presetsWithMeta } from './provider-presets.js'
@@ -336,17 +336,30 @@ export function apply(ctx: PluginContext, config: unknown): void {
     'dsh-llm-provider: /provider/update route',
   )
 
-  // 模型详情（悬浮卡）：pi-ai 数据文件的全量元数据，60 秒缓存
+  // 模型详情（悬浮卡）：pi-ai 数据文件的全量元数据 + 各 route 声明的能力（自定义模型 id 在
+  // 数据文件里查不到，只有 route 说得清它能不能识图），60 秒缓存
   let modelDetailsCache: { at: number; value: ModelDetail[] } | undefined
   ctx.effect(
     () => webServer.register({
       kind: 'exact',
       path: '/provider/models',
       handler: (_req, res) => {
-        if (modelDetailsCache === undefined || Date.now() - modelDetailsCache.at > 60_000) {
-          modelDetailsCache = { at: Date.now(), value: loadModelDetails(activePiAiRoot()) }
-        }
-        json(res, 200, { models: modelDetailsCache.value, fetchedAt: new Date().toISOString() })
+        void (async () => {
+          if (modelDetailsCache === undefined || Date.now() - modelDetailsCache.at > 60_000) {
+            const llm = service<LlmService>('llm')
+            let value: ModelDetail[]
+            try {
+              const routes = [...providerRoutes(service<SettingsService>('settings'), llm).keys()]
+              value = await enrichModelDetails(loadModelDetails(activePiAiRoot()), llm, routes)
+            } catch (error) {
+              // 增强链路出问题就退回纯 pi-ai 目录：能力可能不全，总比详情整块空掉好
+              logger?.warn?.(`model details enrichment failed: ${messageOf(error)}`)
+              value = loadModelDetails(activePiAiRoot())
+            }
+            modelDetailsCache = { at: Date.now(), value }
+          }
+          json(res, 200, { models: modelDetailsCache.value, fetchedAt: new Date().toISOString() })
+        })()
       },
     }),
     'dsh-llm-provider: /provider/models route',

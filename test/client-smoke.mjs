@@ -383,8 +383,65 @@ const minimal = routeYamlOf({ id: 'x' })
 rowsCheck('字段缺省时不瞎补空值', minimal.indexOf('api:') === -1 && minimal.indexOf('baseURL:') === -1)
 rowsCheck('缺省时仍以 id 开头', minimal.trim().split('\n').pop() === 'x:' || minimal.indexOf('x:') !== -1)
 
+// ---- 能力徽章：详情按 provider + id 索引，能力未知不打徽章 ----
+// 详情索引原来用模型 id 单键，而跨 provider 重名在 pi-ai 目录里是常态（实测 claude-opus-5 同时
+// 属于 anthropic / cloudflare-ai-gateway 等 7 家），后读到的那份会盖掉前面那家；能力字段则只有
+// pi-ai 目录一条链路，自定义模型 id 查不到就永远没有「视觉」徽章（详情卡也不会出）。
+const { detailKeyOf, indexModelDetails, capabilityBadges, capabilitiesKnown, modelRow, modelTip } = moduleExports
+
+/** 把 react 桩造出来的元素树拍成文本：只为了断言行里 / 卡片上写了什么。 */
+function flattenText(node) {
+  if (node === null || node === undefined || typeof node === 'boolean') return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(flattenText).join('')
+  if (typeof node === 'object' && Array.isArray(node.children)) return flattenText(node.children)
+  return ''
+}
+
+const capsApi = [detailKeyOf, indexModelDetails, capabilityBadges, capabilitiesKnown, modelRow, modelTip]
+rowsCheck('provider+id 索引与能力判定的纯函数都导出了（离线可测）', capsApi.every((fn) => typeof fn === 'function'))
+
+const detailPayload = [
+  { id: 'claude-opus-5', provider: 'anthropic', name: 'Claude Opus 5', vision: true, video: false, reasoning: true, thinkingLevels: ['high'], contextWindow: 200000 },
+  { id: 'claude-opus-5', provider: 'cloudflare-ai-gateway', name: 'Claude Opus 5', vision: false, video: false, reasoning: false, thinkingLevels: [], contextWindow: 100000 },
+  { id: 'deepseek-flash', provider: 'opencode-go', name: 'DeepSeek V4.1 Flash', vision: true, video: false, contextWindow: 1000000, maxTokens: 384000 },
+]
+const indexed = typeof indexModelDetails === 'function' ? indexModelDetails(detailPayload) : {}
+const detailAt = (provider, id) => (typeof detailKeyOf === 'function' ? indexed[detailKeyOf(provider, id)] : undefined)
+
+rowsCheck('同名模型两家各是一条，互不覆盖',
+  detailAt('anthropic', 'claude-opus-5')?.contextWindow === 200000
+    && detailAt('cloudflare-ai-gateway', 'claude-opus-5')?.contextWindow === 100000)
+rowsCheck('形状不对的条目跳过（不塞半条进索引）',
+  typeof indexModelDetails === 'function'
+    && Object.keys(indexModelDetails([{ id: 'x' }, null, 'y', { provider: 'p', id: 'z' }])).length === 1)
+
+const rowText = (model, account) => (typeof modelRow === 'function' ? flattenText(modelRow(model, account, indexed)) : '')
+rowsCheck('自定义模型（route 声明了 image）拿得到「视觉」徽章',
+  rowText({ id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' }, { id: 'opencode-go' }).indexOf('视觉') !== -1)
+rowsCheck('同名模型在没视觉的那家不出视觉徽章（不串味）',
+  rowText({ id: 'claude-opus-5', name: 'Claude Opus 5' }, { id: 'cloudflare-ai-gateway' }).indexOf('视觉') === -1)
+rowsCheck('同名模型在有视觉的那家照旧出徽章',
+  rowText({ id: 'claude-opus-5', name: 'Claude Opus 5' }, { id: 'anthropic' }).indexOf('视觉') !== -1)
+
+const unknownDetail = { id: 'mystery', provider: 'some-gateway' }
+const tipText = (model, account, detail) => (typeof modelTip === 'function' ? flattenText(modelTip(model, account, detail)) : '')
+rowsCheck('能力未知时不打任何徽章（未知不能渲染成「无视觉」）',
+  typeof capabilityBadges === 'function' && capabilityBadges(unknownDetail).length === 0
+    && typeof capabilitiesKnown === 'function' && capabilitiesKnown(unknownDetail) === false)
+rowsCheck('能力未知时详情卡注明「能力未知」',
+  tipText({ id: 'mystery', name: 'Mystery', contextWindow: 8000 }, { id: 'some-gateway' }, unknownDetail).indexOf('能力未知') !== -1)
+rowsCheck('详情卡没有窗口时兜底到目录里的值',
+  tipText({ id: 'mystery', name: 'Mystery', contextWindow: 8000 }, { id: 'some-gateway' }, unknownDetail)
+    .indexOf((8000).toLocaleString('en-US')) !== -1)
+rowsCheck('明确不支持（reasoning:false）照旧写「关闭」，不写成未知',
+  tipText({ id: 'claude-opus-5', name: 'Claude Opus 5' }, { id: 'cloudflare-ai-gateway' }, detailAt('cloudflare-ai-gateway', 'claude-opus-5')).indexOf('关闭') !== -1)
+rowsCheck('完全没详情时照旧说明没有本地元数据',
+  tipText({ id: 'mystery', name: 'Mystery' }, { id: 'some-gateway' }, undefined).indexOf('该模型没有本地元数据') !== -1)
+
 if (failures > 0) throw new Error(`桥接明细有 ${failures} 条断言没过`)
 
 console.log('\n冒烟通过：模型座位 + 设置页标签两个座位已注册，模型座位用负 priority 遮蔽官方占用者；' +
   '/model 在官方占用时让位、空闲时接管；pi-ai 桥接明细按版本/来源/跳过原因出正确的行；' +
-  '推理等级在目录缺该模型时仍按会话已定的档位显示，默认档只认目录声明的那个')
+  '推理等级在目录缺该模型时仍按会话已定的档位显示，默认档只认目录声明的那个；' +
+  '模型详情按 provider + id 索引、跨 provider 重名不串味；能力未知不打徽章、详情卡注明「能力未知」')

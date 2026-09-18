@@ -5,7 +5,7 @@
  *   → 推理等级面板（Default + 档位，选中打勾）。
  */
 import react from 'react'
-import { accountsById, findModel, loadModelCatalog, loadModelDetailMap, loadPlanStatus, normalizeGroups, onPlanChange, selectionCell, submitSelection, unwrap, usePolledSnapshot } from './data.js'
+import { accountsById, detailKeyOf, findModel, loadModelCatalog, loadModelDetailMap, loadPlanStatus, normalizeGroups, onPlanChange, selectionCell, submitSelection, unwrap, usePolledSnapshot } from './data.js'
 import { recordDiagnostic } from './diag.js'
 import { defaultEffortOf, dotClass, effortLabel, formatContext, fuzzyMatch, quotaShortOf, quotaTipOf, reasoningTextOf, toneColor, worstPercent } from './format.js'
 import { caretSvg, checkSvg, chevronRightSvg } from './icons.js'
@@ -496,7 +496,7 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
             if (needle !== '' && fuzzyMatch(query, model.id + ' ' + model.name + ' ' + g.name + ' ' + g.id) !== true) return
             var isCurrent = selection !== undefined && selection !== null
               && selection.provider === g.id && selection.model === model.id
-            var detail = detailsById[model.id]
+            var detail = detailsById[detailKeyOf(g.id, model.id)]
             var caps = []
             if (detail !== undefined) {
               if (detail.vision === true) caps.push(react.createElement('span', { key: 'v', className: 'pv_capMini pv_capVision' }, '视觉'))
