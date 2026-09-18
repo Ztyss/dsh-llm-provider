@@ -240,6 +240,54 @@ export function presetPickState(preset: ProviderPreset): { disabled: boolean; ta
 }
 
 /**
+ * 保存供应商要发的 `settings/mutate` ops：**逐字段写**，不是整段覆盖。
+ *
+ * 原来这条发的是 `{op:'set', path:['providers', id], value:{api,baseURL,apiKeyEnv}}`，
+ * 而宿主的 applyPathOp 对「路径正好到对象本身」的 set 是 `{...section, [id]: op.value}` ——
+ * 也就是**整段替换**：对一个已有 route 点一次「确认添加」，手写的 models（逐模型
+ * contextWindow / maxTokens / input / reasoningEfforts）、compat.thinkingFormat、retryPolicy
+ * 会一起消失（issue #1 顺带报的写入路径坑，代价是静默的数据丢失）。
+ *
+ * 逐字段 set（路径带字段名）在 applyPathOp 里是 `{...child, [field]: value}`：只覆盖我们
+ * 负责的那三个字段，其余原样保留。新建 route 时逐字段写同样成立（中间对象按需创建），
+ * 所以不用分「新建 / 已存在」两条路径。
+ *
+ * 空值不发 op：没选协议（api 为空）时不该把已有的 api 抹成空串。
+ * @param routeId - 目标 route id。
+ * @param form - 表单里的三个字段。
+ */
+export function providerSaveOps(routeId: string, form: { api?: string; baseURL?: string; apiKeyEnv?: string }): unknown[] {
+  var ops: unknown[] = []
+  var fields: { field: string; value: string }[] = [
+    { field: 'api', value: String(form.api ?? '') },
+    { field: 'baseURL', value: String(form.baseURL ?? '').trim() },
+    { field: 'apiKeyEnv', value: String(form.apiKeyEnv ?? '').trim() },
+  ]
+  for (var i = 0; i < fields.length; i += 1) {
+    if (fields[i].value === '') continue
+    ops.push({ op: 'set', path: ['providers', routeId, fields[i].field], value: fields[i].value })
+  }
+  return ops
+}
+
+/**
+ * 这条 route 是不是已经配过了（决定「添加」还是「更新」的措辞与提示）。
+ *
+ * 依据是预设清单上的 configured 标记（宿主 `/provider/presets` 给的，与卡片上的
+ * 「已配置 / 缺密钥」同源）——界面里不该另算一套「已存在」的判断。
+ * @param presets - `/provider/presets` 的清单。
+ * @param routeId - 要查的 route id。
+ */
+export function isRouteConfigured(presets: unknown, routeId: string): boolean {
+  if (!Array.isArray(presets)) return false
+  for (var i = 0; i < presets.length; i += 1) {
+    var preset = presets[i] as AnyRecord
+    if (preset !== null && typeof preset === 'object' && preset['id'] === routeId && preset['configured'] === true) return true
+  }
+  return false
+}
+
+/**
  * 删除前把一条 route 的配置导出成 YAML 文本（issue #3 的期望 4：删除要能留下原文）。
  *
  * 删除一次做两件事——清路由、清凭据——且都不可撤销；手写的 `models` / `compat` /
@@ -379,19 +427,30 @@ function AddProviderPanel(props: AddProviderPanelProps) {
         setTest({ phase: 'fail', message: '✗ ' + String(cause && cause.message ? cause.message : cause) })
       })
   }
+  /**
+   * 保存供应商：**逐字段写**，不是整段覆盖。
+   *
+   * 原来这条发的是 `{op:'set', path:['providers', id], value:{api,baseURL,apiKeyEnv}}`，
+   * 而宿主的 applyPathOp 对「路径到对象本身」的 set 是 `{...section, [id]: op.value}` ——
+   * 也就是**整段替换**：对一个已有 route 点一次「确认添加」，手写的 models（逐模型
+   * contextWindow/maxTokens/input/reasoningEfforts）、compat.thinkingFormat、retryPolicy
+   * 会一起消失（issue #1 顺带报的写入路径坑，代价是静默的数据丢失）。
+   *
+   * 逐字段 set（路径带字段名）在 applyPathOp 里是 `{...child, [field]: value}`：只覆盖我们
+   * 负责的那三个字段，其余原样保留。新建 route 时逐字段写同样成立（中间对象按需创建），
+   * 所以这里不需要分「新建 / 已存在」两条路径。
+   */
   function add() {
     setBusy(true)
     setNote(null)
-    var profile = { api: form.api, baseURL: form.baseURL.trim(), apiKeyEnv: form.apiKeyEnv.trim() }
-    apiCall('settings/mutate', {
-      ns: 'llm-pi-ai',
-      ops: [{ op: 'set', path: ['providers', form.routeId.trim()], value: profile }],
-    })
+    var routeId = form.routeId.trim()
+    var existed = isRouteConfigured(presets, routeId)
+    apiCall('settings/mutate', { ns: 'llm-pi-ai', ops: providerSaveOps(routeId, form) })
       .then(function () {
         return apiCall('credentials/set', { ref: form.apiKeyEnv.trim(), value: form.key.trim() })
       })
       .then(function () {
-        setNote('已添加 ' + form.routeId.trim())
+        setNote((existed ? '已更新 ' : '已添加 ') + routeId + (existed ? '（原有 models / compat 等手写配置保留）' : ''))
         setTest({ phase: 'idle', message: '' })
         patchForm({ key: '' })
         if (typeof props.onAdded === 'function') props.onAdded()

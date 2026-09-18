@@ -383,6 +383,39 @@ const minimal = routeYamlOf({ id: 'x' })
 rowsCheck('字段缺省时不瞎补空值', minimal.indexOf('api:') === -1 && minimal.indexOf('baseURL:') === -1)
 rowsCheck('缺省时仍以 id 开头', minimal.trim().split('\n').pop() === 'x:' || minimal.indexOf('x:') !== -1)
 
+// ---- issue #1（顺带报的写入路径坑）：添加/更新供应商不能整段覆盖已有 route ----
+// 宿主 applyPathOp 对「路径正好到对象本身」的 set 是整段替换，对带字段名的 set 是
+// `{...child, [field]: value}`。原来发的是前者，于是对一个已有 route 点一次「确认添加」，
+// 手写的 models / compat.thinkingFormat / retryPolicy 会跟着一起消失。这里把「路径必须带
+// 字段名」钉成断言：它就是那个数据丢失洞的根因，改回整段 set 会立刻变红。
+const { providerSaveOps, isRouteConfigured } = moduleExports
+const saveOps = providerSaveOps('opencode-go', {
+  api: 'openai-completions',
+  baseURL: 'https://opencode.ai/zen/go/v1',
+  apiKeyEnv: 'OPENCODE_GO_API_KEY',
+})
+rowsCheck('每个 op 的路径都带字段名（不是整段 set）', saveOps.every((op) => Array.isArray(op.path) && op.path.length === 3))
+rowsCheck('没有一个指向 route 对象本身的 op', saveOps.every((op) => op.path.length !== 2))
+rowsCheck('op 都落在同一段 providers.<id> 下',
+  saveOps.every((op) => op.path[0] === 'providers' && op.path[1] === 'opencode-go'))
+rowsCheck('三个字段都写', saveOps.map((op) => op.path[2]).join(',') === 'api,baseURL,apiKeyEnv')
+rowsCheck('值来自表单', saveOps.find((op) => op.path[2] === 'baseURL').value === 'https://opencode.ai/zen/go/v1')
+const trimmedOps = providerSaveOps('x', { api: 'a', baseURL: '  https://y/z  ', apiKeyEnv: ' K ' })
+rowsCheck('baseURL 与凭据名去掉首尾空白',
+  trimmedOps.find((op) => op.path[2] === 'baseURL').value === 'https://y/z'
+    && trimmedOps.find((op) => op.path[2] === 'apiKeyEnv').value === 'K')
+const emptyOps = providerSaveOps('x', { api: '', baseURL: 'https://y', apiKeyEnv: '' })
+rowsCheck('空字段不发 op（不把已有的值抹成空串）', emptyOps.length === 1 && emptyOps[0].path[2] === 'baseURL')
+rowsCheck('全空时一个 op 都不发', providerSaveOps('x', {}).length === 0)
+
+rowsCheck('预设里标了 configured 才算已配置',
+  isRouteConfigured([{ id: 'kimi-coding', configured: true }], 'kimi-coding') === true)
+rowsCheck('预设里没有这条就不算已配置',
+  isRouteConfigured([{ id: 'kimi-coding', configured: true }], 'other') === false)
+rowsCheck('configured 不是 true 不算已配置',
+  isRouteConfigured([{ id: 'kimi-coding', configured: false }], 'kimi-coding') === false)
+rowsCheck('清单拿不到时不瞎认已配置', isRouteConfigured(undefined, 'kimi-coding') === false)
+
 // ---- 能力徽章：详情按 provider + id 索引，能力未知不打徽章 ----
 // 详情索引原来用模型 id 单键，而跨 provider 重名在 pi-ai 目录里是常态（实测 claude-opus-5 同时
 // 属于 anthropic / cloudflare-ai-gateway 等 7 家），后读到的那份会盖掉前面那家；能力字段则只有
