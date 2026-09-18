@@ -287,8 +287,10 @@ export function apply(ctx: PluginContext, config: unknown): void {
                 rejected: bridge.rejected,
                 // 需求没解析出来、体检没跑：选中项没被验证过，界面上要标出来
                 probeUnverified: bridge.probeUnverified,
+                // 逐条候选的路径与结论：桥接没成时这是唯一能看出「哪条路径被找过、哪条不在」的地方
+                candidates: bridge.candidates,
               }
-            : { active: false, error: bridge.error },
+            : { active: false, error: bridge.error, rejected: bridge.rejected, candidates: bridge.candidates },
           llmDirectorySize: declaredCount,
           routes,
           // 只读体检：DeepSeek 走 pi-ai 必须在 settings 的 llm-pi-ai.providers 里有一条
