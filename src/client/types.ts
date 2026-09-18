@@ -37,6 +37,8 @@ export interface CatalogGroup {
 /** /provider/models 里的一条模型详情（pi-ai 目录 + route 声明的能力），按 provider + id 建索引。 */
 export interface ModelDetail {
   id?: string
+  /** 显示名（宿主那份是必填，客户端按可选读）。 */
+  name?: string
   /** 这条详情属于哪家路由。跨 provider 重名（claude-opus-5 这种）全靠它区分。 */
   provider?: string
   api?: string

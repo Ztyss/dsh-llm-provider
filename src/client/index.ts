@@ -184,5 +184,6 @@ export function apply(ctx: ClientContext) {
 
 export { normalizeSelection, onPlanChange, mergePlanAccount, dropPlanAccount, detailKeyOf, indexModelDetails } from './data.js'
 export { aliasSelection, LEGACY_PROVIDER_ALIASES } from './model-seat.js'
-export { piAiBridgeRows, piAiUpstreamText, presetPickState, refreshFailure, routeYamlOf, capabilityBadges, capabilitiesKnown, modelRow, modelTip } from './settings.js'
+export { piAiBridgeRows, piAiUpstreamText, presetPickState, refreshFailure, routeYamlOf, providerSaveOps, isRouteConfigured, capabilityBadges, capabilitiesKnown, modelRow, modelTip } from './settings.js'
 export { reasoningTextOf, defaultEffortOf, headlineChips, shortWindowLabel } from './format.js'
+export { buildModelEditor, patchModelRow, addModelRow, validateModelRows, modelListPayload, isDefaultCatalogEquivalent } from './model-editor.js'

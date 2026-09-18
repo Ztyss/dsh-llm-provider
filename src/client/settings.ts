@@ -24,6 +24,8 @@ import {
 import { dotClass, formatContext, fuzzyMatch, headlineChips, linkTextOf, relativeTime, resetCountdownText, shortName, toneColor, worstPercent } from './format.js'
 import { caretSvg } from './icons.js'
 import { t } from './i18n.js'
+import { addModelRow, buildModelEditor, modelListPayload, patchModelRow, validateModelRows } from './model-editor.js'
+import type { ModelEditorRow, ModelEditorState } from './model-editor.js'
 import type { AddProviderPanelProps, BridgeRow, CatalogModel, FieldEvent, HeadlineChip, ModelDetail, PlanAccount, ProviderPreset } from './types.js'
 
 /** 当前用的是哪一档 pi-ai。宿主报的 source：版本号 / 'dependency' / 'dsh'。 */
@@ -226,6 +228,118 @@ function tipLine(label: unknown, value: unknown, key: unknown) {
 
 function tipCap(text: unknown, cls: string) {
   return react.createElement('span', { className: 'pv_cap ' + cls }, text)
+}
+
+/**
+ * 逐模型清单编辑的一行：勾选框 + 模型 ID + 展开后的可改字段。
+ *
+ * 只暴露 `name` / `contextWindow` / `maxTokens` 三个可改字段：官方 schema 还认
+ * `reasoningEfforts` / `compat`，但那两样的值是各家 wire 的拼写（写错会让**整条路由**解析失败），
+ * 界面给不出可靠输入与提示，所以宁可**不写**（不写 = 沿用目录里那份）也不写错。
+ * 输入模态只做只读回显，同理。
+ * @param row - 编辑器里的一行。
+ * @param routeId - 这行属于哪个 route。
+ * @param editor - 该 route 的编辑器状态（改行时整份替换）。
+ * @param update - 改状态的入口。
+ * @param expanded - 行级展开表（key 是 routeId:modelId）。
+ * @param toggleExpand - 切换某行的展开。
+ */
+function modelEditorRow(
+  row: ModelEditorRow,
+  routeId: string,
+  editor: ModelEditorState,
+  update: (routeId: string, next: ModelEditorState) => void,
+  expanded: AnyRecord,
+  toggleExpand: (key: string) => void,
+) {
+  var expandKey = routeId + ':' + row.id
+  var isOpen = expanded[expandKey] === true
+  var head = react.createElement(
+    'div',
+    { className: 'pv_edRow', key: 'head' },
+    react.createElement('input', {
+      type: 'checkbox',
+      checked: row.served,
+      onChange: function (ev: FieldEvent) {
+        var next = (ev.target as unknown as { checked?: boolean }).checked === true
+        update(routeId, { ...editor, rows: patchModelRow(editor.rows, row.id, { served: next }) })
+      },
+    }),
+    react.createElement('span', { className: 'pv_edId', title: row.id }, row.id),
+    row.source === 'declared' ? react.createElement('span', { className: 'pv_edTag' }, '自定义') : null,
+    react.createElement(
+      'button',
+      {
+        type: 'button',
+        className: 'pv_edCaret',
+        title: isOpen ? '收起参数' : '改参数',
+        onClick: function () { toggleExpand(expandKey) },
+      },
+      isOpen ? '▾' : '▸',
+    ),
+  )
+  var children: unknown[] = [head]
+  if (isOpen) {
+    children.push(
+      react.createElement(
+        'div',
+        { className: 'pv_edFields', key: 'fields' },
+        react.createElement(
+          'label',
+          { className: 'pv_edField' },
+          '名称',
+          react.createElement('input', {
+            className: 'pv_field',
+            value: row.name,
+            onChange: function (ev: FieldEvent) {
+              update(routeId, { ...editor, rows: patchModelRow(editor.rows, row.id, { name: ev.target.value }) })
+            },
+          }),
+        ),
+        react.createElement(
+          'label',
+          { className: 'pv_edField' },
+          '上下文窗口',
+          react.createElement('input', {
+            className: 'pv_field',
+            placeholder: '留空 = 用默认值',
+            value: row.contextWindow,
+            onChange: function (ev: FieldEvent) {
+              update(routeId, { ...editor, rows: patchModelRow(editor.rows, row.id, { contextWindow: ev.target.value }) })
+            },
+          }),
+        ),
+        react.createElement(
+          'label',
+          { className: 'pv_edField' },
+          '最大输出',
+          react.createElement('input', {
+            className: 'pv_field',
+            placeholder: '留空 = 用默认值',
+            value: row.maxTokens,
+            onChange: function (ev: FieldEvent) {
+              update(routeId, { ...editor, rows: patchModelRow(editor.rows, row.id, { maxTokens: ev.target.value }) })
+            },
+          }),
+        ),
+        react.createElement(
+          'div',
+          { className: 'pv_edField' },
+          '输入模态',
+          react.createElement(
+            'span',
+            { className: 'pv_hint' },
+            row.input === undefined || row.input.length === 0 ? '未知（不写这个字段）' : row.input.join(' + '),
+          ),
+        ),
+      ),
+    )
+  }
+  return react.createElement(
+    'div',
+    { className: 'pv_edItem' + (row.served ? '' : ' pv_edItemOff'), key: 'ed-' + row.id },
+    children,
+  )
 }
 
 /**
@@ -673,6 +787,19 @@ export function ProviderSettingsSection() {
   var presetsState = react.useState([])
   var presets = presetsState[0]
   var setPresets = presetsState[1]
+  // 逐模型清单编辑器：每张卡片一份编辑态（不预建——渲染到那张卡且有目录数据时才建，
+  // 否则会把「目录还在加载」的空清单当成用户的编辑结果）。
+  var modelEditorsState = react.useState({})
+  var modelEditors = modelEditorsState[0]
+  var setModelEditors = modelEditorsState[1]
+  // 行级展开：key 是 `routeId:modelId`
+  var editorOpenState = react.useState({})
+  var editorOpen = editorOpenState[0]
+  var setEditorOpen = editorOpenState[1]
+  // 宿主下发的那份路由原文（含已声明的 models）：编辑要基于它，免得把手写字段丢掉
+  var routesState = react.useState({})
+  var routesById = routesState[0]
+  var setRoutesById = routesState[1]
   var catTickState = react.useState(0)
   var setCatTick = catTickState[1]
   var delState = react.useState({})
@@ -718,6 +845,15 @@ export function ProviderSettingsSection() {
     loadProviderStatus()
       .then(function (payload) {
         setStatus(payload)
+        // routes 里带着每个 provider 已声明的 models 原文：逐模型编辑要基于它改，
+        // 手写字段（reasoningEfforts / compat）才不会被界面写丢。
+        var byId: AnyRecord = {}
+        var list = payload !== null && payload !== undefined && Array.isArray(payload.routes) ? payload.routes : []
+        for (var i = 0; i < list.length; i += 1) {
+          var entry = list[i]
+          if (entry !== null && typeof entry === 'object' && typeof entry.id === 'string') byId[entry.id] = entry
+        }
+        setRoutesById(byId)
       })
       .catch(function () {
         setStatus(STATUS_UNAVAILABLE)
@@ -741,6 +877,80 @@ export function ProviderSettingsSection() {
     },
     [],
   )
+
+  /** 覆盖某个 provider 的编辑态。 */
+  function updateModelEditor(routeId: string, next: ModelEditorState) {
+    setModelEditors(function (prev: AnyRecord) {
+      return withKey(prev, routeId, next)
+    })
+  }
+
+  /** 行级展开/收起（key = routeId:modelId）。 */
+  function toggleEditorRow(key: string) {
+    setEditorOpen(function (prev: AnyRecord) {
+      return withKey(prev, key, prev[key] !== true)
+    })
+  }
+
+  /**
+   * 保存逐模型清单：只写 `providers.<id>.models` 这一个字段。
+   *
+   * 之所以只写这一个字段、而不是整段写 route：整段写会重复 issue #1 那个数据丢失洞
+   * （手写的 compat / retryPolicy / headers 一起没）。`models` 非空即「整段替换目录」——
+   * 所以勾掉一个模型 = 往数组里少写一条 = 不再提供它。
+   */
+  function saveModelList(account: PlanAccount, rows: readonly ModelEditorRow[]) {
+    var error = validateModelRows(rows)
+    if (error !== undefined) {
+      setNote(error)
+      return
+    }
+    var payload = modelListPayload(rows)
+    if (payload.length === 0) {
+      setNote('至少要留一个模型；一个都不留的话请用「恢复目录默认」')
+      return
+    }
+    setNote('正在保存模型清单 …')
+    apiCall('settings/mutate', {
+      ns: 'llm-pi-ai',
+      ops: [{ op: 'set', path: ['providers', account.id, 'models'], value: payload }],
+    })
+      .then(function () {
+        setNote('已保存 ' + account.id + ' 的模型清单（' + String(payload.length) + ' 个模型）')
+        updateModelEditor(account.id, { routeId: account.id, mode: 'custom', rows: [...rows], pendingId: '' })
+        refresh(true)
+      })
+      .catch(function (cause) {
+        setNote('保存失败：' + String(cause && cause.message ? cause.message : cause))
+      })
+  }
+
+  /**
+   * 恢复目录默认：把 `models` 整个删掉（unset）。
+   *
+   * 不写空数组——官方 `resolveRouteModels` 判的是 `configured.length > 0`，
+   * 空数组等于没写，但留着个空数组会让用户以为「清单还在，只是空的」。删干净更好懂。
+   */
+  function resetModelList(account: PlanAccount) {
+    setNote('正在恢复目录默认 …')
+    apiCall('settings/mutate', {
+      ns: 'llm-pi-ai',
+      ops: [{ op: 'unset', path: ['providers', account.id, 'models'] }],
+    })
+      .then(function () {
+        setNote('已恢复 ' + account.id + ' 的目录默认模型清单')
+        // 编辑态整份丢掉，下次渲染按新状态重建（否则会停在旧清单上）
+        setModelEditors(function (prev: AnyRecord) {
+          var next = { ...prev }
+          delete next[account.id]
+          return next
+        })
+        refresh(true)
+      })
+      .catch(function (cause) {
+        setNote('恢复失败：' + String(cause && cause.message ? cause.message : cause))
+      })
+  }
 
   react.useEffect(
     function () {
@@ -1215,6 +1425,91 @@ export function ProviderSettingsSection() {
             }
             // 列表区：分割线上边缘贯穿模型框
             mBoxRows.push(react.createElement('div', { className: 'pv_mList', key: 'm-list' }, mListRows))
+            // 逐模型清单编辑（issue #1 的诉求）：官方 Models 页被禁用后，这是唯一能改
+            // 「这条路由暴露哪些模型、各自什么参数」的入口。写的是
+            // `llm-pi-ai.providers.<id>.models`——官方语义是**整段替换**目录，
+            // 所以界面上勾掉一个 = 不再暴露它。
+            var route = routesById[account.id]
+            var editor = modelEditors[account.id] === undefined
+              ? buildModelEditor(account.id, models, detailsById, route === undefined ? undefined : route.models)
+              : modelEditors[account.id]
+            var editorRows = editor.rows
+            var servedCount = 0
+            for (var sr = 0; sr < editorRows.length; sr += 1) {
+              if (editorRows[sr].served) servedCount += 1
+            }
+            var edRows = []
+            edRows.push(
+              react.createElement(
+                'div',
+                { className: 'pv_edHead', key: 'ed-head' },
+                react.createElement('span', null, '模型清单（' + String(servedCount) + '/' + String(editorRows.length) + ' 已提供）'),
+                // 与官方同语义的两条路：不写 = 目录默认；写了 = 整段替换
+                react.createElement('span', { className: 'pv_edMode' },
+                  editor.mode === 'custom' ? '自定义清单' : '目录默认'),
+              ),
+            )
+            for (var er = 0; er < editorRows.length; er += 1) {
+              edRows.push(modelEditorRow(editorRows[er], account.id, editor, updateModelEditor, editorOpen, toggleEditorRow))
+            }
+            edRows.push(
+              react.createElement(
+                'div',
+                { className: 'pv_edAdd', key: 'ed-add' },
+                react.createElement('input', {
+                  className: 'pv_field',
+                  placeholder: '加一个目录里没有的模型 ID',
+                  value: editor.pendingId,
+                  onChange: function (ev: FieldEvent) {
+                    updateModelEditor(account.id, { ...editor, pendingId: ev.target.value })
+                  },
+                }),
+                react.createElement(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'pv_action',
+                    onClick: function () {
+                      updateModelEditor(account.id, { ...editor, rows: addModelRow(editorRows, editor.pendingId), pendingId: '' })
+                    },
+                  },
+                  '添加',
+                ),
+              ),
+            )
+            var editorError = validateModelRows(editorRows)
+            edRows.push(
+              react.createElement(
+                'div',
+                { className: 'pv_edActs', key: 'ed-acts' },
+                react.createElement(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'pv_action',
+                    disabled: editorError !== undefined,
+                    title: editorError === undefined ? '' : editorError,
+                    onClick: function () { saveModelList(account, editorRows) },
+                  },
+                  '保存清单',
+                ),
+                route !== undefined && route.models !== undefined
+                  ? react.createElement(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'pv_action',
+                        onClick: function () { resetModelList(account) },
+                      },
+                      '恢复目录默认',
+                    )
+                  : null,
+                editorError === undefined
+                  ? null
+                  : react.createElement('span', { className: 'plan_note plan_badText' }, editorError),
+              ),
+            )
+            mBoxRows.push(react.createElement('div', { className: 'pv_modelEditor', key: 'ed' }, edRows))
           }
           bodyRows.push(react.createElement('div', { className: 'pv_mBox', key: 'mbox' }, mBoxRows))
         }

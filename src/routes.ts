@@ -23,6 +23,14 @@ export interface ProviderRoute {
   api?: string | undefined
   label: string | undefined
   source: 'llm-pi-ai' | 'native'
+  /**
+   * 已声明的逐模型清单（`settings.yaml` 里 `llm-pi-ai.providers.<id>.models` 的**原文**）。
+   * 非空表示这条 route 走的是「自定义清单」而不是目录默认——编辑界面要基于它改，
+   * 免得把用户手写的字段（reasoningEfforts / compat）丢掉。
+   */
+  models?: unknown[]
+  /** 逐模型参数覆盖（`modelOverrides`），与 models 互斥；界面上只读展示。 */
+  modelOverrides?: unknown
 }
 
 /**
@@ -115,6 +123,13 @@ export function providerRoutes(
       api: readString(route['api']),
       label: readString(route['displayName']),
       source: 'llm-pi-ai',
+      // 已声明的逐模型清单原样带上（不解析、不补默认值）：它的语义是「整段替换目录」，
+      // 界面上的编辑必须基于这份原文——只写回 id/name/窗口那些字段会把用户手写的
+      // reasoningEfforts / compat 一起抹掉。
+      models: Array.isArray(route['models']) ? route['models'] : undefined,
+      modelOverrides: route['modelOverrides'] !== undefined && route['modelOverrides'] !== null
+        ? route['modelOverrides']
+        : undefined,
     })
   }
 

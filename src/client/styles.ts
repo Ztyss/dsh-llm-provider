@@ -157,6 +157,31 @@ var css =
   'border-radius:6px;color:var(--dsw-alias-label-tertiary)}' +
   '.pv_iconBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}' +
   '.pv_delOn{color:#e03131;font-size:12px;width:auto;padding:2px 8px}' +
+  // 逐模型清单编辑器：勾选行 + 行级展开的参数编辑
+  '.pv_modelEditor{display:flex;flex-direction:column;gap:6px;padding:8px 10px;margin-top:6px;' +
+  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;' +
+  'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.02))}' +
+  '.pv_edHead{display:flex;align-items:center;gap:8px;font-size:12px;' +
+  'color:var(--dsw-alias-label-secondary)}' +
+  '.pv_edMode{margin-left:auto;font-size:11px;padding:1px 6px;border-radius:6px;' +
+  'background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}' +
+  '.pv_edItem{display:flex;flex-direction:column;gap:4px}' +
+  '.pv_edItemOff{opacity:.5}' +
+  '.pv_edRow{display:flex;align-items:center;gap:6px;font-size:12px}' +
+  '.pv_edId{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;' +
+  'text-overflow:ellipsis;white-space:nowrap}' +
+  '.pv_edTag{font-size:11px;padding:1px 6px;border-radius:6px;' +
+  'background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06));' +
+  'color:var(--dsw-alias-label-secondary)}' +
+  '.pv_edCaret{margin-left:auto;border:0;background:0 0;cursor:pointer;font:inherit;' +
+  'font-size:11px;padding:1px 6px;border-radius:6px;color:var(--dsw-alias-label-tertiary)}' +
+  '.pv_edCaret:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}' +
+  '.pv_edFields{display:flex;flex-direction:column;gap:4px;padding:6px 0 2px 22px}' +
+  '.pv_edField{display:flex;align-items:center;gap:8px;font-size:12px;' +
+  'color:var(--dsw-alias-label-secondary)}' +
+  '.pv_edField > .pv_field{flex:1;min-width:0}' +
+  '.pv_edAdd{display:flex;align-items:center;gap:6px}' +
+  '.pv_edActs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}' +
   // 删除确认区：卡片底部的整块面板（不再与头部 ✕ 同槽位——同位置时双击即删，见 issue #3）
   '.pv_delPanel{display:flex;flex-direction:column;gap:6px;padding:10px 12px;margin-top:2px;' +
   'border:1px solid rgba(224,49,49,.35);border-radius:10px;background:rgba(224,49,49,.05)}' +

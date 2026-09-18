@@ -273,8 +273,16 @@ export function apply(ctx: PluginContext, config: unknown): void {
         } catch { /* 拿不到就报 -1 */ }
         let routes: { id: string; apiKeyEnv: string | null; source: string }[] = []
         try {
+          // models / modelOverrides 原样下发：逐模型编辑界面必须基于这份原文改，
+          // 只回写界面上认识的那几个字段会把用户手写的 reasoningEfforts / compat 抹掉。
           routes = [...providerRoutes(service<SettingsService>('settings'), llm).values()]
-            .map((route) => ({ id: route.id, apiKeyEnv: route.apiKeyEnv ?? null, source: route.source }))
+            .map((route) => ({
+              id: route.id,
+              apiKeyEnv: route.apiKeyEnv ?? null,
+              source: route.source,
+              ...(route.models === undefined ? {} : { models: route.models }),
+              ...(route.modelOverrides === undefined ? {} : { modelOverrides: route.modelOverrides }),
+            }))
         } catch { /* 路由发现失败时留空 */ }
         json(res, 200, {
           bridge: bridge.ok

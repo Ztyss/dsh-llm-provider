@@ -25,7 +25,7 @@
     "prepublishOnly": "npm run build",
     "watch": "tsdown --watch",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node test/routes.mjs && node test/credential-check.mjs && node test/cordis-patch.mjs && node test/pi-ai-probe.mjs && node test/provider-presets.mjs && node test/vendor-status.mjs && node test/bridge-candidates.mjs && node test/client-smoke.mjs"
+    "test": "npm run build && node test/routes.mjs && node test/credential-check.mjs && node test/cordis-patch.mjs && node test/pi-ai-probe.mjs && node test/provider-presets.mjs && node test/vendor-status.mjs && node test/bridge-candidates.mjs && node test/client-smoke.mjs && node test/model-editor.mjs"
   },
   "main": "lib/index.js",
   "exports": {
