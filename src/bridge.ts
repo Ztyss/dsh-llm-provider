@@ -209,7 +209,9 @@ function findSourceBundle(): string | undefined {
  */
 function dshPiAiRoot(bundlePath: string | undefined): string | undefined {
   if (bundlePath === undefined) return undefined
-  return resolvePackageRoot(bundlePath, '@earendil-works/pi-ai')
+  const root = resolvePackageRoot(bundlePath, '@earendil-works/pi-ai')
+  // 必须是**真的包**（有 package.json）：全局安装布局下可能只剩一个空壳目录
+  return root !== undefined && isPiAiPackage(root) ? root : undefined
 }
 
 /**
@@ -467,27 +469,68 @@ export function piAiCandidates(probe = false): PiAiCandidateReport[] {
   for (const root of hostRoots) {
     list.push({ key: 'dsh', version: piAiVersionOf(root) ?? 'dsh 自带', root, link: true })
   }
+  // 一条宿主候选都没解析出来时，**也要留一个位置**：否则诊断里完全看不到「宿主那份被找过」，
+  // 用户只看到「只有内置依赖这一档、它不存在」，会以为插件根本没找宿主。
+  // 这条候选存在的意义是"说得清找过哪儿"，不是"一定能用"——解析不到时按不存在报。
+  if (hostRoots.length === 0) {
+    list.push({ key: 'dsh', version: 'dsh 自带', root: dshInstallTreePiAiRoot() ?? defaultHostPiAiPath(), link: true })
+  }
   preferHostOnEqualVersion(list)
   if (!probe) return list
-  return list.map((candidate) => ({ ...candidate, exists: existsSync(candidate.root) }))
+  return list.map((candidate) => ({ ...candidate, exists: isPiAiPackage(candidate.root) }))
 }
 
 /**
- * dsh 安装树里的 pi-ai：官方安装包把依赖放在 `<node>/node_modules`（Windows）
- * 或 `<node>/lib/node_modules`（POSIX）。
+ * 候选目录里是不是**真有一个 pi-ai 包**（有 package.json）。
  *
- * 与 {@link dshPiAiRoot} 的区别：那条是"沿官方 bundle 的解析链找到的"（最准，永远是运行时
- * 真正加载的那份）；这条是最后一道兜底——bundle 位置解析不出时（安装树布局变了、
- * profile 少东西），宿主那份 pi-ai 仍可能就摆在安装树里。
+ * 不能只判 `existsSync(root)`：全局安装（npm -g）布局下 `@deepseek-ai/dsh/node_modules/
+ * @earendil-works/pi-ai` 这个目录**存在但是空的**（没有 package.json）——那是 npm 建出来的
+ * 空壳，里面什么都没有。按"目录存在"判会把这种空壳当成可用候选，体检时才发现没有入口，
+ * 白跑一趟；也可能像这次一样，让「宿主那份」整条从候选里消失。
+ */
+function isPiAiPackage(root: string): boolean {
+  return existsSync(join(root, 'package.json'))
+}
+
+/**
+ * dsh 安装树里 pi-ai 的常见落点（用于"解析不出来时也要报一条路径"）。
+ *
+ * 覆盖两种真实布局：
+ *   1. `<node>/node_modules/@earendil-works/pi-ai`（POSIX 与部分 Windows 安装）；
+ *   2. 嵌套在 dsh 包自己下面：`<node>/node_modules/@deepseek-ai/dsh/node_modules/@earendil-works/pi-ai`
+ *      —— 全局 `npm i -g @deepseek-ai/dsh` 就是这种，顶层 `@earendil-works/pi-ai`
+ *      可能只是个空壳目录（实测：目录在、package.json 不在）。
+ * @returns 第一条存在**包**的路径；一条都没有时返回最常见的那条（供诊断报"找过这里"）。
  */
 function dshInstallTreePiAiRoot(): string | undefined {
   const nodeDir = dirname(process.execPath)
-  const parts = ['@earendil-works', 'pi-ai']
-  for (const base of [join(nodeDir, 'node_modules'), join(nodeDir, '..', 'lib', 'node_modules')]) {
-    const candidate = join(base, ...parts)
-    if (existsSync(join(candidate, 'package.json'))) return candidate
+  const bases = [
+    join(nodeDir, 'node_modules'),
+    join(nodeDir, '..', 'lib', 'node_modules'),
+  ]
+  // profile 那条链也要算上：`dsh plugin add @earendil-works/pi-ai` 装进 profile 后，
+  // 宿主这份就落在 profile 自己的 `node_modules` 里（实测在 `profiles/<name>/node_modules`，
+  // 不是提升到 `profiles/node_modules`）——两种都试。
+  try {
+    const home = resolveDshHome()
+    bases.push(join(home, 'profiles', 'node_modules'))
+    bases.push(join(home, 'profiles', 'web', 'node_modules'))
+  } catch { /* 拿不到 DSH_HOME 就少两个落点 */ }
+  const specifier = ['@earendil-works', 'pi-ai']
+  const candidates: string[] = []
+  for (const base of bases) {
+    candidates.push(join(base, ...specifier))
+    candidates.push(join(base, '@deepseek-ai', 'dsh', 'node_modules', ...specifier))
   }
-  return undefined
+  for (const candidate of candidates) {
+    if (isPiAiPackage(candidate)) return candidate
+  }
+  return candidates[0]
+}
+
+/** 宿主那份 pi-ai 的默认报错路径（解析不出来时用它，让诊断说得清找过哪儿）。 */
+function defaultHostPiAiPath(): string {
+  return join(dirname(process.execPath), 'node_modules', '@earendil-works', 'pi-ai')
 }
 
 function readStatus(): AnyRecord {

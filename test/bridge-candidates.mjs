@@ -34,9 +34,30 @@ const roots = piAiCandidates(false)
 check('不带状态时仍返回同样数量的候选', roots.length === report.length)
 check('不探测时不做文件系统访问', roots.every((c) => c.exists === undefined))
 
+// 本插件的 vendor 根：下面多处断言都靠它区分「插件自己的目录」与「宿主的目录」
+const vendorRoot = join(process.cwd(), 'vendor')
+
+// ---- 1b. 候选目录必须**真的可用**，不能只因为"路径拼得出来"就当成候选 ----
+// 这是端到端验证时抓到的真问题：全局安装（npm -g）布局下，`@deepseek-ai/dsh/node_modules/
+// @earendil-works/pi-ai` 这个目录**存在但是空的**（没有 package.json）——`dsh` 候选因此整条
+// 消失，桥接只剩 `dependency` 一条，报错里也看不出宿主那份被找过。
+// 修法：存在的候选必须是**真的能解析出 pi-ai 包**的目录（有 package.json）。
+for (const candidate of report) {
+  if (candidate.exists !== true) continue
+  check(
+    `存在的候选 ${candidate.key} 里确实有 package.json`,
+    existsSync(join(candidate.root, 'package.json')),
+    candidate.root,
+  )
+}
+// 宿主那份 pi-ai 的常见落点：profile 的直接依赖、以及嵌在 dsh 包里的那份
+const hostPaths = report.filter((c) => c.key !== 'dependency').map((c) => c.root)
+check('候选里覆盖了「profile 的直接依赖」这一档（或确实一条宿主候选都没有）',
+  hostPaths.length === 0 || hostPaths.some((p) => p.indexOf('profiles') !== -1 && p.indexOf('@earendil-works') !== -1),
+  hostPaths.join(' | '))
+
 // ---- 2. 宿主那份 pi-ai 的候选路径必须来自**宿主**的 node_modules，而不是本插件的 vendor ----
 // 结构断言：只要 vendor/pi-ai 里的版本目录不该出现在宿主候选上。
-const vendorRoot = join(process.cwd(), 'vendor')
 const hostish = report.filter((c) => c.key !== 'dependency' && !c.root.startsWith(vendorRoot))
 check('存在来自 vendor 之外的候选（宿主那份）或明确没有', hostish.length >= 0)
 
