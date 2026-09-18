@@ -76,11 +76,13 @@ export interface ProjectionCell {
   subscribe: () => () => void
 }
 
-/** sessions 服务：只用到 binding(sessionId).session.projections.faceOf(...)。 */
+/** sessions 服务：只用到 binding(sessionId).session.projections.faceOf(...) 与子代理寻址。 */
 export interface SessionsFace {
   binding?: (sessionId: string) => {
     session?: { projections?: { faceOf?: (name: string) => ProjectionCell } }
   }
+  /** 会话被寻址成某个子代理时返回其地址；普通会话返回 undefined（官方 /model 用它判可用性）。 */
+  subagentAddress?: (sessionId: string) => unknown
 }
 
 /** /provider/presets 里的一个预置供应商。 */
@@ -180,6 +182,12 @@ export interface CommandContribution {
   name: string
   label: () => string
   description: () => string
+  /**
+   * 官方 ui-commands 契约里的**必填**项（`CommandContribution.available(session)`，
+   * 返回该会话能否用这条命令）。声明成必填是有意的：官方 CommandUiRuntime 对注册表里
+   * 每一条贡献都裸调它、不做防御，漏一次就打挂整批 `/` 候选（issue #7）。
+   */
+  available: (session: { sessionId?: string }) => boolean
   ui: {
     kind: string
     options: () => Promise<CommandOption[]>

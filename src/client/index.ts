@@ -185,4 +185,4 @@ export function apply(ctx: ClientContext) {
 export { normalizeSelection, onPlanChange, mergePlanAccount, dropPlanAccount } from './data.js'
 export { aliasSelection, LEGACY_PROVIDER_ALIASES } from './model-seat.js'
 export { piAiBridgeRows, piAiUpstreamText, presetPickState, refreshFailure } from './settings.js'
-export { reasoningTextOf, defaultEffortOf } from './format.js'
+export { reasoningTextOf, defaultEffortOf, headlineChips, shortWindowLabel } from './format.js'

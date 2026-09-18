@@ -49,13 +49,24 @@ function runApply(commandDuplicate) {
   const slotInjects = []
   const injectedServices = []
   let commandRegistered = false
+  let registeredContribution
 
   const effect = (fn) => {
     const disposer = fn()
     return typeof disposer === 'function' ? disposer : () => {}
   }
+  // 桩：sessions 服务。真机上它是插件 inject 列表的第一条，所以 ctx.inject 的每个 scope 上
+  // 都直接有它（cordis 按依赖表解析）。/model 的 available 就靠它判「被寻址成子代理的会话
+  // 不能用模型选择」——所以桩必须给，否则那条分支永远测不到（会落进「服务缺席→放行」的兜底）。
+  const sessions = {
+    subagentAddress(sessionId) {
+      return sessionId === 'child-1' ? { parent: 'root' } : undefined
+    },
+    binding: () => ({ session: { projections: { faceOf: () => undefined } } }),
+  }
   const scope = {
     effect,
+    sessions,
     slots: {
       inject(name, callback) {
         slotInjects.push(name)
@@ -71,12 +82,14 @@ function runApply(commandDuplicate) {
       if (names.includes('commandUi')) {
         callback({
           commandUi: {
-            register() {
+            register(contribution) {
               if (commandDuplicate) throw new Error('ui-commands: duplicate contribution for /model')
               commandRegistered = true
+              registeredContribution = contribution
               return () => {}
             },
           },
+          sessions,
           effect,
         })
       }
@@ -106,7 +119,7 @@ function runApply(commandDuplicate) {
     },
   })
   moduleExports.apply(ctx)
-  return { registrations, slotInjects, injectedServices, commandRegistered }
+  return { registrations, slotInjects, injectedServices, commandRegistered, registeredContribution }
 }
 
 // 场景 1：官方 /model 还在（同名注册会抛）——插件必须静默让位，其余座位照常
@@ -146,6 +159,74 @@ if (!(typeof seat.options.priority === 'number' && seat.options.priority < 0)) {
 // 命令注册的两条路径
 if (duplicated.commandRegistered) throw new Error('官方 /model 还在时不该抢注册')
 if (!free.commandRegistered) throw new Error('官方行禁用后我们的 /model 应该注册成功')
+
+// ---- F-#7（issue #7）：/model 贡献必须带官方契约必填的 available ----
+// 官方 CommandUiRuntime.candidates() 对注册表里每一条贡献都直接调 `contribution.available(session)`
+// （dsh-client-ui-commands/lib/client.js），没有防御。漏了它，那一抛会打挂整个 `/` 候选列表
+// （不是只挂 /model）：source 失败 → 一组候选不剩 → 菜单自动关闭 → composer 左下那枚「＋」
+// 点了没反应、打 `/` 也不弹。
+let contractFailures = 0
+function contractCheck(name, cond) {
+  console.log((cond ? '  ok ' : '  FAIL ') + name)
+  if (!cond) contractFailures += 1
+}
+const contrib = free.registeredContribution
+contractCheck('/model 贡献对象已捕获', contrib !== undefined)
+if (contrib !== undefined) {
+  contractCheck('贡献带 available', typeof contrib.available === 'function')
+  contractCheck('贡献 name 是 model', contrib.name === 'model')
+  contractCheck('贡献 ui 是 popupSelect', contrib.ui !== undefined && contrib.ui.kind === 'popupSelect')
+  if (typeof contrib.available === 'function') {
+    // 真机的调用形状是**只传一个 session**（官方 candidates() 就这么调），所以这里也这么调：
+    // sessions 面从闭包里的 scope 取，不是从第二个参数取。
+    contractCheck('普通会话可用', contrib.available({ sessionId: 's1' }) === true)
+    contractCheck('子代理会话不可用', contrib.available({ sessionId: 'child-1' }) === false)
+    contractCheck('会话缺 sessionId 时放行', contrib.available({}) === true)
+  }
+}
+
+// ---- F-#8（issue #8）：额度卡片头部按窗口档位分组，组与组之间都要有分割线 ----
+// 旧实现只分「5 小时」与「其余」两桶、只插一条分割线，于是 7d 与 30d 挤在一起像同一组的两个值。
+const { headlineChips } = moduleExports
+function win(name, percent, resetAt) {
+  return { window: name, percentLeft: percent, resetAt }
+}
+const sepCount = (chips) => chips.filter((c) => c.sep === true).length
+const textsOf = (chips) => chips.filter((c) => c.sep !== true).map((c) => c.label + ':' + c.text)
+
+const three = headlineChips({
+  id: 'opencode-go',
+  windows: [win('5 小时窗口', 100, '2030-01-01T00:00:00Z'), win('每周窗口', 65, '2030-01-01T00:00:00Z'), win('每月窗口', 8, '2030-01-01T00:00:00Z')],
+})
+contractCheck('三档窗口画两条分割线（7d 与 30d 之间也要有）', sepCount(three) === 2)
+contractCheck('三档窗口顺序 5h → 7d → 30d', textsOf(three).join(',') === '5h:100%,7d:65%,30d:8%')
+contractCheck('分割线夹在组之间（不在末尾）', three[three.length - 1].sep !== true)
+
+const two = headlineChips({
+  id: 'opencode-go',
+  windows: [win('5 小时窗口', 100, '2030-01-01T00:00:00Z'), win('每周窗口', 65, '2030-01-01T00:00:00Z')],
+})
+contractCheck('只有两档时仍是一条分割线（空组不画线）', sepCount(two) === 1)
+
+const shuffled = headlineChips({
+  id: 'opencode-go',
+  windows: [win('每月窗口', 8, '2030-01-01T00:00:00Z'), win('5 小时窗口', 100, '2030-01-01T00:00:00Z'), win('每周窗口', 65, '2030-01-01T00:00:00Z')],
+})
+contractCheck('上游乱序也规整成 5h → 7d → 30d', textsOf(shuffled).join(',') === '5h:100%,7d:65%,30d:8%')
+contractCheck('乱序时分割线数量不变', sepCount(shuffled) === 2)
+
+const unknownWindow = headlineChips({
+  id: 'x',
+  windows: [win('订阅周期', 50, '2030-01-01T00:00:00Z'), win('随便什么窗口', 40, '2030-01-01T00:00:00Z'), win('每月窗口', 8, '2030-01-01T00:00:00Z')],
+})
+contractCheck('认不出的窗口名不丢，仍按出现顺序出现', unknownWindow.filter((c) => c.sep !== true).length === 3)
+contractCheck('认不出的窗口与已知档之间也有分割线', sepCount(unknownWindow) === 2)
+
+const monthlyOnly = headlineChips({ id: 'x', windows: [win('每月窗口', 8, '2030-01-01T00:00:00Z')] })
+contractCheck('只有一档时不画分割线', sepCount(monthlyOnly) === 0)
+contractCheck('每月窗口不再被显示成 7d', textsOf(monthlyOnly).join(',') === '30d:8%')
+
+if (contractFailures > 0) throw new Error(`契约/分割线断言有 ${contractFailures} 条没过`)
 
 // ---- 「pi-ai 桥接」标签页的明细行（纯函数，不渲染）----
 const { piAiBridgeRows, piAiUpstreamText, reasoningTextOf, defaultEffortOf, normalizeSelection } = moduleExports

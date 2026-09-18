@@ -148,10 +148,16 @@ export function quotaTextOf(account: PlanAccount | undefined | null): string | u
   return undefined
 }
 
-/** 窗口短名（卡片头部摘要）：5 小时窗口→5h，每周/订阅周期→7d（对齐 CC Switch 的 7 天口径）。 */
+/**
+ * 窗口短名（卡片头部摘要与悬停详情共用）：5 小时窗口→5h，每周/订阅周期→7d，每月→30d。
+ *
+ * 判序要紧：裸 `每` 会把「每月窗口」也吞进 7d（那正是 issue #2 的现象：第三档被显示成第二个
+ * 7d），所以「月」必须排在「每」之前判。认不出的窗口名返回截断的原名，不再冒充 7d。
+ */
 export function shortWindowLabel(name: unknown): string {
   var text = String(name ?? '')
   if (text.indexOf('5 小时') !== -1 || text.indexOf('5小时') !== -1) return '5h'
+  if (text.indexOf('月') !== -1) return '30d'
   if (text.indexOf('每') !== -1 || text.indexOf('订阅') !== -1 || text.indexOf('周') !== -1) return '7d'
   return text === '' ? '窗口' : text.slice(0, 4)
 }
@@ -194,7 +200,14 @@ export function quotaTipOf(account: PlanAccount | undefined | null): string | un
 }
 
 /** 卡片头部摘要：直给最关键信息——coding plan 显示各窗口余量，API 显示余额。
- *  顺序：5 小时窗在前、订阅周期在后，两组之间带分割线。 */
+ *
+ *  按窗口档位分组（5h → 7d → 30d → 认不出的档按出现顺序），**组与组之间**都插分割线：
+ *  旧实现只分「5 小时」与「其余」两桶、只插一条线，于是 7d 与 30d 挤在一起像同一组的两个值
+ *  （issue #8）。空组不画线——只有两档时仍然只有一条线，视觉不变。
+ *
+ *  档位顺序固定，上游返回顺序变化或同一档出现多次时分割线位置不会跳。 */
+const HEADLINE_BUCKETS = ['5h', '7d', '30d'] as const
+
 export function headlineChips(account: PlanAccount | undefined | null): HeadlineChip[] {
   if (account === undefined || account === null) return [{ text: '无数据', percent: undefined }]
   if (account.authConfigured === false) return [{ text: '未配置 key', percent: 0 }]
@@ -202,23 +215,46 @@ export function headlineChips(account: PlanAccount | undefined | null): Headline
   if (account.kind === 'unsupported') return []
   if (account.kind === 'unknown-provider') return [{ text: '无适配器', percent: undefined }]
   var windows = Array.isArray(account.windows) ? account.windows : []
-  var fiveHour: HeadlineChip[] = []
-  var others: HeadlineChip[] = []
+  var groups: { label: string; chips: HeadlineChip[] }[] = []
+  var known: string[] = HEADLINE_BUCKETS.slice()
+  function groupOf(label: string): HeadlineChip[] {
+    for (var g = 0; g < groups.length; g += 1) {
+      if (groups[g].label === label) return groups[g].chips
+    }
+    var fresh: HeadlineChip[] = []
+    groups.push({ label: label, chips: fresh })
+    return fresh
+  }
   for (var i = 0; i < windows.length; i += 1) {
     if (typeof windows[i].percentLeft !== 'number') continue
-    var chip: HeadlineChip = {
-      label: shortWindowLabel(windows[i].window),
+    var label = shortWindowLabel(windows[i].window)
+    groupOf(label).push({
+      label: label,
       text: String(windows[i].percentLeft) + '%',
       percent: windows[i].percentLeft,
       reset: windows[i].resetAt,
+    })
+  }
+  // 已知档按固定序，其余档按首次出现的顺序接在后面——认不出的窗口不丢
+  var ordered: { label: string; chips: HeadlineChip[] }[] = []
+  var index = 0
+  for (var k = 0; k < known.length; k += 1) {
+    for (index = 0; index < groups.length; index += 1) {
+      if (groups[index].label === known[k]) {
+        ordered.push(groups[index])
+        break
+      }
     }
-    if (/5\s*小时/.test(String(windows[i].window))) fiveHour.push(chip)
-    else others.push(chip)
+  }
+  for (index = 0; index < groups.length; index += 1) {
+    if (known.indexOf(groups[index].label) === -1) ordered.push(groups[index])
   }
   var chips: HeadlineChip[] = []
-  for (var f = 0; f < fiveHour.length; f += 1) chips.push(fiveHour[f])
-  if (fiveHour.length > 0 && others.length > 0) chips.push({ sep: true })
-  for (var o = 0; o < others.length; o += 1) chips.push(others[o])
+  for (var o = 0; o < ordered.length; o += 1) {
+    if (ordered[o].chips.length === 0) continue
+    if (chips.length > 0) chips.push({ sep: true })
+    for (var c = 0; c < ordered[o].chips.length; c += 1) chips.push(ordered[o].chips[c])
+  }
   if (chips.length > 0) return chips
   var balances = Array.isArray(account.balances) ? account.balances : []
   if (balances.length > 0) chips.push({ text: String(balances[0].value), percent: undefined })
