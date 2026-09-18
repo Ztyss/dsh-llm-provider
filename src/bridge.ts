@@ -408,6 +408,32 @@ export function probePiAi(requirements: readonly PiAiRequirement[], root: string
 }
 
 /**
+ * 排序：同一版本时**先试宿主那份**（issue #4 的第 2 条期望）。
+ *
+ * 下载副本排在前面是有道理的（它可能是更新的版本），但版本相同时让副本赢有两个代价：
+ * 白占一份约 80 MB 的重复目录，而且切换生效要等重启——用宿主那份本来就在跑。
+ * 位置不动、只交换同版本的两条，所以「有更新的下载副本」这条主路径不受影响。
+ * 宿主自带的版本未知（读不出 package.json）时跳过交换：那说明这一档本身有问题，
+ * 不该因为读不出版本号就去改优先级。
+ */
+export function preferHostOnEqualVersion(list: PiAiCandidate[]): PiAiCandidate[] {
+  const hostVersions = new Set(list.filter((candidate) => candidate.key === 'dsh').map((candidate) => candidate.version))
+  if (hostVersions.size === 0) return list
+  for (let i = 0; i < list.length; i += 1) {
+    const current = list[i]
+    if (current === undefined || current.link !== true) continue
+    if (!hostVersions.has(current.version)) continue
+    const hostIndex = list.findIndex((candidate, index) => index > i && candidate.key === 'dsh' && candidate.version === current.version)
+    if (hostIndex === -1) continue
+    const host = list[hostIndex]
+    if (host === undefined) continue
+    list[i] = host
+    list[hostIndex] = current
+  }
+  return list
+}
+
+/**
  * pi-ai 候选，按优先级排：
  *   1. `vendor/pi-ai/<版本>/`——updater 下载下来的，新 → 旧
  *   2. `vendor/node_modules/@earendil-works/pi-ai`——可选的手装兜底档（vendor/package.json 锁定）
@@ -415,7 +441,7 @@ export function probePiAi(requirements: readonly PiAiRequirement[], root: string
  *
  * 两个「dsh 自带」的候选（profile 与安装树里的那份）都列出来，不只列第一个命中的：
  * 候选全不存在时，报错里得能看出**哪几条路径被找过**，否则用户拿到的是一句
- * `没有能用的 pi-ai：` 后面空白（issue #6 的「诊断盲区」）。
+ * 「没有能用的 pi-ai」后面一片空白（issue #6 的「诊断盲区」）。
  * @param probe - 是否顺带探一下每条候选在不在（`/provider/status` 与报错用它）。默认不探。
  */
 export function piAiCandidates(probe = false): PiAiCandidateReport[] {
@@ -441,6 +467,7 @@ export function piAiCandidates(probe = false): PiAiCandidateReport[] {
   for (const root of hostRoots) {
     list.push({ key: 'dsh', version: piAiVersionOf(root) ?? 'dsh 自带', root, link: true })
   }
+  preferHostOnEqualVersion(list)
   if (!probe) return list
   return list.map((candidate) => ({ ...candidate, exists: existsSync(candidate.root) }))
 }
@@ -534,7 +561,7 @@ export function loadBridge(): BridgeLoadResult {
       if (!existsSync(candidate.root)) {
         // 目录不存在不算"体检没通过"（那是这一档没装），但要**留在报告里**：
         // 候选全不存在时报错必须能说出哪几条路径被找过、都不在（issue #6 的诊断盲区——
-        // 原来这里静默 continue，报错就成了 `没有能用的 pi-ai：` 后面一片空白）。
+        // 原来这里静默 continue，报错就成了「没有能用的 pi-ai」后面一片空白）。
         candidates.push({
           key: candidate.key,
           version: candidate.version,
@@ -626,6 +653,18 @@ function setPiAiLink(target: string): void {
  */
 function clearPiAiLink(): void {
   removeDirectoryLink(join(bridgeDir, 'node_modules', '@earendil-works', 'pi-ai'))
+}
+
+/**
+ * 桥接副本当前的 pi-ai 链指向哪儿（没链或读不到返回 undefined）。
+ * 清理旧版本时用它保住「正在用的那一份」——磁盘回收不能把生效的那份删掉。
+ */
+export function activeLinkTarget(): string | undefined {
+  try {
+    return readlinkSync(join(bridgeDir, 'node_modules', '@earendil-works', 'pi-ai'))
+  } catch {
+    return undefined
+  }
 }
 
 /**

@@ -18,7 +18,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
-import { bridgeRequirements, compareVersions, installedVersions, probePiAi, updateStatus, vendorDir } from './bridge.js'
+import { activeLinkTarget, bridgeRequirements, compareVersions, installedVersions, probePiAi, updateStatus, vendorDir } from './bridge.js'
 import { asRecord, readString, type AnyRecord, type Logger } from './types.js'
 
 const execFileAsync = promisify(execFile)
@@ -28,6 +28,12 @@ const REGISTRY = `https://registry.npmjs.org/${encodeURIComponent(PACKAGE).repla
 const VERSIONS_DIR = join(vendorDir, 'pi-ai')
 const STATE_FILE = join(vendorDir, 'updater-state.json')
 const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 小时
+/**
+ * 保留几份下载下来的 pi-ai。一份解压带依赖闭包约 80 MB，且**旧版本不会自己消失**：
+ * 放着不管，每升一版就在插件目录里多堆一份（issue #4 实测插件目录 260 MB，而代码只有 220 KB）。
+ * 留 1 份就够回滚（回滚靠删掉它落回宿主那份，不需要旧版本）；当前链接指向的那份永不删。
+ */
+const KEEP_VERSIONS = 1
 
 /** 一次检查 + 更新的结果（/provider/update 的响应体）。 */
 export interface UpdateResult {
@@ -137,19 +143,63 @@ export async function installVersion(release: RegistryRelease, log: (line: strin
   rmSync(tgzPath, { force: true })
 
   log('安装依赖（--omit=dev --ignore-scripts）...')
-  // 用插件本地缓存：用户默认缓存可能因权限问题（root 属主残留）不可写，不该让它挡住更新
-  const npmCache = join(vendorDir, '.npm-cache')
+  // 缓存放系统临时目录、装完就删。原来它写在插件目录里（vendor/.npm-cache）且**装完不清**，
+  // issue #4 实测这一项留了 178 MB —— 插件的代码只有 220 KB。这块体积躺在 node_modules 里，
+  // 常规清理看不到，用户只会觉得「一个插件怎么这么大」。
+  const npmCache = join(tmpdir(), `dsh-llm-provider-npm-cache-${String(process.pid)}`)
   mkdirSync(npmCache, { recursive: true })
-  const npm = npmCommand([
-    'install', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--loglevel=error',
-    `--cache=${npmCache}`,
-  ])
-  await execFileAsync(npm.file, npm.args, {
-    cwd: target,
-    timeout: 300_000,
-    ...(npm.shell ? { shell: true } : {}),
-  })
+  try {
+    const npm = npmCommand([
+      'install', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--loglevel=error',
+      `--cache=${npmCache}`,
+    ])
+    await execFileAsync(npm.file, npm.args, {
+      cwd: target,
+      timeout: 300_000,
+      ...(npm.shell ? { shell: true } : {}),
+    })
+  } finally {
+    // 装失败也要清：缓存是纯中间产物，留着只有占位置这一个作用
+    rmSync(npmCache, { force: true, recursive: true })
+  }
   return target
+}
+
+/**
+ * 回收 `vendor/pi-ai/` 下的旧版本：只留最新 KEEP_VERSIONS 份，**且永不删正在生效的那一份**。
+ *
+ * 触发点是「下载并验证成功后」。刻意不在每次启动时清理：加载期删目录会多出一种
+ * 「启动那一刻正好在跑哪份」的时序风险，而这条路径本来就只该在确实产生新副本时跑。
+ * 失败不抛——回收是附加动作，不该让一次成功的更新变成失败。
+ * @param log - 进度输出。
+ * @returns 被删掉的版本目录名。
+ */
+export function pruneInstalledVersions(log: (line: string) => void = () => {}): string[] {
+  const removed: string[] = []
+  try {
+    const versions = installedVersions()
+    if (versions.length <= KEEP_VERSIONS) return removed
+    const keep = new Set(versions.slice(versions.length - KEEP_VERSIONS))
+    const linkTarget = activeLinkTarget()
+    for (const version of versions) {
+      if (keep.has(version)) continue
+      const dir = join(VERSIONS_DIR, version)
+      // 正在用的那份（链接指向它）绝不删：删了当前进程之外的下一次启动就找不到它了
+      if (linkTarget !== undefined && samePath(linkTarget, dir)) continue
+      rmSync(dir, { force: true, recursive: true })
+      removed.push(version)
+      log(`清理旧版本 vendor/pi-ai/${version}`)
+    }
+  } catch (error) {
+    log(`清理旧版本失败（不影响更新本身）：${error instanceof Error ? error.message : String(error)}`)
+  }
+  return removed
+}
+
+/** 两条路径是不是同一个（大小写与分隔符差异都算同一个；Windows 上路径大小写不敏感）。 */
+function samePath(a: string, b: string): boolean {
+  const norm = (value: string): string => value.replace(/[\\/]+$/, '').replaceAll('\\', '/').toLowerCase()
+  return norm(a) === norm(b)
 }
 
 /**
@@ -193,6 +243,8 @@ export async function checkAndUpdate(
       updateStatus({ piAiVersion: release.version, needsRestart: true, latestVersion: release.version, latestRejected: undefined })
       result.applied = true
       log(`已验证 ${release.version}（完整性 + 兼容性体检），重启 dsh 后生效`)
+      // 新副本已经就位、也验过了，顺手回收更老的：不回收的话每升一版都多堆约 80 MB
+      pruneInstalledVersions(log)
     } else {
       // 留着不删：下次启动还会体检一遍，结论一致；万一判断有误也能人工指定。
       // unverified（需求解析不出）同样不替换——「验证才能替换」没有例外。

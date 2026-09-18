@@ -13,7 +13,8 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { isDirectoryLink, piAiCandidates, removeDirectoryLink } from '../lib/bridge.js'
+import { activeLinkTarget, isDirectoryLink, piAiCandidates, preferHostOnEqualVersion, removeDirectoryLink } from '../lib/bridge.js'
+import { pruneInstalledVersions } from '../lib/updater.js'
 
 let failures = 0
 function check(name, cond, extra) {
@@ -89,6 +90,40 @@ removeDirectoryLink(notALink)
 check('普通目录不会被当成链接删掉', existsSync(join(notALink, 'inside')) === true)
 
 rmSync(sandbox, { force: true, recursive: true })
+
+// ---- 4. 同一版本时优先复用宿主那份（issue #4 第 2 条期望）----
+// 下载副本排在前面是有道理的（它可能是更新的版本），但版本相同时让副本赢会白占一份约 80 MB
+// 的重复目录，而且切换生效还得等重启——用宿主那份本来就在跑。
+const equalVersions = preferHostOnEqualVersion([
+  { key: '0.85.1', version: '0.85.1', root: '/plugin/vendor/pi-ai/0.85.1', link: true },
+  { key: 'dsh', version: '0.85.1', root: '/app/node_modules/@earendil-works/pi-ai', link: true },
+])
+check('同版本时宿主那份排到了前面', equalVersions[0].key === 'dsh', equalVersions[0].key)
+check('同版本的两条一个都没丢', equalVersions.length === 2)
+
+const newerDownload = preferHostOnEqualVersion([
+  { key: '0.86.0', version: '0.86.0', root: '/plugin/vendor/pi-ai/0.86.0', link: true },
+  { key: 'dsh', version: '0.85.1', root: '/app/node_modules/@earendil-works/pi-ai', link: true },
+])
+check('下载副本更新时仍然排前面（升级路径不受影响）', newerDownload[0].key === '0.86.0', newerDownload[0].key)
+
+// 版本读不出来（'dsh 自带' 这种字面值）时不乱换位：那说明这一档本身有问题
+const unknownHostVersion = preferHostOnEqualVersion([
+  { key: '0.85.1', version: '0.85.1', root: '/plugin/vendor/pi-ai/0.85.1', link: true },
+  { key: 'dsh', version: 'dsh 自带', root: '/app/node_modules/@earendil-works/pi-ai', link: true },
+])
+check('宿主版本读不出来时不换位', unknownHostVersion[0].key === '0.85.1', unknownHostVersion[0].key)
+
+const noHost = preferHostOnEqualVersion([
+  { key: 'dependency', version: '内置依赖', root: '/plugin/vendor/node_modules/@earendil-works/pi-ai', link: false },
+])
+check('没有宿主候选时原样返回', noHost[0].key === 'dependency')
+
+// ---- 5. 旧版本回收（issue #4 第 4 条期望）：没有可回收的对象时不能乱删 ----
+// 这个环境里 vendor/pi-ai 要么不存在、要么只有 1 份，都不该触发删除。
+check('链接指向读得出来或明确没有', activeLinkTarget() === undefined || typeof activeLinkTarget() === 'string')
+const prunedNothing = pruneInstalledVersions(() => {})
+check('没有多余版本时不删任何东西', Array.isArray(prunedNothing) && prunedNothing.length === 0)
 
 console.log(failures === 0 ? '\n候选探测与链接安全测试全部通过' : `\n${failures} 个失败`)
 process.exit(failures === 0 ? 0 : 1)
