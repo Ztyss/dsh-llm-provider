@@ -360,6 +360,29 @@ rowsCheck('不是别名的原样返回',
   aliasSelection({ provider: 'kimi-coding', model: 'kimi-k2' }, catalog).provider === 'kimi-coding')
 rowsCheck('没有选择时还是 undefined', aliasSelection(undefined, catalog) === undefined)
 
+// ---- issue #3：删除前的配置导出 ----
+// 删除一次做两件事（清路由 + 清凭据）且不可撤销，手写配置一起没。导出是界面上唯一
+// 成本够低的补救，所以它有两条硬要求：内容要能贴回 settings.yaml，且**绝不能带出密钥值**
+// （浏览器端本来就拿不到真值，只能拿到掩码——导出里出现真值就说明哪里的边界破了）。
+const { routeYamlOf } = moduleExports
+const exported = routeYamlOf({
+  id: 'opencode-go',
+  displayName: 'OpenCode Go',
+  api: 'openai-completions',
+  baseUrl: 'https://opencode.ai/zen/go/v1',
+  apiKeyEnv: 'OPENCODE_GO_API_KEY',
+  keyHint: 'sk-****abcd',
+})
+rowsCheck('导出以 provider id 开头（能直接贴回 providers 段）', exported.trim().indexOf('opencode-go:') !== -1)
+rowsCheck('导出带 api', exported.indexOf('api: openai-completions') !== -1)
+rowsCheck('导出带 baseURL', exported.indexOf('baseURL: https://opencode.ai/zen/go/v1') !== -1)
+rowsCheck('导出带凭据名', exported.indexOf('apiKeyEnv: OPENCODE_GO_API_KEY') !== -1)
+rowsCheck('导出不含掩码密钥值', exported.indexOf('sk-') === -1)
+rowsCheck('导出提醒凭据值没带出来', exported.indexOf('凭据值不导出') !== -1)
+const minimal = routeYamlOf({ id: 'x' })
+rowsCheck('字段缺省时不瞎补空值', minimal.indexOf('api:') === -1 && minimal.indexOf('baseURL:') === -1)
+rowsCheck('缺省时仍以 id 开头', minimal.trim().split('\n').pop() === 'x:' || minimal.indexOf('x:') !== -1)
+
 if (failures > 0) throw new Error(`桥接明细有 ${failures} 条断言没过`)
 
 console.log('\n冒烟通过：模型座位 + 设置页标签两个座位已注册，模型座位用负 priority 遮蔽官方占用者；' +

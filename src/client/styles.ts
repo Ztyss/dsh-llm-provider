@@ -157,10 +157,15 @@ var css =
   'border-radius:6px;color:var(--dsw-alias-label-tertiary)}' +
   '.pv_iconBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}' +
   '.pv_delOn{color:#e03131;font-size:12px;width:auto;padding:2px 8px}' +
-  // 删除确认框：红确认 + 灰取消，点框内任意处不触发卡片折叠
-  '.pv_delBox{display:inline-flex;gap:2px;align-items:center;padding:3px 5px;' +
-  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:8px;' +
-  'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03))}' +
+  // 删除确认区：卡片底部的整块面板（不再与头部 ✕ 同槽位——同位置时双击即删，见 issue #3）
+  '.pv_delPanel{display:flex;flex-direction:column;gap:6px;padding:10px 12px;margin-top:2px;' +
+  'border:1px solid rgba(224,49,49,.35);border-radius:10px;background:rgba(224,49,49,.05)}' +
+  '.pv_delPanelTitle{font-size:13px;font-weight:500;color:#e03131}' +
+  '.pv_delPanelBody{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}' +
+  '.pv_delPanelActs{display:flex;gap:6px;align-items:center;flex-wrap:wrap}' +
+  '.pv_delPanel .pv_delYes{border:1px solid rgba(224,49,49,.5);background:rgba(224,49,49,.1);font-weight:500}' +
+  '.pv_delPanel .pv_delNo{border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12))}' +
+  // 旧的内联确认框样式（.pv_delBox）已随确认区下移一并撤掉
   '.pv_delYes{border:0;background:0 0;cursor:pointer;font:inherit;font-size:12px;color:#e03131;' +
   'padding:3px 9px;border-radius:6px}' +
   '.pv_delYes:hover{background:rgba(224,49,49,.12)}' +

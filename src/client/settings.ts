@@ -202,6 +202,28 @@ export function presetPickState(preset: ProviderPreset): { disabled: boolean; ta
 }
 
 /**
+ * 删除前把一条 route 的配置导出成 YAML 文本（issue #3 的期望 4：删除要能留下原文）。
+ *
+ * 删除一次做两件事——清路由、清凭据——且都不可撤销；手写的 `models` / `compat` /
+ * `retryPolicy` 会一起消失。给一份能直接贴回 `settings.yaml` 的原文是最低成本的补救。
+ *
+ * 密钥值**不导出**：浏览器端只拿得到掩码（宿主不下发真值），所以导出的是凭据名，
+ * 让用户知道删除后该重填哪一条。
+ * @param account - 卡片上的那条账户（含路由元信息）。
+ */
+export function routeYamlOf(account: PlanAccount): string {
+  var lines = ['# dsh-llm-provider 删除前导出的 route 配置（贴回 settings.yaml 的 llm-pi-ai.providers 下）', account.id + ':']
+  if (typeof account.displayName === 'string' && account.displayName !== '') lines.push('  displayName: ' + account.displayName)
+  if (typeof account.api === 'string' && account.api !== '') lines.push('  api: ' + account.api)
+  if (typeof account.baseUrl === 'string' && account.baseUrl !== '') lines.push('  baseURL: ' + account.baseUrl)
+  if (typeof account.apiKeyEnv === 'string' && account.apiKeyEnv !== '') {
+    lines.push('  apiKeyEnv: ' + account.apiKeyEnv)
+    lines.push('  # 凭据值不导出（浏览器端只拿得到掩码）——删除后请重新填回这个凭据名')
+  }
+  return lines.join('\n') + '\n'
+}
+
+/**
  * 「刷新余量 / 保存密钥」之后的结果判定：成功返回 undefined，失败给出原因。
  *
  * 宿主这两条路由一律回 200，成败看 body 的 ok；凭据没值时 ok=false，原因挂在 account.error
@@ -559,6 +581,11 @@ export function ProviderSettingsSection() {
   var delState = react.useState({})
   var delConfirm = delState[0]
   var setDelConfirm = delState[1]
+  // 备份导出结果（按 provider id 存）：'copied' | 一段错误说明。
+  // 删除不可撤销，所以确认区带一个「导出配置」动作——出事了手上还有一份原文（issue #3 的期望 4）。
+  var backupState = react.useState({})
+  var backups = backupState[0]
+  var setBackups = backupState[1]
   var refreshingState = react.useState({})
   var setRefreshing = refreshingState[1]
   // 卡片里"补密钥"的输入草稿与保存中标记（都按 provider id 存）
@@ -776,13 +803,46 @@ export function ProviderSettingsSection() {
       })
   }
 
-  // 删除 provider（✕ → 二次确认）：配置与密钥一起清掉
-  function removeProvider(account: PlanAccount) {
-    postJson('/provider/remove', { providerId: account.id })
+  /**
+   * 删除前把这条 route 的配置导出成 YAML 文本（issue #3 期望 4）。
+   *
+   * 删除是「清路由 + 清凭据」且不可撤销，手写的 `models` / `compat` / `retryPolicy` 一起没。
+   * 界面上给一份能直接贴回 `settings.yaml` 的原文，是这里唯一成本够低、又真能救回配置的办法。
+   * 密钥**不导出**：值在浏览器端拿不到（宿主只下发掩码），导出凭据名让用户知道该重填哪一个。
+   */
+  function exportRoute(account: PlanAccount) {
+    var text = routeYamlOf(account)
+    var clipboard = navigator !== undefined && navigator !== null ? navigator.clipboard : undefined
+    if (clipboard === undefined || typeof clipboard.writeText !== 'function') {
+      setBackups(function (prev: AnyRecord) {
+        return withKey(prev, account.id, '这个环境不允许写剪贴板，请手动抄写：' + text)
+      })
+      return
+    }
+    clipboard.writeText(text).then(
+      function () {
+        setBackups(function (prev: AnyRecord) { return withKey(prev, account.id, 'copied') })
+      },
+      function (cause) {
+        setBackups(function (prev: AnyRecord) {
+          return withKey(prev, account.id, '复制失败：' + String(cause && cause.message ? cause.message : cause))
+        })
+      },
+    )
+  }
+
+  function toggleDeleteMode(id: string, on: boolean) {
+    setDelConfirm(function (prev: AnyRecord) { return withKey(prev, id, on) })
+    setBackups(function (prev: AnyRecord) { return withKey(prev, id, undefined) })
+  }
+
+  // 删除 provider（✕ → 卡片底部确认区）：配置与密钥一起清掉
+  function removeProvider(account: PlanAccount) {    postJson('/provider/remove', { providerId: account.id })
       .then(function (res) {
         setDelConfirm(function (prev: AnyRecord) {
           return withKey(prev, account.id, false)
         })
+        setBackups(function (prev: AnyRecord) { return withKey(prev, account.id, undefined) })
         if (res === null || res === undefined || res.ok !== true) {
           setNote('删除失败：' + String((res && res.error) || '未知错误'))
           return
@@ -1068,6 +1128,57 @@ export function ProviderSettingsSection() {
         if (typeof account.credentialWarning === 'string') {
           bodyRows.push(react.createElement('div', { className: 'plan_note plan_badText', key: 'warn' }, account.credentialWarning))
         }
+        // 删除确认区：**放在卡片底部**，不占 ✕ 那个槽位（issue #3：确认按钮与 ✕ 同位置时，
+        // 双击的第二下正好落在刚变成「确认删除」的按钮上，二次确认等于没挡）。文案写清代价：
+        // 这一步会同时删掉整条路由与凭据，手写配置不可恢复；旁边给一个导出动作兜底。
+        if (account.deletable === true && delConfirm[account.id] === true) {
+          var backup = backups[account.id]
+          var delRows = [
+            react.createElement(
+              'div',
+              { className: 'pv_delPanelTitle', key: 't' },
+              '删除 provider「' + account.id + '」？',
+            ),
+            react.createElement(
+              'div',
+              { className: 'pv_delPanelBody', key: 'b' },
+              '将删除整条路由配置'
+                + (typeof account.apiKeyEnv === 'string' && account.apiKeyEnv !== '' ? '与其凭据 ' + account.apiKeyEnv : '与它的凭据')
+                + '。手写的 models / compat / retryPolicy 会一起消失，且不可恢复。',
+            ),
+          ]
+          if (backup === 'copied') {
+            delRows.push(react.createElement('div', { className: 'plan_note', key: 'ok' }, '✓ 配置已复制到剪贴板，可直接贴回 settings.yaml'))
+          } else if (typeof backup === 'string' && backup !== '') {
+            delRows.push(react.createElement('div', { className: 'plan_note plan_badText', key: 'fail' }, backup))
+          }
+          delRows.push(
+            react.createElement(
+              'div',
+              { className: 'pv_delPanelActs', key: 'a' },
+              react.createElement(
+                'button',
+                { type: 'button', className: 'pv_delYes', onClick: function () { removeProvider(account) } },
+                '删除此 provider',
+              ),
+              react.createElement(
+                'button',
+                { type: 'button', className: 'pv_delNo', onClick: function () { exportRoute(account) } },
+                '导出配置',
+              ),
+              react.createElement(
+                'button',
+                {
+                  type: 'button',
+                  className: 'pv_delNo',
+                  onClick: function () { toggleDeleteMode(account.id, false) },
+                },
+                '取消',
+              ),
+            ),
+          )
+          bodyRows.push(react.createElement('div', { className: 'pv_delPanel', key: 'del' }, delRows))
+        }
       }
 
       var linkUrl = typeof account.websiteUrl === 'string' && account.websiteUrl !== ''
@@ -1151,39 +1262,14 @@ export function ProviderSettingsSection() {
                 ),
                 account.deletable === true
                   ? (delConfirm[account.id] === true
-                      ? react.createElement(
-                          'span',
-                          { className: 'pv_delBox' },
-                          react.createElement(
-                            'button',
-                            { type: 'button', className: 'pv_delYes', onClick: function () { removeProvider(account) } },
-                            '确认删除',
-                          ),
-                          react.createElement(
-                            'button',
-                            {
-                              type: 'button',
-                              className: 'pv_delNo',
-                              onClick: function () {
-                                setDelConfirm(function (prev: AnyRecord) {
-                                  return withKey(prev, account.id, false)
-                                })
-                              },
-                            },
-                            '取消',
-                          ),
-                        )
+                      ? null
                       : react.createElement(
                           'button',
                           {
                             type: 'button',
                             className: 'pv_iconBtn',
                             title: '删除这个 provider',
-                            onClick: function () {
-                              setDelConfirm(function (prev: AnyRecord) {
-                                return withKey(prev, account.id, true)
-                              })
-                            },
+                            onClick: function () { toggleDeleteMode(account.id, true) },
                           },
                           '✕',
                         ))
