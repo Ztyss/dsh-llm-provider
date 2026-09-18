@@ -280,8 +280,11 @@ export function apply(ctx: PluginContext, config: unknown): void {
               id: route.id,
               apiKeyEnv: route.apiKeyEnv ?? null,
               source: route.source,
-              ...(route.models === undefined ? {} : { models: route.models }),
-              ...(route.modelOverrides === undefined ? {} : { modelOverrides: route.modelOverrides }),
+              // 空数组 / 空对象等于没写，别占着字段——界面用「有没有这个字段」判「有没有自定义清单」
+              ...(route.models === undefined || route.models.length === 0 ? {} : { models: route.models }),
+              ...(route.modelOverrides === undefined || Object.keys(asRecord(route.modelOverrides)).length === 0
+                ? {}
+                : { modelOverrides: route.modelOverrides }),
             }))
         } catch { /* 路由发现失败时留空 */ }
         json(res, 200, {

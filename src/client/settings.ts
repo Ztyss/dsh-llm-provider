@@ -1362,7 +1362,23 @@ export function ProviderSettingsSection() {
           )
         }
         // 模型列表：目录（服务端）为骨架，pi-ai 详情补元数据；悬浮显示 Cherry 式详情卡
+        //
+        // 目录里没有这家时**回落到详情**：目录是「这条路由当前能路由到什么」的快照，
+        // 没配密钥时往往是空的（issue #1 的场景就是「装完还没填 key」），而详情来自
+        // pi-ai 的数据文件，没配 key 也在。没有这一步，逐模型编辑器在「刚装完、还没配 key」
+        // 这个最常见的状态下根本不出现——而它恰恰是用户第一件想干的事。
         var models = modelsByProvider[account.id]
+        if (models !== undefined && models.length === 0) {
+          var fromDetails: CatalogModel[] = []
+          for (var dk in detailsById) {
+            var detail = detailsById[dk]
+            if (detail === undefined || detail === null || detail.provider !== account.id) continue
+            var detailId = typeof detail.id === 'string' && detail.id !== '' ? detail.id : dk.split('/').pop()
+            if (detailId === undefined) continue
+            fromDetails.push({ id: detailId, name: typeof detail.name === 'string' && detail.name !== '' ? detail.name : detailId })
+          }
+          if (fromDetails.length > 0) models = fromDetails
+        }
         if (models === undefined) {
           bodyRows.push(react.createElement('div', { className: 'pv_line', key: 'm-load' }, t('prov.modelsLoading')))
         } else if (models.length === 0) {
