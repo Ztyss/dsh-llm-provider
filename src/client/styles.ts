@@ -2,6 +2,8 @@
  * 插件样式：沿用 GUI 的 CSS 变量，跟模型座位视觉一致。
  * installCss 一律手写 style 标签（官方 styles.insert 需要 inject 'styles'，见文件末尾注释）。
  */
+import { t } from './i18n.js'
+
 var css =
   '.plan_root{position:relative;display:inline-flex;align-items:center}' +
   '.plan_dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-label-tertiary)}' +
@@ -327,8 +329,9 @@ export function installCss(): void {
 /** 测试环境标识：标题加「· 测试」后缀 + favicon 右下角盖橙色「测」角标。 */
 export function markTestEnv() {
   try {
-    if (document.title.indexOf('测试') === -1) {
-      document.title = (document.title === '' ? 'dsh' : document.title) + ' · 测试'
+    // 后缀与角标都现取：判重与追加各自调一次 t()，切语言后加的仍是当前语言的那份
+    if (document.title.indexOf(t('test.titleSuffix')) === -1) {
+      document.title = (document.title === '' ? 'dsh' : document.title) + t('test.titleSuffix')
     }
     var iconLink = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
     var img = new window.Image()
@@ -347,7 +350,7 @@ export function markTestEnv() {
         g.font = 'bold 24px sans-serif'
         g.textAlign = 'center'
         g.textBaseline = 'middle'
-        g.fillText('测', 46, 48)
+        g.fillText(t('test.faviconBadge'), 46, 48)
         setFavicon(canvas.toDataURL('image/png'))
         return
       }
@@ -358,7 +361,7 @@ export function markTestEnv() {
   } catch (cause) { /* 标不了就算了 */ }
 }
 
-/** 替换 favicon；dataUrl 为 undefined 时退到一个纯「测」字圆形 icon。 */
+/** 替换 favicon；dataUrl 为 undefined 时退到一个纯「测」字圆形 icon（文字也走字典）。 */
 function setFavicon(dataUrl: string | undefined) {
   try {
     var link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
@@ -373,7 +376,8 @@ function setFavicon(dataUrl: string | undefined) {
     }
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
       '<circle cx="32" cy="32" r="30" fill="#e8890c"/>' +
-      '<text x="32" y="43" font-size="30" font-weight="bold" fill="#fff" text-anchor="middle">测</text></svg>'
+      '<text x="32" y="43" font-size="30" font-weight="bold" fill="#fff" text-anchor="middle">' +
+      t('test.faviconBadge') + '</text></svg>'
     link.href = 'data:image/svg+xml,' + encodeURIComponent(svg)
   } catch (cause) { /* 标不了就算了 */ }
 }

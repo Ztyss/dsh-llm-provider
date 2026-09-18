@@ -3,6 +3,7 @@
  * 模型座位与设置页共用；文案口径见各函数注释。
  */
 import type { AnyRecord } from '../types.js'
+import { t, tf } from './i18n.js'
 import type { HeadlineChip, PlanAccount } from './types.js'
 
 /** 上下文窗口的人性化显示：1048576 → 1.0M，262144 → 262K（K/M 按 1000 进）。 */
@@ -61,7 +62,7 @@ export function relativeTime(iso: unknown): string {
   var time = new Date(iso).getTime()
   if (Number.isNaN(time)) return ''
   var seconds = Math.max(0, Math.round((Date.now() - time) / 1000))
-  if (seconds < 10) return '刚刚'
+  if (seconds < 10) return t('win.justNow')
   if (seconds < 60) return '<1min'
   var minutes = Math.floor(seconds / 60)
   if (minutes < 60) return String(minutes) + 'm'
@@ -108,17 +109,17 @@ export function shortName(account: PlanAccount): string {
 
 /** 徽标上的短字：优先余额，其次最紧窗口的剩余百分比。 */
 export function summaryOf(account: PlanAccount | undefined | null): string {
-  if (account === undefined || account === null) return '额度'
-  if (account.authConfigured === false) return shortName(account) + ' 未配置 key'
-  if (account.error !== undefined) return shortName(account) + ' 查询失败'
-  if (account.kind === 'unsupported') return shortName(account) + ' 看控制台'
-  if (account.kind === 'unknown-provider') return shortName(account) + ' 无适配器'
+  if (account === undefined || account === null) return t('quota.generic')
+  if (account.authConfigured === false) return shortName(account) + ' ' + t('quota.notConfigured')
+  if (account.error !== undefined) return shortName(account) + ' ' + t('quota.queryFailed')
+  if (account.kind === 'unsupported') return shortName(account) + ' ' + t('quota.seeConsole')
+  if (account.kind === 'unknown-provider') return shortName(account) + ' ' + t('quota.noAdapter')
   var balances = Array.isArray(account.balances) ? account.balances : []
   if (balances.length > 0) return shortName(account) + ' ' + balances[0].value
   var percent = worstPercent(account)
-  if (typeof percent === 'number') return shortName(account) + ' 余 ' + String(percent) + '%'
+  if (typeof percent === 'number') return shortName(account) + ' ' + tf('quota.remaining', { percent: percent })
   var windows = Array.isArray(account.windows) ? account.windows : []
-  if (windows.length > 0) return shortName(account) + ' ' + String(windows.length) + ' 个窗口'
+  if (windows.length > 0) return shortName(account) + ' ' + tf('quota.windows', { count: windows.length })
   return shortName(account)
 }
 
@@ -137,12 +138,12 @@ export function quotaShortOf(account: PlanAccount | undefined | null): string | 
 /** 一行里的余额短文案（给模型行/过滤 chip 复用）。 */
 export function quotaTextOf(account: PlanAccount | undefined | null): string | undefined {
   if (account === undefined || account === null) return undefined
-  if (account.authConfigured === false) return '未配置 key'
-  if (account.error !== undefined) return '查询失败'
-  if (account.kind === 'unsupported') return '看控制台'
-  if (account.kind === 'unknown-provider') return '无适配器'
+  if (account.authConfigured === false) return t('quota.notConfigured')
+  if (account.error !== undefined) return t('quota.queryFailed')
+  if (account.kind === 'unsupported') return t('quota.seeConsole')
+  if (account.kind === 'unknown-provider') return t('quota.noAdapter')
   var percent = worstPercent(account)
-  if (typeof percent === 'number') return '余 ' + String(percent) + '%'
+  if (typeof percent === 'number') return tf('quota.remaining', { percent: percent })
   var balances = Array.isArray(account.balances) ? account.balances : []
   if (balances.length > 0) return balances[0].value
   return undefined
@@ -156,10 +157,12 @@ export function quotaTextOf(account: PlanAccount | undefined | null): string | u
  */
 export function shortWindowLabel(name: unknown): string {
   var text = String(name ?? '')
-  if (text.indexOf('5 小时') !== -1 || text.indexOf('5小时') !== -1) return '5h'
-  if (text.indexOf('月') !== -1) return '30d'
-  if (text.indexOf('每') !== -1 || text.indexOf('订阅') !== -1 || text.indexOf('周') !== -1) return '7d'
-  return text === '' ? '窗口' : text.slice(0, 4)
+  var lower = text.toLowerCase()
+  if (text.indexOf('5 小时') !== -1 || text.indexOf('5小时') !== -1 || lower.indexOf('5 hour') !== -1) return '5h'
+  if (text.indexOf('月') !== -1 || lower.indexOf('month') !== -1) return '30d'
+  if (text.indexOf('每') !== -1 || text.indexOf('订阅') !== -1 || text.indexOf('周') !== -1
+    || lower.indexOf('week') !== -1 || lower.indexOf('subscription') !== -1) return '7d'
+  return text === '' ? t('win.fallback') : text.slice(0, 4)
 }
 
 /** 重置倒计时压缩格式（最多两个单位，零尾不显示）：34m / 5h / 5h33m / 3d5h / 4d。 */
@@ -168,9 +171,9 @@ export function resetCountdownText(iso: unknown): string {
   var time = new Date(iso).getTime()
   if (Number.isNaN(time)) return ''
   var delta = time - Date.now()
-  if (delta <= 0) return '即将重置'
+  if (delta <= 0) return t('win.resettingSoon')
   var minutes = Math.round(delta / 60000)
-  if (minutes < 1) return '即将重置'
+  if (minutes < 1) return t('win.resettingSoon')
   if (minutes < 60) return String(minutes) + 'm'
   var hours = Math.floor(minutes / 60)
   var min = minutes % 60
@@ -183,12 +186,12 @@ export function resetCountdownText(iso: unknown): string {
 /** provider chip 悬停详情：各窗口余量 + 重置倒计时，或余额明细。 */
 export function quotaTipOf(account: PlanAccount | undefined | null): string | undefined {
   if (account === undefined || account === null) return undefined
-  if (account.error !== undefined) return '查询失败：' + String(account.error)
+  if (account.error !== undefined) return tf('quota.queryFailedWith', { reason: account.error })
   var parts: string[] = []
   var windows = Array.isArray(account.windows) ? account.windows : []
   for (var i = 0; i < windows.length; i += 1) {
     if (typeof windows[i].percentLeft !== 'number') continue
-    var text = shortWindowLabel(windows[i].window) + '余量 ' + String(windows[i].percentLeft) + '%'
+    var text = tf('quota.headlineRemaining', { label: shortWindowLabel(windows[i].window), percent: windows[i].percentLeft })
     if (windows[i].resetAt !== undefined && windows[i].resetAt !== '') {
       text += ' ◷ ' + resetCountdownText(windows[i].resetAt)
     }
@@ -209,11 +212,11 @@ export function quotaTipOf(account: PlanAccount | undefined | null): string | un
 const HEADLINE_BUCKETS = ['5h', '7d', '30d'] as const
 
 export function headlineChips(account: PlanAccount | undefined | null): HeadlineChip[] {
-  if (account === undefined || account === null) return [{ text: '无数据', percent: undefined }]
-  if (account.authConfigured === false) return [{ text: '未配置 key', percent: 0 }]
-  if (account.error !== undefined) return [{ text: '查询失败', percent: 0 }]
+  if (account === undefined || account === null) return [{ text: t('quota.noData'), percent: undefined }]
+  if (account.authConfigured === false) return [{ text: t('quota.notConfigured'), percent: 0 }]
+  if (account.error !== undefined) return [{ text: t('quota.queryFailed'), percent: 0 }]
   if (account.kind === 'unsupported') return []
-  if (account.kind === 'unknown-provider') return [{ text: '无适配器', percent: undefined }]
+  if (account.kind === 'unknown-provider') return [{ text: t('quota.noAdapter'), percent: undefined }]
   var windows = Array.isArray(account.windows) ? account.windows : []
   var groups: { label: string; chips: HeadlineChip[] }[] = []
   var known: string[] = HEADLINE_BUCKETS.slice()

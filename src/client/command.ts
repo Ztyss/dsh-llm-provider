@@ -5,6 +5,7 @@
  */
 import { accountsById, loadModelCatalog, loadPlanStatus, submitSelection } from './data.js'
 import { quotaTextOf } from './format.js'
+import { t } from './i18n.js'
 import type { ClientScope, SessionsFace } from './types.js'
 
 export function registerModelCommand(scope: ClientScope): void {
@@ -16,10 +17,10 @@ export function registerModelCommand(scope: ClientScope): void {
         return commandUi!.register({
           name: 'model',
           label: function () {
-            return '切换模型'
+            return t('cmd.label')
           },
           description: function () {
-            return '按 provider 过滤 / 搜索模型 / 显示余额'
+            return t('cmd.description')
           },
           /**
            * 官方 ui-commands 的契约里这一项是**必填**：CommandUiRuntime.candidates() 对注册表里
@@ -65,10 +66,10 @@ export function registerModelCommand(scope: ClientScope): void {
               var provider = parts.shift()
               var model = parts.join('/')
               if (provider === undefined || provider === '' || model === '') {
-                throw new Error('无法解析这个模型行')
+                throw new Error(t('cmd.badRow'))
               }
               var sessionId = session !== null && session !== undefined ? session.sessionId : undefined
-              if (typeof sessionId !== 'string') throw new Error('当前没有会话，无法切换模型')
+              if (typeof sessionId !== 'string') throw new Error(t('cmd.noSession'))
               return submitSelection(sessionId, provider, model, undefined)
             },
           },

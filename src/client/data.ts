@@ -4,6 +4,7 @@
  */
 import react from 'react'
 import type { AnyRecord } from '../types.js'
+import { t } from './i18n.js'
 import type {
   CatalogGroup,
   CatalogModel,
@@ -83,8 +84,15 @@ export function loadProviderStatus() {
   return getJson('/provider/status')
 }
 
-/** 桥接状态拿不到时的占位：设置页据此渲染错误行，界面不至于空着。 */
-export var STATUS_UNAVAILABLE = { bridge: { active: false, error: '宿主端状态不可用' } }
+/**
+ * 桥接状态拿不到时的占位：设置页据此渲染错误行，界面不至于空着。
+ *
+ * 现取而不是做成模块常量：这是**给用户看的一句文案**，做成常量就把语言钉在模块求值那一刻，
+ * 切语言之后它还是老语言（`t` 是 live binding，但常量不再求值）。
+ */
+export function statusUnavailable(): { bridge: { active: boolean; error: string } } {
+  return { bridge: { active: false, error: t('data.hostUnavailable') } }
+}
 
 /**
  * 详情索引的键：`provider/id`。
@@ -185,7 +193,7 @@ export function dropPlanAccount(id: string) {
 
 /**
  * 官方远程 RPC 同源调用（/api/<ns>/<method>，client-request 信封，cookie 自动认证）。
- * @param failMessage 信封里没有 error 对象时的兜底文案（默认「调用失败」）。
+ * @param failMessage 信封里没有 error 对象时的兜底文案（默认走 data.callFailed）。
  */
 export function apiCall(method: string, args: unknown, failMessage?: string): Promise<any> {
   return postJson('/api/' + method, {
@@ -198,7 +206,7 @@ export function apiCall(method: string, args: unknown, failMessage?: string): Pr
     if (result && result.ok === true) return result.value
     throw new Error(result && result.error
       ? String(result.error.code) + ': ' + String(result.error.message)
-      : (failMessage === undefined ? '调用失败' : failMessage))
+      : (failMessage === undefined ? t('data.callFailed') : failMessage))
   })
 }
 
@@ -208,7 +216,7 @@ export function apiCall(method: string, args: unknown, failMessage?: string): Pr
  *   （`current = projected.next ?? catalog.default`）——会话还没选过模型时显示的就是它。
  */
 export function loadModelCatalog() {
-  return apiCall('session/modelCatalog', {}, '模型目录加载失败').then(function (value) {
+  return apiCall('session/modelCatalog', {}, t('data.catalogFailed')).then(function (value) {
     var catalog = value === null || typeof value !== 'object' ? {} : value
     return { groups: normalizeGroups(catalog.groups), default: normalizeSelection(catalog.default) }
   })
@@ -228,7 +236,7 @@ export function normalizeSelection(value: unknown): ModelSelection | undefined {
 export function submitSelection(sessionId: string, provider: string, model: string, reasoningEffort: unknown): Promise<boolean> {
   var request: { sessionId: string; provider: string; model: string; reasoningEffort?: string } = { sessionId: sessionId, provider: provider, model: model }
   if (typeof reasoningEffort === 'string') request.reasoningEffort = reasoningEffort
-  return apiCall('session/selectModel', { request: request }, '切换失败').then(function () {
+  return apiCall('session/selectModel', { request: request }, t('data.switchFailed')).then(function () {
     return true
   })
 }

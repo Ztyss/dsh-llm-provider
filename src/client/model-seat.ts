@@ -9,6 +9,7 @@ import { accountsById, detailKeyOf, findModel, loadModelCatalog, loadModelDetail
 import { recordDiagnostic } from './diag.js'
 import { defaultEffortOf, dotClass, effortLabel, formatContext, fuzzyMatch, quotaShortOf, quotaTipOf, reasoningTextOf, toneColor, worstPercent } from './format.js'
 import { caretSvg, checkSvg, chevronRightSvg } from './icons.js'
+import { t, tf } from './i18n.js'
 import type { CatalogGroup, CatalogModel, EffortChoice, FieldEvent, ModelSelection, ModelSwitchSeatProps } from './types.js'
 
 /**
@@ -317,7 +318,7 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
       : submitSelection(sessionId, selectionRequest.provider, selectionRequest.model, selectionRequest.reasoningEffort)
     return request
       .then(function (ok) {
-        if (ok === false) throw new Error('宿主拒绝了这次切换')
+        if (ok === false) throw new Error(t('m.rejected'))
         setError(null)
         setLastSel(selectionRequest)
         setOpen(false)
@@ -362,9 +363,9 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
   var waiting = (selection === undefined || selection === null) && directorySnapshot !== undefined && directorySnapshot.status === 'loading'
   // 模型一律显示 供应商id/模型id：和展开后的 provider chips、分组标题、模型行同一套 id
   var modelLabel = waiting
-    ? '加载中…'
+    ? t('m.loading')
     : (selection === undefined || selection === null
-        ? '选择模型'
+        ? t('m.select')
         : String(selection.provider) + '/' + String(selection.model))
   var triggerText = effortText === undefined ? modelLabel : modelLabel + ' · ' + effortText
 
@@ -422,7 +423,7 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
   var rootPane = react.createElement(
     'button',
     { type: 'button', className: 'ms_cell', onClick: function () { setPane('model') } },
-    react.createElement('span', { className: 'ms_cellLabel' }, '模型'),
+    react.createElement('span', { className: 'ms_cellLabel' }, t('m.model')),
     react.createElement('span', { className: 'ms_cellValue' }, modelLabel),
     react.createElement('span', { className: 'ms_cellChev' }, chevronRightSvg()),
   )
@@ -436,12 +437,12 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
       disabled: !canPickEffort,
       style: canPickEffort ? undefined : { cursor: 'default', opacity: 0.55 },
       title: reasoning === undefined && effortText !== undefined
-        ? '当前模型不在模型目录里，只能显示会话已定的档位'
+        ? t('m.cantPickEffort')
         : undefined,
       onClick: canPickEffort ? function () { setPane('effort') } : undefined,
     },
-    react.createElement('span', { className: 'ms_cellLabel' }, '推理等级'),
-    react.createElement('span', { className: 'ms_cellValue' }, effortText === undefined ? '选择模型后可用' : effortText),
+    react.createElement('span', { className: 'ms_cellLabel' }, t('m.effort')),
+    react.createElement('span', { className: 'ms_cellValue' }, effortText === undefined ? t('m.pickModelFirst') : effortText),
     react.createElement('span', { className: 'ms_cellChev' }, chevronRightSvg()),
   )
 
@@ -459,7 +460,7 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
           'data-on': providerFilter === null ? '1' : '0',
           onClick: function () { setProviderFilter(null) },
         },
-        '全部 ' + String(groups.length),
+        tf('m.all', { count: groups.length }),
       ),
     ]
     for (var ck = 0; ck < groups.length; ck += 1) {
@@ -499,8 +500,8 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
             var detail = detailsById[detailKeyOf(g.id, model.id)]
             var caps = []
             if (detail !== undefined) {
-              if (detail.vision === true) caps.push(react.createElement('span', { key: 'v', className: 'pv_capMini pv_capVision' }, '视觉'))
-              if (detail.reasoning === true) caps.push(react.createElement('span', { key: 'r', className: 'pv_capMini pv_capReason' }, '推理'))
+              if (detail.vision === true) caps.push(react.createElement('span', { key: 'v', className: 'pv_capMini pv_capVision' }, t('cap.vision')))
+              if (detail.reasoning === true) caps.push(react.createElement('span', { key: 'r', className: 'pv_capMini pv_capReason' }, t('cap.reasoning')))
             }
             var ctx = formatContext(detail !== undefined && detail.contextWindow !== undefined ? detail.contextWindow : model.contextWindow)
             sectionRows.push(
@@ -540,7 +541,7 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
         ref: searchRef,
         className: 'mp_search',
         type: 'text',
-        placeholder: '搜索模型或 provider',
+        placeholder: t('m.search'),
         value: query,
         onChange: function (event: FieldEvent) { setQuery(event.target.value) },
       }),
@@ -553,7 +554,7 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
         { className: 'ms_scroll' },
         groupSections,
         groupSections.length === 0
-          ? react.createElement('div', { className: 'ms_status' }, needle === '' ? '没有可选模型' : '没有匹配「' + query + '」的模型')
+          ? react.createElement('div', { className: 'ms_status' }, needle === '' ? t('m.none') : tf('m.noMatch', { query: query }))
           : null,
       ),
     )

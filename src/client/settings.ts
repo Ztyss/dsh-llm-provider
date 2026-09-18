@@ -5,7 +5,6 @@
 import react from 'react'
 import type { AnyRecord } from '../types.js'
 import {
-  STATUS_UNAVAILABLE,
   apiCall,
   detailKeyOf,
   dropPlanAccount,
@@ -18,27 +17,28 @@ import {
   mergePlanAccount,
   onPlanChange,
   postJson,
+  statusUnavailable,
   withKey,
   withKeys,
 } from './data.js'
 import { dotClass, formatContext, fuzzyMatch, headlineChips, linkTextOf, relativeTime, resetCountdownText, shortName, toneColor, worstPercent } from './format.js'
 import { caretSvg } from './icons.js'
-import { t } from './i18n.js'
+import { t, tf } from './i18n.js'
 import { addModelRow, buildModelEditor, modelListPayload, patchModelRow, validateModelRows } from './model-editor.js'
 import type { ModelEditorRow, ModelEditorState } from './model-editor.js'
 import type { AddProviderPanelProps, BridgeRow, CatalogModel, FieldEvent, HeadlineChip, ModelDetail, PlanAccount, ProviderPreset } from './types.js'
 
 /** 当前用的是哪一档 pi-ai。宿主报的 source：版本号 / 'dependency' / 'dsh'。 */
 function piAiSourceLabel(source: unknown): string {
-  if (source === 'dependency') return '兜底依赖'
-  if (source === 'dsh') return 'dsh 自带'
-  return '已下载'
+  if (source === 'dependency') return t('bridge.srcDependency')
+  if (source === 'dsh') return t('bridge.srcDsh')
+  return t('bridge.srcVendored')
 }
 
 function piAiSourceHint(source: unknown): string {
-  if (source === 'dependency') return '插件 vendor/ 下手动安装的兜底版本（可选档；没装就会落到 dsh 自带那份）'
-  if (source === 'dsh') return 'dsh 自己装的那份 pi-ai，版本随 dsh 发布走（不一定比上游旧）'
-  return '按需下载并验证过的版本，放在 vendor/pi-ai/<版本>/；换版本需重启 dsh'
+  if (source === 'dependency') return t('bridge.hintDependency')
+  if (source === 'dsh') return t('bridge.hintDsh')
+  return t('bridge.hintVendored')
 }
 
 /**
@@ -58,17 +58,17 @@ export function piAiBridgeRows(bridge: unknown, update: unknown): BridgeRow[] {
   }
   rows.push({
     key: 'pi',
-    text: '当前 pi-ai 版本',
-    value: String(bridgeRecord.piAiVersion) + '（' + piAiSourceLabel(bridgeRecord.source) + '）',
+    text: t('bridge.version'),
+    value: tf('bridge.srcParen', { version: bridgeRecord.piAiVersion, source: piAiSourceLabel(bridgeRecord.source) }),
     title: piAiSourceHint(bridgeRecord.source),
   })
   // 体检没执行（bundle 的 import 需求解析不出）：这份 pi-ai 是靠「目录存在」放行的，没验证过
   if (bridgeRecord.probeUnverified === true) {
     rows.push({
       key: 'unverified',
-      text: '当前这份 pi-ai 没做过兼容性体检',
-      value: '看原因',
-      title: '解析不出桥接副本的 import 需求（上游改了打包格式），按目录存在放行。建议关注 pi-ai 发版说明',
+      text: t('bridge.probeUnverified'),
+      value: t('bridge.reason'),
+      title: t('bridge.probeUnverifiedTip'),
       warn: true,
     })
   }
@@ -78,8 +78,8 @@ export function piAiBridgeRows(bridge: unknown, update: unknown): BridgeRow[] {
     var skipped = rejected[i] as AnyRecord
     rows.push({
       key: 'skip-' + i,
-      text: '跳过 ' + String(skipped.version) + '：兼容性检查没通过',
-      value: '看原因',
+      text: tf('bridge.skip', { version: skipped.version }),
+      value: t('bridge.reason'),
       title: String(skipped.error),
       warn: true,
     })
@@ -88,14 +88,14 @@ export function piAiBridgeRows(bridge: unknown, update: unknown): BridgeRow[] {
   if (update !== undefined && update !== null) {
     var updateRecord = update as AnyRecord
     if (updateRecord.pending !== undefined) {
-      rows.push({ key: 'pending', text: '已下载 ' + String(updateRecord.pending) + '，验证通过（完整性 + 兼容性），重启 dsh 后生效', warn: true })
+      rows.push({ key: 'pending', text: tf('bridge.pending', { version: updateRecord.pending }), warn: true })
     }
     if (updateRecord.rejected !== undefined && updateRecord.rejected !== null) {
       var rejectedLatest = updateRecord.rejected as AnyRecord
       rows.push({
         key: 'rejected',
-        text: String(rejectedLatest.version) + ' 验证没通过，已跳过（不会切过去）',
-        value: '看原因',
+        text: tf('bridge.rejected', { version: rejectedLatest.version }),
+        value: t('bridge.reason'),
         title: String(rejectedLatest.error),
         warn: true,
       })
@@ -106,11 +106,13 @@ export function piAiBridgeRows(bridge: unknown, update: unknown): BridgeRow[] {
 
 /** 上游那一行的文字（右侧按钮由组件补）。 */
 export function piAiUpstreamText(update: unknown): string {
-  if (update === undefined || update === null) return '上游 未检查'
+  if (update === undefined || update === null) return t('bridge.upstreamUnchecked')
   var updateRecord = update as AnyRecord
-  if (updateRecord.latest === undefined) return '上游 未检查'
-  var when = updateRecord.lastCheck === undefined ? '' : '（检查于 ' + relativeTime(updateRecord.lastCheck) + '）'
-  return '上游 ' + String(updateRecord.latest) + when
+  if (updateRecord.latest === undefined) return t('bridge.upstreamUnchecked')
+  var when = updateRecord.lastCheck === undefined
+    ? ''
+    : tf('bridge.upstreamCheckedAt', { when: relativeTime(updateRecord.lastCheck) })
+  return tf('bridge.upstreamVersion', { version: updateRecord.latest }) + when
 }
 
 /** 单个摘要 chip：「5h余量:90% 34min后重置」；余额类无标签只显示金额；sep 为组间分割线。 */
@@ -136,23 +138,43 @@ function headlineChip(chip: HeadlineChip, key: number) {
   return react.createElement('span', { key: String(key), className: 'pv_chipItem' }, parts)
 }
 
-/** 能力徽章文案 → 样式类（模型行与详情卡共用一套）。 */
-var CAP_CLASS: Record<string, string> = { '视觉': 'pv_capVision', '推理': 'pv_capReason', '视频': 'pv_capVideo' }
+/**
+ * 能力 id → 样式类 + 字典 key（模型行与详情卡共用一套）。
+ *
+ * 分开两件事是必须的：**样式类以 id 为键**（语言无关），显示名才走 t()。
+ * 原来拿中文显示名当键，切到英文就一个类都匹配不上——徽章会丢掉配色。
+ */
+var CAP_KEYS: Record<string, { cls: string; label: string }> = {
+  vision: { cls: 'pv_capVision', label: 'cap.vision' },
+  reasoning: { cls: 'pv_capReason', label: 'cap.reasoning' },
+  video: { cls: 'pv_capVideo', label: 'cap.video' },
+}
 
 /**
- * 一条详情里**已知为真**的能力（顺序：视觉、推理、视频），离线可测的纯函数。
+ * 一条详情里**已知为真**的能力 id（顺序：视觉、推理、视频），离线可测的纯函数。
  *
+ * 返回 id 而不是显示名：id 是语言无关的内部标识，显示名在渲染时才 t() 出来。
  * 只认 `true`：`false` 是「明确不支持」，`undefined` 是「没查过」（自定义模型 id 在 pi-ai
  * 目录里查不到、route 也没声明模态时就是这样）。两者都不出徽章，但它们是两回事——
  * 详情卡里必须分开写，否则等于把「没查过」渲染成「没有视觉」。
  */
+export function capabilityKeysOf(detail: ModelDetail | undefined): string[] {
+  var keys: string[] = []
+  if (detail === undefined || detail === null) return keys
+  if (detail.vision === true) keys.push('vision')
+  if (detail.reasoning === true) keys.push('reasoning')
+  if (detail.video === true) keys.push('video')
+  return keys
+}
+
+/** 一条详情的**显示用**能力徽章文案（顺序同 {@link capabilityKeysOf}）；语言由 t() 现取。 */
 export function capabilityBadges(detail: ModelDetail | undefined): string[] {
-  var badges: string[] = []
-  if (detail === undefined || detail === null) return badges
-  if (detail.vision === true) badges.push('视觉')
-  if (detail.reasoning === true) badges.push('推理')
-  if (detail.video === true) badges.push('视频')
-  return badges
+  return capabilityKeysOf(detail).map(function (id) { return t(CAP_KEYS[id].label) })
+}
+
+/** 能力 id → 样式类；未知 id 不给类，不塞半条样式。 */
+function capClassOf(id: string): string {
+  return CAP_KEYS[id] === undefined ? '' : CAP_KEYS[id].cls
 }
 
 /** 能力字段有没有出处：三样全是 undefined 就是「未知」，界面得说明白。 */
@@ -172,8 +194,8 @@ export function modelRow(model: CatalogModel, account: PlanAccount, detailsById:
   var detail = detailOf(detailsById, account.id, model.id)
   var cw = detail !== undefined && detail.contextWindow !== undefined ? detail.contextWindow : model.contextWindow
   var ctx = formatContext(cw)
-  var caps = capabilityBadges(detail).map(function (label) {
-    return react.createElement('span', { key: label, className: 'pv_capMini ' + CAP_CLASS[label] }, label)
+  var caps = capabilityKeysOf(detail).map(function (id) {
+    return react.createElement('span', { key: id, className: 'pv_capMini ' + capClassOf(id) }, t(CAP_KEYS[id].label))
   })
   return react.createElement(
     'div',
@@ -189,30 +211,30 @@ export function modelRow(model: CatalogModel, account: PlanAccount, detailsById:
 /** Cherry 式模型详情卡：服务商 / 模型 ID / 能力标记 / 上下文 / 最大输出 / 思维链。 */
 export function modelTip(model: CatalogModel, account: PlanAccount, detail: ModelDetail | undefined) {
   var rows = [react.createElement('div', { className: 'pv_tipTitle', key: 't' }, model.name)]
-  rows.push(tipLine('服务商', shortName(account), 'p'))
-  rows.push(tipLine('模型 ID', model.id, 'id'))
-  var badges = capabilityBadges(detail)
-  if (badges.length > 0) {
-    rows.push(react.createElement('div', { className: 'pv_tipCaps', key: 'c' }, badges.map(function (label) {
-      return tipCap(label, CAP_CLASS[label])
+  rows.push(tipLine(t('prov.provider'), shortName(account), 'p'))
+  rows.push(tipLine(t('prov.modelId'), model.id, 'id'))
+  var capIds = capabilityKeysOf(detail)
+  if (capIds.length > 0) {
+    rows.push(react.createElement('div', { className: 'pv_tipCaps', key: 'c' }, capIds.map(function (id) {
+      return tipCap(t(CAP_KEYS[id].label), capClassOf(id))
     })))
   }
   // 能力没出处就明说：写「关闭」等于替用户断言它不支持，比留白更误导
   if (!capabilitiesKnown(detail)) {
-    rows.push(react.createElement('div', { className: 'pv_tipDim', key: 'caps-unknown' }, '能力未知'))
+    rows.push(react.createElement('div', { className: 'pv_tipDim', key: 'caps-unknown' }, t('cap.unknown')))
   }
   if (detail !== undefined) {
     // 窗口兜底到目录里的值——和模型行的算法一致：有出处的那份优先
     var cw = detail.contextWindow !== undefined ? detail.contextWindow : model.contextWindow
-    if (cw !== undefined) rows.push(tipLine('上下文窗口', cw.toLocaleString('en-US'), 'cw'))
-    if (detail.maxTokens !== undefined) rows.push(tipLine('最大输出', detail.maxTokens.toLocaleString('en-US'), 'mt'))
-    rows.push(tipLine('思维链', detail.reasoning === undefined
-      ? '未知'
+    if (cw !== undefined) rows.push(tipLine(t('cap.cw'), cw.toLocaleString('en-US'), 'cw'))
+    if (detail.maxTokens !== undefined) rows.push(tipLine(t('cap.maxTokens'), detail.maxTokens.toLocaleString('en-US'), 'mt'))
+    rows.push(tipLine(t('cap.chain'), detail.reasoning === undefined
+      ? t('cap.unknownShort')
       : (detail.reasoning === true
-        ? (Array.isArray(detail.thinkingLevels) && detail.thinkingLevels.length > 0 ? detail.thinkingLevels.join('、') : '自动')
-        : '关闭'), 'tk'))
+        ? (Array.isArray(detail.thinkingLevels) && detail.thinkingLevels.length > 0 ? detail.thinkingLevels.join('、') : t('cap.auto'))
+        : t('cap.off')), 'tk'))
   } else {
-    rows.push(react.createElement('div', { className: 'pv_tipDim', key: 'dim' }, '该模型没有本地元数据'))
+    rows.push(react.createElement('div', { className: 'pv_tipDim', key: 'dim' }, t('cap.noMeta')))
   }
   return react.createElement('div', { className: 'pv_tip' }, rows)
 }
@@ -349,8 +371,8 @@ function modelEditorRow(
  */
 export function presetPickState(preset: ProviderPreset): { disabled: boolean; tag: string | null } {
   if (preset.configured !== true) return { disabled: false, tag: null }
-  if (preset.missingKey === true) return { disabled: false, tag: '缺密钥' }
-  return { disabled: true, tag: '已配置' }
+  if (preset.missingKey === true) return { disabled: false, tag: t('prov.presetMissingKey') }
+  return { disabled: true, tag: t('prov.presetConfigured') }
 }
 
 /**
@@ -412,13 +434,13 @@ export function isRouteConfigured(presets: unknown, routeId: string): boolean {
  * @param account - 卡片上的那条账户（含路由元信息）。
  */
 export function routeYamlOf(account: PlanAccount): string {
-  var lines = ['# dsh-llm-provider 删除前导出的 route 配置（贴回 settings.yaml 的 llm-pi-ai.providers 下）', account.id + ':']
+  var lines = [t('yaml.header'), account.id + ':']
   if (typeof account.displayName === 'string' && account.displayName !== '') lines.push('  displayName: ' + account.displayName)
   if (typeof account.api === 'string' && account.api !== '') lines.push('  api: ' + account.api)
   if (typeof account.baseUrl === 'string' && account.baseUrl !== '') lines.push('  baseURL: ' + account.baseUrl)
   if (typeof account.apiKeyEnv === 'string' && account.apiKeyEnv !== '') {
     lines.push('  apiKeyEnv: ' + account.apiKeyEnv)
-    lines.push('  # 凭据值不导出（浏览器端只拿得到掩码）——删除后请重新填回这个凭据名')
+    lines.push(t('yaml.credNote'))
   }
   return lines.join('\n') + '\n'
 }
@@ -439,7 +461,7 @@ export function refreshFailure(result: unknown): string | undefined {
     if (reason !== undefined && reason !== null && String(reason) !== '') return String(reason)
   }
   if (record.error !== undefined && record.error !== null) return String(record.error)
-  return '未知错误'
+  return t('err.unknown')
 }
 
 /**
@@ -511,10 +533,10 @@ function AddProviderPanel(props: AddProviderPanelProps) {
   }
   function runTest() {
     if (form.routeId.trim() === '' || form.baseURL.trim() === '' || form.key.trim() === '') {
-      setTest({ phase: 'fail', message: '路由 ID / API 地址 / API 密钥都要填' })
+      setTest({ phase: 'fail', message: t('prov.addManualHint') })
       return
     }
-    setTest({ phase: 'run', message: '正在用这把密钥实连供应商探测模型…' })
+    setTest({ phase: 'run', message: t('prov.testing') })
     apiCall('llm/discoverModels', {
       settingsNs: 'llm-pi-ai',
       request: {
@@ -533,8 +555,14 @@ function AddProviderPanel(props: AddProviderPanelProps) {
         }
         setTest({
           phase: 'ok',
-          message: '✓ 连通，发现 ' + String(models.length) + ' 个模型'
-            + (names.length > 0 ? '：' + names.join('、') + (models.length > 3 ? ' …' : '') : ''),
+          message: names.length === 0
+            ? tf('prov.testOk', { count: models.length })
+            : tf('prov.testOkNames', {
+              count: models.length,
+              names: models.length > 3
+                ? tf('prov.testOkMore', { names: names.join('、') })
+                : names.join('、'),
+            }),
         })
       })
       .catch(function (cause) {
@@ -564,14 +592,13 @@ function AddProviderPanel(props: AddProviderPanelProps) {
         return apiCall('credentials/set', { ref: form.apiKeyEnv.trim(), value: form.key.trim() })
       })
       .then(function () {
-        setNote((existed ? '已更新 ' : '已添加 ') + routeId + (existed ? '（原有 models / compat 等手写配置保留）' : ''))
+        setNote(existed ? tf('prov.updated', { id: routeId }) : tf('prov.added', { id: routeId }))
         setTest({ phase: 'idle', message: '' })
         patchForm({ key: '' })
         if (typeof props.onAdded === 'function') props.onAdded()
       })
       .catch(function (cause) {
-        setNote('添加失败：' + String(cause && cause.message ? cause.message : cause)
-          + '（配置可能已写入、仅密钥未存，检查后可重试）')
+        setNote(tf('prov.addFailed', { reason: cause && cause.message ? cause.message : cause }))
       })
       .then(function () {
         setBusy(false)
@@ -617,7 +644,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
     })(presets[pk])
   }
   if (pickItems.length === 0) {
-    pickItems.push(react.createElement('div', { className: 'pv_pickEmpty', key: 'empty' }, '没有匹配的供应商'))
+    pickItems.push(react.createElement('div', { className: 'pv_pickEmpty', key: 'empty' }, t('prov.noMatch')))
   }
 
   return react.createElement(
@@ -627,7 +654,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
       react.createElement(
         'div',
         { className: 'pv_line pv_row' },
-        react.createElement('span', null, '供应商'),
+        react.createElement('span', null, t('prov.provider')),
         react.createElement(
           'span',
           { className: 'pv_pick', ref: pickRef },
@@ -641,7 +668,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
                 setPickFilter('')
               },
             },
-            react.createElement('span', null, form.routeId === '' ? '选择供应商…' : pickedLabel),
+            react.createElement('span', null, form.routeId === '' ? t('prov.selectPlaceholder') : pickedLabel),
             react.createElement('span', { className: 'pv_pcCaret' }, pickOpen ? '▾' : '▸'),
           ),
           pickOpen === false
@@ -653,7 +680,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
                   className: 'pv_mFilter',
                   style: { width: '100%' },
                   type: 'text',
-                  placeholder: '过滤供应商',
+                  placeholder: t('prov.filter'),
                   value: pickFilter,
                   autoFocus: true,
                   onChange: function (event: FieldEvent) { setPickFilter(event.target.value) },
@@ -665,12 +692,12 @@ function AddProviderPanel(props: AddProviderPanelProps) {
       react.createElement(
         'div',
         { className: 'pv_line pv_row' },
-        react.createElement('span', null, '路由 ID'),
+        react.createElement('span', null, t('prov.routeId')),
         react.createElement('input', {
           className: customPicked ? 'pv_field pv_key' : 'pv_field pv_ro',
           value: form.routeId,
           readOnly: customPicked !== true,
-          title: customPicked ? '给这个网关起个名字（kebab-case）' : '由所选供应商决定',
+          title: customPicked ? t('prov.routeIdHintCustom') : t('prov.routeIdHintFixed'),
           onChange: function (event: FieldEvent) {
             if (customPicked !== true) return
             patchForm({ routeId: event.target.value, apiKeyEnv: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '_') + '_API_KEY' })
@@ -680,7 +707,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
       react.createElement(
         'div',
         { className: 'pv_line pv_row' },
-        react.createElement('span', null, 'API 密钥'),
+        react.createElement('span', null, t('prov.apiKey')),
         react.createElement('input', {
           className: 'pv_field pv_key',
           type: 'password',
@@ -690,12 +717,12 @@ function AddProviderPanel(props: AddProviderPanelProps) {
         }),
         form.websiteUrl === undefined
           ? null
-          : react.createElement('a', { className: 'pv_pcLink', href: form.websiteUrl, target: '_blank', rel: 'noreferrer', style: { marginLeft: '8px' } }, '获取密钥 ↗'),
+          : react.createElement('a', { className: 'pv_pcLink', href: form.websiteUrl, target: '_blank', rel: 'noreferrer', style: { marginLeft: '8px' } }, t('prov.keyLink')),
       ),
       react.createElement(
         'div',
         { className: 'pv_line pv_row' },
-        react.createElement('span', null, 'API 地址'),
+        react.createElement('span', null, t('prov.apiBase')),
         react.createElement('input', {
           className: form.baseURL === '' ? 'pv_field pv_key' : 'pv_field pv_ro',
           value: form.baseURL,
@@ -706,7 +733,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
       react.createElement(
         'div',
         { className: 'pv_line pv_row' },
-        react.createElement('span', null, '协议'),
+        react.createElement('span', null, t('prov.protocol')),
         customPicked
           ? react.createElement(
               'select',
@@ -729,21 +756,21 @@ function AddProviderPanel(props: AddProviderPanelProps) {
         'div',
         { className: 'pv_line pv_row' },
         react.createElement('span', null, ''),
-        react.createElement('span', { className: 'pv_hint' }, '密钥存为 ' + form.apiKeyEnv),
+        react.createElement('span', { className: 'pv_hint' }, tf('prov.credStoredAs', { ref: form.apiKeyEnv })),
       ),
       react.createElement(
         'div',
         { className: 'pv_actRow' },
         react.createElement('button', { type: 'button', className: 'pv_action', style: { marginLeft: '0' }, disabled: test.phase === 'run', onClick: runTest },
-          test.phase === 'run' ? '测试中…' : '测试'),
+          test.phase === 'run' ? t('prov.testingShort') : t('prov.test')),
         react.createElement('button', {
           type: 'button',
           className: 'pv_action',
           disabled: busy || test.phase !== 'ok',
-          title: test.phase === 'ok' ? '' : '先通过测试才能添加',
+          title: test.phase === 'ok' ? '' : t('prov.needTestFirst'),
           onClick: add,
-        }, busy ? '添加中…' : '添加到列表'),
-        react.createElement('button', { type: 'button', className: 'pv_action', style: { marginLeft: 'auto' }, onClick: function () { setOpen(false); setTest({ phase: 'idle', message: '' }); setNote(null) } }, '取消'),
+        }, busy ? t('prov.adding') : t('prov.addToList')),
+        react.createElement('button', { type: 'button', className: 'pv_action', style: { marginLeft: 'auto' }, onClick: function () { setOpen(false); setTest({ phase: 'idle', message: '' }); setNote(null) } }, t('prov.cancel')),
       ),
       test.message === ''
         ? null
@@ -856,7 +883,7 @@ export function ProviderSettingsSection() {
         setRoutesById(byId)
       })
       .catch(function () {
-        setStatus(STATUS_UNAVAILABLE)
+        setStatus(statusUnavailable())
       })
     loadPlanStatus(force)
       .then(function (payload) {
@@ -1040,8 +1067,8 @@ export function ProviderSettingsSection() {
   }
   function refreshSummary(account: PlanAccount) {
     var percent = worstPercent(account)
-    if (percent !== undefined) return '（余 ' + String(percent) + '%）'
-    if (Array.isArray(account.balances) && account.balances.length > 0) return '（' + account.balances[0].value + '）'
+    if (percent !== undefined) return tf('toast.refreshSummaryPct', { percent: percent })
+    if (Array.isArray(account.balances) && account.balances.length > 0) return tf('toast.refreshSummaryBalance', { value: account.balances[0].value })
     return ''
   }
   function refreshAccount(account: PlanAccount) {
@@ -1054,13 +1081,13 @@ export function ProviderSettingsSection() {
         }
         var failure = refreshFailure(res)
         if (failure === undefined) {
-          showToast('✓ ' + shortName(account) + ' 余量已刷新' + refreshSummary(res.account), true)
+          showToast('✓ ' + tf('toast.refreshed', { name: shortName(account) }) + refreshSummary(res.account), true)
         } else {
-          showToast('✗ ' + shortName(account) + ' 刷新失败：' + failure, false)
+          showToast('✗ ' + tf('toast.refreshFailed', { name: shortName(account), reason: failure }), false)
         }
       })
       .catch(function (cause) {
-        showToast('✗ ' + shortName(account) + ' 刷新失败：' + String(cause && cause.message ? cause.message : cause), false)
+        showToast('✗ ' + tf('toast.refreshFailed', { name: shortName(account), reason: cause && cause.message ? cause.message : cause }), false)
       })
       .then(function () {
         setRefreshingFlag(account.id, false)
@@ -1076,11 +1103,11 @@ export function ProviderSettingsSection() {
     var draft = keyDrafts[account.id]
     var value = draft === undefined ? '' : String(draft).trim()
     if (ref === '') {
-      showToast('✗ ' + shortName(account) + ' 这条路由没有凭据名，无法存密钥', false)
+      showToast('✗ ' + tf('toast.noCredentialRef', { name: shortName(account) }), false)
       return
     }
     if (value === '') {
-      showToast('✗ ' + shortName(account) + ' 先填密钥', false)
+      showToast('✗ ' + tf('toast.emptyKey', { name: shortName(account) }), false)
       return
     }
     setSavingKey(function (prev: AnyRecord) { return withKey(prev, account.id, true) })
@@ -1093,9 +1120,9 @@ export function ProviderSettingsSection() {
         if (res !== null && res !== undefined && res.account !== undefined) mergePlanAccount(res.account)
         var failure = refreshFailure(res)
         if (failure === undefined) {
-          showToast('✓ ' + shortName(account) + ' 密钥已保存，' + refreshSummary(res.account), true)
+          showToast('✓ ' + tf('toast.keySaved', { name: shortName(account), summary: refreshSummary(res.account) }), true)
         } else {
-          showToast('✓ 密钥已保存，但余量没查通：' + failure, false)
+          showToast('✓ ' + tf('toast.keySavedNoQuota', { reason: failure }), false)
         }
         // 预设清单里这一家的「缺密钥」标记要跟着消失
         reloadPresets()
@@ -1103,7 +1130,7 @@ export function ProviderSettingsSection() {
       .catch(function (cause) {
         var message = String(cause && cause.message ? cause.message : cause)
         // 配置已经在了、只存凭据也可能失败：分开报，免得用户以为整家都没配上
-        showToast('✗ 密钥保存失败：' + message, false)
+        showToast('✗ ' + tf('toast.keySaveFailed', { reason: message }), false)
       })
       .then(function () {
         setSavingKey(function (prev: AnyRecord) { return withKey(prev, account.id, false) })
@@ -1122,7 +1149,7 @@ export function ProviderSettingsSection() {
     var clipboard = navigator !== undefined && navigator !== null ? navigator.clipboard : undefined
     if (clipboard === undefined || typeof clipboard.writeText !== 'function') {
       setBackups(function (prev: AnyRecord) {
-        return withKey(prev, account.id, '这个环境不允许写剪贴板，请手动抄写：' + text)
+        return withKey(prev, account.id, tf('del.clipboardBlocked', { text: text }))
       })
       return
     }
@@ -1132,7 +1159,7 @@ export function ProviderSettingsSection() {
       },
       function (cause) {
         setBackups(function (prev: AnyRecord) {
-          return withKey(prev, account.id, '复制失败：' + String(cause && cause.message ? cause.message : cause))
+          return withKey(prev, account.id, tf('del.copyFailed', { reason: cause && cause.message ? cause.message : cause }))
         })
       },
     )
@@ -1151,34 +1178,34 @@ export function ProviderSettingsSection() {
         })
         setBackups(function (prev: AnyRecord) { return withKey(prev, account.id, undefined) })
         if (res === null || res === undefined || res.ok !== true) {
-          setNote('删除失败：' + String((res && res.error) || '未知错误'))
+          setNote(tf('toast.removeFailed', { reason: (res && res.error) || t('err.unknown') }))
           return
         }
         onProviderRemoved(account)
       })
       .catch(function (cause) {
-        setNote('删除失败：' + String(cause && cause.message ? cause.message : cause))
+        setNote(tf('toast.removeFailed', { reason: cause && cause.message ? cause.message : cause }))
       })
   }
 
   function checkUpdate() {
     setBusy(true)
-    setNote('正在检查上游 ...')
+    setNote(t('toast.checkingUpstream'))
     postJson('/provider/update')
       .then(function (result) {
         if (result.error !== undefined) {
-          setNote('更新失败：' + String(result.error))
+          setNote(tf('toast.updateFailed', { reason: result.error }))
         } else if (result.applied === true) {
-          setNote('已下载 ' + String(result.latest) + '，验证通过（完整性 + 兼容性），重启 dsh 后生效')
+          setNote(tf('toast.updated', { version: result.latest }))
         } else if (result.compatible === false) {
-          setNote(String(result.latest) + ' 验证没通过，已跳过（不会切过去）')
+          setNote(tf('toast.skipped', { version: result.latest }))
         } else {
-          setNote('已是最新（' + String(result.latest) + '）')
+          setNote(tf('toast.upToDate', { version: result.latest }))
         }
         refresh(true)
       })
       .catch(function (cause) {
-        setNote('更新失败：' + String(cause && cause.message ? cause.message : cause))
+        setNote(tf('toast.updateFailed', { reason: cause && cause.message ? cause.message : cause }))
       })
       .then(function () {
         setBusy(false)
@@ -1231,7 +1258,7 @@ export function ProviderSettingsSection() {
       react.createElement(
         'button',
         { type: 'button', className: 'pv_action pv_push', disabled: busy, onClick: checkUpdate },
-        busy ? '检查中 ...' : '检查更新',
+        busy ? t('bridge.checking') : t('bridge.check'),
       ),
     ),
   )
@@ -1257,7 +1284,7 @@ export function ProviderSettingsSection() {
           react.createElement(
             'div',
             { className: 'pv_line pv_row', key: 'id' },
-            react.createElement('span', null, '路由 ID'),
+            react.createElement('span', null, t('prov.routeId')),
             react.createElement('span', { className: 'pv_field' }, String(account.id)),
           ),
         )
@@ -1270,7 +1297,7 @@ export function ProviderSettingsSection() {
           react.createElement(
             'div',
             { className: 'pv_line pv_row', key: 'key' },
-            react.createElement('span', null, 'API 密钥'),
+            react.createElement('span', null, t('prov.apiKey')),
             keyless
               ? react.createElement(
                   'span',
@@ -1292,14 +1319,14 @@ export function ProviderSettingsSection() {
                     className: 'pv_action',
                     style: { marginLeft: '0', flex: '0 0 auto' },
                     disabled: savingKey[account.id] === true,
-                    title: '存进 ' + String(account.apiKeyEnv) + ' 并立刻实测一次余量',
+                    title: tf('prov.saveKeyTip', { ref: account.apiKeyEnv }),
                     onClick: function () { saveKey(account) },
-                  }, savingKey[account.id] === true ? '保存中…' : '保存'),
+                  }, savingKey[account.id] === true ? t('prov.saving') : t('prov.save')),
                 )
               : react.createElement(
                   'span',
                   { className: 'pv_field' },
-                  account.keyHint !== undefined ? account.keyHint : '已配置',
+                  account.keyHint !== undefined ? account.keyHint : t('prov.credential'),
                 ),
           ),
         )
@@ -1308,7 +1335,7 @@ export function ProviderSettingsSection() {
             react.createElement(
               'div',
               { className: 'pv_line pv_row', key: 'url' },
-              react.createElement('span', null, 'API 地址'),
+              react.createElement('span', null, t('prov.apiBase')),
               react.createElement('span', { className: 'pv_field' }, String(account.baseUrl)),
             ),
           )
@@ -1319,7 +1346,7 @@ export function ProviderSettingsSection() {
             react.createElement(
               'div',
               { className: 'pv_line pv_row', key: 'api' },
-              react.createElement('span', null, '协议'),
+              react.createElement('span', null, t('prov.protocol')),
               react.createElement('span', { className: 'pv_field' }, String(account.api)),
             ),
           )
@@ -1330,16 +1357,16 @@ export function ProviderSettingsSection() {
               'div',
               { className: 'pv_line pv_row', key: 'ref' },
               react.createElement('span', null, ''),
-              react.createElement('span', { className: 'pv_hint' }, '密钥存为 ' + String(account.apiKeyEnv)),
+              react.createElement('span', { className: 'pv_hint' }, tf('prov.credStoredAs', { ref: account.apiKeyEnv })),
             ),
           )
         }
         // 模型列表：目录（服务端）为骨架，pi-ai 详情补元数据；悬浮显示 Cherry 式详情卡
         var models = modelsByProvider[account.id]
         if (models === undefined) {
-          bodyRows.push(react.createElement('div', { className: 'pv_line', key: 'm-load' }, '模型目录加载中…'))
+          bodyRows.push(react.createElement('div', { className: 'pv_line', key: 'm-load' }, t('prov.modelsLoading')))
         } else if (models.length === 0) {
-          bodyRows.push(react.createElement('div', { className: 'pv_line', key: 'm-none' }, '目录里没有这个 provider 的模型'))
+          bodyRows.push(react.createElement('div', { className: 'pv_line', key: 'm-none' }, t('prov.noModels')))
         } else {
           // 模型区（带外框）独立折叠：卡片展开时默认收起，点「模型（N）」头展开
           var modelsOpen = isOpen(account.id + ':models', false)
@@ -1358,7 +1385,9 @@ export function ProviderSettingsSection() {
             react.createElement(
               'button',
               { type: 'button', className: 'pv_mHead', key: 'm-head', onClick: function () { toggle(account.id + ':models', false) } },
-              react.createElement('span', null, '模型（' + (needle === '' ? String(models.length) : String(filtered.length) + '/' + String(models.length)) + '）'),
+              react.createElement('span', null, needle === ''
+                ? tf('prov.models', { count: models.length })
+                : tf('prov.modelsFiltered', { shown: filtered.length, total: models.length })),
             ),
           ]
           if (modelsOpen) {
@@ -1369,7 +1398,7 @@ export function ProviderSettingsSection() {
                 react.createElement('input', {
                   className: 'pv_mFilter',
                   type: 'text',
-                  placeholder: '过滤',
+                  placeholder: t('prov.filter'),
                   value: filterText,
                   onChange: function (event: FieldEvent) {
                     setFilter(account.id, event.target.value)
@@ -1382,7 +1411,7 @@ export function ProviderSettingsSection() {
                       {
                         type: 'button',
                         className: 'pv_fclear',
-                        title: '清除',
+                        title: t('prov.clear'),
                         onClick: function () { setFilter(account.id, '') },
                       },
                       '×',
@@ -1396,7 +1425,7 @@ export function ProviderSettingsSection() {
               {
                 className: 'pv_mCaretCol',
                 key: 'm-caret',
-                title: modelsOpen ? '收起' : '展开',
+                title: modelsOpen ? t('prov.collapse') : t('prov.expand'),
                 onClick: function () { toggle(account.id + ':models', false) },
               },
               caretSvg(modelsOpen),
@@ -1410,14 +1439,14 @@ export function ProviderSettingsSection() {
               react.createElement(
                 'div',
                 { className: 'pv_mHeadRow', key: 'm-colhead' },
-                react.createElement('span', { className: 'pv_mId', style: { fontFamily: 'inherit' } }, '模型 ID'),
-                react.createElement('span', { className: 'pv_mName' }, '名称'),
-                react.createElement('span', { className: 'pv_mCaps' }, '能力'),
-                react.createElement('span', { className: 'pv_mCtx' }, '上下文'),
+                react.createElement('span', { className: 'pv_mId', style: { fontFamily: 'inherit' } }, t('prov.modelId')),
+                react.createElement('span', { className: 'pv_mName' }, t('prov.name')),
+                react.createElement('span', { className: 'pv_mCaps' }, t('prov.caps')),
+                react.createElement('span', { className: 'pv_mCtx' }, t('prov.ctx')),
               ),
             )
             if (filtered.length === 0) {
-              mListRows.push(react.createElement('div', { className: 'pv_line', key: 'm-empty' }, '没有匹配「' + filterText + '」的模型'))
+              mListRows.push(react.createElement('div', { className: 'pv_line', key: 'm-empty' }, tf('m.noMatch', { query: filterText })))
             } else {
               for (var m = 0; m < filtered.length; m += 1) {
                 mListRows.push(modelRow(filtered[m], account, detailsById))
@@ -1529,18 +1558,18 @@ export function ProviderSettingsSection() {
             react.createElement(
               'div',
               { className: 'pv_delPanelTitle', key: 't' },
-              '删除 provider「' + account.id + '」？',
+              tf('del.title', { id: account.id }),
             ),
             react.createElement(
               'div',
               { className: 'pv_delPanelBody', key: 'b' },
-              '将删除整条路由配置'
-                + (typeof account.apiKeyEnv === 'string' && account.apiKeyEnv !== '' ? '与其凭据 ' + account.apiKeyEnv : '与它的凭据')
-                + '。手写的 models / compat / retryPolicy 会一起消失，且不可恢复。',
+              typeof account.apiKeyEnv === 'string' && account.apiKeyEnv !== ''
+                ? tf('del.bodyWithRef', { ref: account.apiKeyEnv })
+                : t('del.body'),
             ),
           ]
           if (backup === 'copied') {
-            delRows.push(react.createElement('div', { className: 'plan_note', key: 'ok' }, '✓ 配置已复制到剪贴板，可直接贴回 settings.yaml'))
+            delRows.push(react.createElement('div', { className: 'plan_note', key: 'ok' }, t('del.copied')))
           } else if (typeof backup === 'string' && backup !== '') {
             delRows.push(react.createElement('div', { className: 'plan_note plan_badText', key: 'fail' }, backup))
           }
@@ -1551,12 +1580,12 @@ export function ProviderSettingsSection() {
               react.createElement(
                 'button',
                 { type: 'button', className: 'pv_delYes', onClick: function () { removeProvider(account) } },
-                '删除此 provider',
+                t('del.confirm'),
               ),
               react.createElement(
                 'button',
                 { type: 'button', className: 'pv_delNo', onClick: function () { exportRoute(account) } },
-                '导出配置',
+                t('del.export'),
               ),
               react.createElement(
                 'button',
@@ -1565,7 +1594,7 @@ export function ProviderSettingsSection() {
                   className: 'pv_delNo',
                   onClick: function () { toggleDeleteMode(account.id, false) },
                 },
-                '取消',
+                t('prov.cancel'),
               ),
             ),
           )
@@ -1618,7 +1647,7 @@ export function ProviderSettingsSection() {
                         href: linkUrl,
                         target: '_blank',
                         rel: 'noreferrer',
-                        title: '打开官网 ' + linkTextOf(linkUrl),
+                        title: tf('prov.openSite', { url: linkTextOf(linkUrl) }),
                         onClick: function (event: MouseEvent) {
                           if (event && typeof event.stopPropagation === 'function') event.stopPropagation()
                         },
@@ -1638,7 +1667,7 @@ export function ProviderSettingsSection() {
                   ? null
                   : react.createElement(
                       'span',
-                      { className: 'pv_fresh', title: '上次刷新 ' + String(account.fetchedAt).slice(11, 19) },
+                      { className: 'pv_fresh', title: tf('prov.lastRefresh', { time: String(account.fetchedAt).slice(11, 19) }) },
                       '◷ ' + relativeTime(account.fetchedAt),
                     ),
                 react.createElement(
@@ -1647,7 +1676,11 @@ export function ProviderSettingsSection() {
                     type: 'button',
                     className: 'pv_iconBtn' + (refreshingState[0][account.id] === true ? ' pv_spin' : ''),
                     disabled: refreshingState[0][account.id] === true,
-                    title: refreshingState[0][account.id] === true ? '刷新中…' : '刷新余量' + (account.fetchedAt !== undefined ? '（上次 ' + String(account.fetchedAt).slice(11, 19) + '）' : ''),
+                    title: refreshingState[0][account.id] === true
+                      ? t('prov.refreshing')
+                      : (account.fetchedAt !== undefined
+                        ? tf('prov.refreshQuotaAt', { time: String(account.fetchedAt).slice(11, 19) })
+                        : t('prov.refreshQuota')),
                     onClick: function () { refreshAccount(account) },
                   },
                   '↻',
@@ -1660,7 +1693,7 @@ export function ProviderSettingsSection() {
                           {
                             type: 'button',
                             className: 'pv_iconBtn',
-                            title: '删除这个 provider',
+                            title: t('prov.removeTip'),
                             onClick: function () { toggleDeleteMode(account.id, true) },
                           },
                           '✕',
@@ -1674,7 +1707,7 @@ export function ProviderSettingsSection() {
               'div',
               {
                 className: 'pv_pcCaretCol',
-                title: expanded ? '收起' : '展开',
+                title: expanded ? t('prov.collapse') : t('prov.expand'),
                 onClick: function () { toggle(account.id, dflt) },
               },
               caretSvg(expanded),
@@ -1688,7 +1721,7 @@ export function ProviderSettingsSection() {
   }
   if (cards.length === 0) {
     cards.push(
-      react.createElement('div', { className: 'pv_line', key: '__none' }, String(plan !== null && plan.error !== undefined ? plan.error : '暂无 provider 额度数据')),
+      react.createElement('div', { className: 'pv_line', key: '__none' }, String(plan !== null && plan.error !== undefined ? plan.error : t('prov.none'))),
     )
   }
 
@@ -1701,7 +1734,7 @@ export function ProviderSettingsSection() {
   var tabBridge = react.createElement(
     'button',
     { type: 'button', className: 'pv_tab' + (tab === 'bridge' ? ' pv_tabOn' : ''), onClick: function () { setTab('bridge') } },
-    'pi-ai 桥接',
+    t('bridge.tab'),
   )
   return react.createElement(
     'div',

@@ -33,15 +33,34 @@ const reactStub = new Proxy({}, {
   },
 })
 
+// document 桩提到全局：包内模块（i18n 判 <html lang>、styles 挂样式）读的是全局 document，
+// 只塞进 new Function 的形参它们看不到。lang 一开始就是 'zh-CN'——本文件既有断言写的是中文原文。
+const documentStub = {
+  documentElement: { lang: 'zh-CN' },
+  querySelector: () => null,
+  createElement: () => ({ dataset: {}, style: {} }),
+  head: { appendChild() {} },
+  addEventListener() {},
+  removeEventListener() {},
+}
+globalThis.document = documentStub
+
 // 执行脚本本体（它自己调 window.__ModuleLoader__.load）
 new Function('window', 'document', 'fetch', 'setInterval', source)(
   globalThis.window,
-  { querySelector: () => null, createElement: () => ({ dataset: {}, style: {} }), head: { appendChild() {} }, addEventListener() {}, removeEventListener() {} },
+  documentStub,
   () => Promise.reject(new Error('smoke test 不发请求')),
   () => 0,
 )
 
 const moduleExports = captured.factory((name) => (name === 'react' ? reactStub : {}))
+
+// 语言先钉在中文：本文件既有断言写的是中文原文（localT 从 <html lang> 判语言，
+// 而冒烟环境的 document 是桩、lang 缺席时默认英文）。下面的 i18n 段落会显式切到 en 再切回来。
+function useLang(lang) {
+  document.documentElement.lang = lang
+}
+useLang('zh-CN')
 
 /** 跑一次 apply，可用 commandDuplicate 模拟「官方 /model 命令还在」的场景。 */
 function runApply(commandDuplicate) {
@@ -420,7 +439,7 @@ rowsCheck('清单拿不到时不瞎认已配置', isRouteConfigured(undefined, '
 // 详情索引原来用模型 id 单键，而跨 provider 重名在 pi-ai 目录里是常态（实测 claude-opus-5 同时
 // 属于 anthropic / cloudflare-ai-gateway 等 7 家），后读到的那份会盖掉前面那家；能力字段则只有
 // pi-ai 目录一条链路，自定义模型 id 查不到就永远没有「视觉」徽章（详情卡也不会出）。
-const { detailKeyOf, indexModelDetails, capabilityBadges, capabilitiesKnown, modelRow, modelTip } = moduleExports
+const { detailKeyOf, indexModelDetails, capabilityBadges, capabilityKeysOf, capabilitiesKnown, modelRow, modelTip } = moduleExports
 
 /** 把 react 桩造出来的元素树拍成文本：只为了断言行里 / 卡片上写了什么。 */
 function flattenText(node) {
@@ -474,7 +493,152 @@ rowsCheck('完全没详情时照旧说明没有本地元数据',
 
 if (failures > 0) throw new Error(`桥接明细有 ${failures} 条断言没过`)
 
+// ---- i18n：字典完整性 + 插值辅助 + 纯函数的双语输出 ----
+// 这套断言的口径：文案一律由 t() 现取、不在模块顶层缓存——所以切 <html lang> 再调同一个纯函数，
+// 输出必须跟着变。官方 locale 服务缺席时 localT 是权威（apply 里 bind 优先），这里测的正是兜底路径。
+const { LOCAL_DICT, localT, tf, shortWindowLabel, relativeTime, resetCountdownText } = moduleExports
+let i18nFailures = 0
+function i18nCheck(name, cond) {
+  console.log((cond ? '  ok ' : '  FAIL ') + name)
+  if (!cond) i18nFailures += 1
+}
+/** 有没有汉字：英文文案里混进汉字 = 字典漏译，最典型的漏法。 */
+function hasHan(text) {
+  return /[\u4e00-\u9fff]/.test(String(text))
+}
+/** 造一条「体检没过被跳过」的桥接行（zh/en 两边都要看同一条）。 */
+function skipRowOf() {
+  const rows = piAiBridgeRows(
+    { active: true, piAiVersion: '0.85.1', source: 'dependency', rejected: [{ version: '0.86.0', error: 'x' }] },
+    undefined,
+  )
+  return rows.find((r) => r.key === 'skip-0')
+}
+
+// 1) 字典完整性：键集合一致 + 两边非空 + 中文侧带汉字 / 英文侧不残留汉字
+const zhKeys = Object.keys(LOCAL_DICT.zh).sort()
+const enKeys = Object.keys(LOCAL_DICT.en).sort()
+const missingInEn = zhKeys.filter((k) => enKeys.indexOf(k) === -1)
+const missingInZh = enKeys.filter((k) => zhKeys.indexOf(k) === -1)
+i18nCheck('zh/en 键集合一致（英文缺键 = 英文环境露中文）'
+  + (missingInEn.length > 0 ? '；en 缺 ' + missingInEn.join(',') : '')
+  + (missingInZh.length > 0 ? '；zh 缺 ' + missingInZh.join(',') : ''),
+  missingInEn.length === 0 && missingInZh.length === 0)
+i18nCheck('键数量非零且 zh/en 相等', zhKeys.length > 0 && zhKeys.length === enKeys.length)
+const emptyKeys = zhKeys.filter((k) => String(LOCAL_DICT.zh[k]).trim() === '' || String(LOCAL_DICT.en[k]).trim() === '')
+i18nCheck('每个 key 在 zh 与 en 都非空' + (emptyKeys.length > 0 ? '；空值 ' + emptyKeys.join(',') : ''), emptyKeys.length === 0)
+const hanInEn = enKeys.filter((k) => hasHan(LOCAL_DICT.en[k]))
+i18nCheck('en 值里不残留汉字' + (hanInEn.length > 0 ? '；漏译 ' + hanInEn.join(',') : ''), hanInEn.length === 0)
+;['nav', 'tabProviders', 'addProvider'].forEach((key) => {
+  i18nCheck('保留原有 key：' + key, LOCAL_DICT.zh[key] !== undefined && LOCAL_DICT.en[key] !== undefined)
+})
+
+// 2) 语言判定：localT 以 <html lang> 为准（zh 开头才中文，否则英文）
+useLang('zh-Hans-CN')
+const zhNav = localT('nav')
+useLang('en-US')
+const enNav = localT('nav')
+i18nCheck('localT 跟随 <html lang> 切换',
+  zhNav === LOCAL_DICT.zh.nav && enNav === LOCAL_DICT.en.nav && zhNav !== enNav)
+
+// 3) 插值辅助 tf(key, params)：模板取字典值，{name} 逐处替换（上一段停在 en，切回中文再断）
+useLang('zh-CN')
+i18nCheck('tf 正常替换', typeof tf === 'function' && tf('toast.refreshed', { name: 'Kimi' }) === 'Kimi 余量已刷新')
+i18nCheck('tf 参数值也过 t()（嵌套 key 不露原文）',
+  typeof tf === 'function' && tf('quota.remaining', { percent: 30 }) === '余 30%')
+i18nCheck('tf 多处占位都替换',
+  typeof tf === 'function' && tf('m.noMatch', { query: 'k2' }) === '没有匹配「k2」的模型')
+// 缺参是**原样留着占位符**（不是静默删掉，也不是 undefined）：漏传时文案里直接看得见 {name}，
+// 比悄悄少一段字好排查。undefined/null 则当空串——那是显式传了个空值，不是漏传。
+i18nCheck('tf 缺参原样留占位符、不出 undefined',
+  typeof tf === 'function' && tf('toast.refreshed', {}) === '{name} 余量已刷新'
+    && tf('toast.refreshed', {}).indexOf('undefined') === -1)
+i18nCheck('tf 显式传 undefined/null 当空串',
+  typeof tf === 'function' && tf('toast.refreshed', { name: undefined }) === ' 余量已刷新'
+    && tf('toast.refreshed', { name: null }) === ' 余量已刷新')
+i18nCheck('tf 不传 params 也不炸（无占位模板）', typeof tf === 'function' && tf('nav') === '模型服务')
+i18nCheck('tf 传 null 也不炸', typeof tf === 'function' && tf('nav', null) === '模型服务')
+// 正则元字符与 $& 这类替换串特殊 token：必须当字面量，不能被 replace 语义吞掉
+i18nCheck('tf 参数里的正则元字符按字面处理',
+  typeof tf === 'function' && tf('prov.credStoredAs', { ref: 'A$&(B)[C]\D+*?' }) === '密钥存为 A$&(B)[C]\D+*?')
+i18nCheck('tf 参数里的 $& 不被当成替换模式展开',
+  typeof tf === 'function' && tf('toast.refreshed', { name: '$&' }) === '$& 余量已刷新')
+i18nCheck('tf 参数里的花括号原样带出',
+  typeof tf === 'function' && tf('toast.refreshed', { name: '{x}' }).indexOf('{x}') !== -1)
+i18nCheck('tf 未知 key 回退成 key 本身', typeof tf === 'function' && tf('nope.not.a.key') === 'nope.not.a.key')
+
+// 4) 纯函数在两种语言下输出不同且符合预期
+useLang('zh-CN')
+const zhWin = shortWindowLabel('5 小时窗口')
+const zhReset = resetCountdownText(new Date(Date.now() - 60000).toISOString())
+const zhRel = relativeTime(new Date(Date.now() - 60000).toISOString())
+const zhRelUnder = relativeTime(new Date(Date.now() - 30000).toISOString())
+const zhRow = piAiBridgeRows({ active: true, piAiVersion: '0.85.1', source: 'dependency' }, undefined)[0]
+const zhUpstream = piAiUpstreamText(undefined)
+const zhUpstreamChecked = piAiUpstreamText({ latest: '0.86.0', lastCheck: new Date().toISOString() })
+const zhYaml = exported
+const zhCaps = capabilityBadges({ id: 'm', vision: true, reasoning: true, video: true })
+const zhSkip = skipRowOf()
+
+useLang('en-US')
+const enWin = shortWindowLabel('5 小时窗口')
+const enReset = resetCountdownText(new Date(Date.now() - 60000).toISOString())
+const enRel = relativeTime(new Date(Date.now() - 60000).toISOString())
+const enRelUnder = relativeTime(new Date(Date.now() - 30000).toISOString())
+const enRow = piAiBridgeRows({ active: true, piAiVersion: '0.85.1', source: 'dependency' }, undefined)[0]
+const enUpstream = piAiUpstreamText(undefined)
+const enUpstreamChecked = piAiUpstreamText({ latest: '0.86.0', lastCheck: new Date().toISOString() })
+// 现取而不是复用 exported：exported 是模块顶层（默认语言）那次的结果，复用就测不出切语言
+const enYaml = routeYamlOf({ id: 'opencode-go', apiKeyEnv: 'OPENCODE_GO_API_KEY' })
+const enCaps = capabilityBadges({ id: 'm', vision: true, reasoning: true, video: true })
+const enSkip = skipRowOf()
+
+i18nCheck('窗口短名 zh 出 5h', zhWin === '5h')
+i18nCheck('窗口短名 en 出 5h（英文源名也要认）', enWin === '5h')
+i18nCheck('倒计时 zh = 即将重置', zhReset === '即将重置')
+i18nCheck('倒计时 en = Resetting soon', enReset === 'Resetting soon' && !hasHan(enReset))
+i18nCheck('相对时间 1 分钟前 = 1m（单位是机器口径，两边都不翻）', zhRel === '1m' && enRel === '1m')
+i18nCheck('相对时间 30 秒前 = <1min', zhRelUnder === '<1min' && enRelUnder === '<1min')
+i18nCheck('桥接版本行 zh 是中文来源档', zhRow.value === '0.85.1（兜底依赖）')
+i18nCheck('桥接版本行 en 是英文来源档', enRow.value === '0.85.1 (vendored fallback)' && !hasHan(enRow.value))
+i18nCheck('上游未检查 zh = 上游 未检查', zhUpstream === '上游 未检查')
+i18nCheck('上游未检查 en = Upstream not checked', enUpstream === 'Upstream not checked' && !hasHan(enUpstream))
+i18nCheck('上游已检查 zh 带版本与检查时间',
+  zhUpstreamChecked.indexOf('上游 0.86.0') === 0 && zhUpstreamChecked.indexOf('检查于') !== -1)
+i18nCheck('上游已检查 en 带版本与检查时间',
+  enUpstreamChecked.indexOf('Upstream 0.86.0') === 0 && enUpstreamChecked.indexOf('checked') !== -1 && !hasHan(enUpstreamChecked))
+i18nCheck('跳过行 zh 带版本号与原因短语', zhSkip.text === '跳过 0.86.0：兼容性检查没通过')
+i18nCheck('跳过行 en 带版本号与原因短语',
+  enSkip.text === 'Skipped 0.86.0: compatibility check failed' && !hasHan(enSkip.text))
+i18nCheck('导出 YAML zh 头注释是中文', zhYaml.indexOf('删除前导出的 route 配置') !== -1)
+i18nCheck('导出 YAML en 头注释是英文',
+  enYaml.indexOf('# dsh-llm-provider route config exported before deletion') !== -1 && !hasHan(enYaml))
+i18nCheck('导出 YAML 两边都留 provider id、apiKeyEnv 与「不导出凭据值」提醒',
+  zhYaml.indexOf('opencode-go:') !== -1 && enYaml.indexOf('opencode-go:') !== -1
+    && zhYaml.indexOf('apiKeyEnv: OPENCODE_GO_API_KEY') !== -1 && enYaml.indexOf('apiKeyEnv: OPENCODE_GO_API_KEY') !== -1
+    && zhYaml.indexOf('凭据值不导出') !== -1 && enYaml.indexOf('Credential values are not exported') !== -1)
+i18nCheck('能力徽章 zh = 视觉/推理/视频', zhCaps.join(',') === '视觉,推理,视频')
+i18nCheck('能力徽章 en = Vision/Reasoning/Video', enCaps.join(',') === 'Vision,Reasoning,Video' && !hasHan(enCaps.join(',')))
+
+// 5) 徽章定位（能力未知不渲染成「无视觉」）在英文下同样成立
+i18nCheck('en 下能力未知时不打徽章', capabilityBadges({ id: 'mystery', provider: 'g' }).length === 0)
+i18nCheck('en 下 modelRow 出英文徽章',
+  rowText({ id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' }, { id: 'opencode-go' }).indexOf('Vision') !== -1)
+i18nCheck('能力 id 是语言无关的稳定标识（徽章样式类靠它，切语言不断类）',
+  typeof capabilityKeysOf === 'function'
+    && capabilityKeysOf({ id: 'm', vision: true, reasoning: true, video: true }).join('/') === 'vision/reasoning/video')
+i18nCheck('能力 id 与显示名是两回事（en 下显示名是英文、id 不变）',
+  capabilityBadges({ id: 'm', vision: true }).join(',') === 'Vision'
+    && capabilityKeysOf({ id: 'm', vision: true }).join(',') === 'vision')
+i18nCheck('en 下详情卡的「能力未知」也走英文',
+  tipText({ id: 'mystery', name: 'Mystery' }, { id: 'some-gateway' }, { id: 'mystery', provider: 'some-gateway' }).indexOf('unknown') !== -1)
+
+useLang('zh-CN')
+
+if (i18nFailures > 0) throw new Error(`i18n 断言有 ${i18nFailures} 条没过`)
+
 console.log('\n冒烟通过：模型座位 + 设置页标签两个座位已注册，模型座位用负 priority 遮蔽官方占用者；' +
   '/model 在官方占用时让位、空闲时接管；pi-ai 桥接明细按版本/来源/跳过原因出正确的行；' +
   '推理等级在目录缺该模型时仍按会话已定的档位显示，默认档只认目录声明的那个；' +
-  '模型详情按 provider + id 索引、跨 provider 重名不串味；能力未知不打徽章、详情卡注明「能力未知」')
+  '模型详情按 provider + id 索引、跨 provider 重名不串味；能力未知不打徽章、详情卡注明「能力未知」；' +
+  'zh/en 字典键集合一致、插值缺参原样留占位符，同一批纯函数在切 <html lang> 后输出跟着变')
