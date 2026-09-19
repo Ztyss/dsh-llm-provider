@@ -81,7 +81,7 @@ console.log('\n1. 插件包被整棵递归删除（包管理器/市场/宿主的
   const pkg = join(base, 'plugin-package')
   const linkParent = join(pkg, 'vendor', 'llm-bridge', 'node_modules', '@earendil-works')
   mkdirSync(linkParent, { recursive: true })
-  writeFileSync(join(pkg, 'package.json'), '{"name":"@dsh-one/dsh-llm-provider"}\n')
+  writeFileSync(join(pkg, 'package.json'), '{"name":"@ztyss/dsh-llm-provider"}\n')
   symlinkSync(copy, join(linkParent, 'pi-ai'), 'junction')
   check(isLink(join(linkParent, 'pi-ai')), '插件包里挂着链（模拟真实布局）')
 
@@ -178,7 +178,7 @@ console.log('\n6. 已安装插件包里的链指向')
   const safe = join(home, 'llm-provider-bridge')
   const installed = join(home, 'profiles', 'web', 'node_modules', '@dsh-one', 'dsh-llm-provider')
   if (!existsSync(installed)) {
-    skipCheck('安装插件包里没有任何链接（r6+ 不变量）', '当前没装 @dsh-one/dsh-llm-provider')
+    skipCheck('安装插件包里没有任何链接（r6+ 不变量）', '当前没装 @ztyss/dsh-llm-provider')
   } else {
     // r6+ 不变量：**整包零链接**。桥接工作区/链田/副本全在包外安全区，插件包里只有
     // 普通文件——这样无论谁整棵递归删这个包（Node 24.15+ 会顺 junction 清空目标），

@@ -1,5 +1,5 @@
 {
-  "name": "@dsh-one/dsh-llm-provider",
+  "name": "@ztyss/dsh-llm-provider",
   "version": "0.1.0-rc.2",
   "description": "A dsh plugin that replaces the built-in llm-pi-ai and llm-deepseek adapters, the model selector and the Models settings page with self-maintained versions, tracks upstream @earendil-works/pi-ai, and adds quota/balance lookups plus a provider management UI",
   "keywords": [

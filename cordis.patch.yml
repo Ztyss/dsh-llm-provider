@@ -34,7 +34,7 @@
 
 - insert:
     - id: dsh-llm-provider
-      name: '@dsh-one/dsh-llm-provider'
+      name: '@ztyss/dsh-llm-provider'
       # DeepSeek 走 pi-ai 的路由在这里声明：内置 llm-deepseek 被本文件禁用，得有人
       # 接手。放插件自己的 config（dsh 的 settings 组合是「schema 默认 → 这里 → 用户
       # settings.yaml 层」，见 dsh-settings 的 mergeLayers）而不是启动时往 settings
