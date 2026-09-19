@@ -283,7 +283,6 @@ try {
   await cdp.waitFor('.pv_line')
   await sleep(400)
   const bridgeText = await cdp.eval(`document.querySelector('.pv_stack').textContent`)
-  console.log('  桥接页文案片段:', bridgeText.slice(0, 200))
   shots.push(await cdp.shot('05-bridge-tab-updates-disabled'))
 
   // 5) 座位模型面板：modlens 合成 provider 的视觉徽标（2026-09-17 用户报「还是没有」）

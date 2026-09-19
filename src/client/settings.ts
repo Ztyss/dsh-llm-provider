@@ -788,7 +788,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
       test.message === ''
         ? null
         : react.createElement('div', { className: 'plan_note' + (test.phase === 'fail' ? ' plan_badText' : '') }, test.message),
-      note === null ? null : react.createElement('div', { className: 'plan_note' }, note),
+      !note ? null : react.createElement('div', { className: 'plan_note' }, note),
     ),
   )
 }
@@ -2198,9 +2198,9 @@ export function ProviderSettingsSection() {
       ? react.createElement(
           'div',
           { className: 'pv_pc' },
-          react.createElement('div', { className: 'pv_pcBody', style: { borderTop: '0', paddingTop: '8px' } },
+          react.createElement('div', { className: 'pv_pcBody', style: { borderTop: '0', padding: '10px 18px', justifyContent: 'center' } },
             bridgeLines,
-            note === null ? null : react.createElement('div', { className: 'plan_note' }, note)),
+            !note ? null : react.createElement('div', { className: 'plan_note' }, note)),
         )
       : react.createElement(
           'div',

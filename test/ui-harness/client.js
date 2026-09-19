@@ -2582,7 +2582,7 @@ window.__ModuleLoader__.load({
 					});
 					setNote(null);
 				}
-			}, t("prov.cancel"))), test.message === "" ? null : react.default.createElement("div", { className: "plan_note" + (test.phase === "fail" ? " plan_badText" : "") }, test.message), note === null ? null : react.default.createElement("div", { className: "plan_note" }, note)));
+			}, t("prov.cancel"))), test.message === "" ? null : react.default.createElement("div", { className: "plan_note" + (test.phase === "fail" ? " plan_badText" : "") }, test.message), !note ? null : react.default.createElement("div", { className: "plan_note" }, note)));
 		}
 		/**
 		* 逐模型编辑器的一行：列与显示清单对齐（勾选 | 模型 ID | 名称 | 能力 | 上下文 | 最大输出 | 移除）。
@@ -3295,25 +3295,21 @@ window.__ModuleLoader__.load({
 			* 配置字段的写入本身不涉及凭据（key 走 credentials 通道，另有补录入口）。
 			*/
 			function saveProviderEdit(account) {
-				console.log("SAVE-EDIT enter");
 				var form = editForms[account.id] !== void 0 ? editForms[account.id] : {};
 				var origin = providerEditForm(routesById[account.id] !== void 0 ? routesById[account.id] : account);
 				var bad = validateProviderEdit(form);
 				if (bad !== void 0) {
-					console.log("SAVE-EDIT invalid: " + bad);
 					setNote(t(bad));
 					return;
 				}
 				var ops = providerEditSaveOps(account.id, form, origin);
 				if (ops.length === 0) {
-					console.log("SAVE-EDIT noChange");
 					setNote(t("edit.noChange"));
 					return;
 				}
 				setEditBusy(function(prev) {
 					return withKey(prev, account.id, true);
 				});
-				console.log("SAVE-EDIT proceed ops=" + JSON.stringify(ops));
 				apiCall("settings/mutate", {
 					ns: "llm-pi-ai",
 					ops
@@ -3674,9 +3670,10 @@ window.__ModuleLoader__.load({
 				className: "pv_pcBody",
 				style: {
 					borderTop: "0",
-					paddingTop: "8px"
+					padding: "10px 18px",
+					justifyContent: "center"
 				}
-			}, bridgeLines, note === null ? null : react.default.createElement("div", { className: "plan_note" }, note))) : react.default.createElement("div", { style: {
+			}, bridgeLines, !note ? null : react.default.createElement("div", { className: "plan_note" }, note))) : react.default.createElement("div", { style: {
 				display: "flex",
 				flexDirection: "column",
 				gap: "10px"
