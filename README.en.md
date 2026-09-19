@@ -6,7 +6,7 @@ selector (`ui-model-selection`) and the Models settings page (`ui-settings-model
 quota lookups plus provider management. Base capabilities are inherited from upstream; this README
 covers **this repository's customizations only**.
 
-[中文](README.zh.md) · **English**
+[中文](README.md) · **English**
 
 ## Where this comes from
 
@@ -14,6 +14,7 @@ covers **this repository's customizations only**.
 |---|---|
 | Upstream | [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider) |
 | This fork | [Ztyss/dsh-llm-provider](https://github.com/Ztyss/dsh-llm-provider) (private) |
+| This fork's version | [v0.1.0](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.1.0) (installs from main, same source as the release) |
 | Base | upstream `1eb017f` (v0.1.0-rc.2); upstream 0.2.0 has no published source, so its exclusive features (OAuth, github-copilot) are out of scope |
 
 ## Install
@@ -55,12 +56,20 @@ host's pi-ai → DSH would not boot):
 
 - **Bilingual (zh/en)**: dictionary + `tf` interpolation through dsh's own locale mechanism,
   following language switches live.
-- **Card-level provider editing** (✎): edit display name, protocol, endpoint and credential name
-  in place; only changed fields are written, clearing a field **removes the key**.
-- **Per-model list editor**: checkboxes, custom ids, context window / max output, vision / video,
-  written through the dedicated route `POST /provider/set-models` (server-side validation, native
-  routes rejected), with the declared entry as the base — hand-written `reasoningEfforts` /
-  `compat` survive, and "follow catalog" clears the key.
+- **Inline provider editing**: display name, endpoint, protocol and credential name are edited
+  right on the card — no edit mode, no separate form. With no changes the card shows no editing
+  affordances at all; as soon as a draft exists, "Save changes / Cancel" appear. Only changed
+  fields are written, clearing a field **removes the key**. The route id stays read-only.
+- **The model list is the checklist**: expanding "Models (N)" shows checkboxes directly, decoupled
+  from any edit button. Existing entries are read-only (capability badges + formatted context,
+  same columns as the display list); configured rows get an ✕ to delete them in one click; only
+  custom ids not in the catalog need context window / max output and vision / video. Saving goes
+  through the dedicated route `POST /provider/set-models` (server-side validation, native routes
+  rejected), with the declared entry as the base — hand-written `reasoningEfforts` / `compat`
+  survive; "Follow catalog (restore)" deletes the key and returns to the full catalog.
+- **pi-ai bridge card in one line**: by default (auto-download off) it just shows
+  "Current pi-ai version x.y.z (official / vendor)"; with `DSH_PROVIDER_UPDATE=on` the upstream
+  version and the "Check for updates" button come back.
 - **Delete confirmation modal**: cost list + "Export config (YAML)" backup (secrets excluded).
 - **Three-state capability badges**: supported / explicitly unsupported / **unknown** are rendered
   separately; models missing from the catalog get capabilities from the route declaration and

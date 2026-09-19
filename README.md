@@ -13,6 +13,7 @@ pi-ai 适配器（`llm-pi-ai`）、DeepSeek 适配器（`llm-deepseek`）、模�
 |---|---|
 | 上游 | [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider) |
 | 本 fork | [Ztyss/dsh-llm-provider](https://github.com/Ztyss/dsh-llm-provider)（私有） |
+| 本仓库版本 | [v0.1.0](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.1.0)（安装走 main 分支，与 release 同源） |
 | 基线 | 上游 `1eb017f`（v0.1.0-rc.2）；上游 0.2.0 无源码发布，其独有功能（OAuth、github-copilot）不在范围 |
 
 ## 安装
@@ -45,11 +46,16 @@ dsh web     # 需要重启：插件树在进程启动时组装
 ### 界面定制
 
 - **中英双语**：双语字典 + `tf` 插值，走 dsh 自己的 locale 机制，语言切换实时跟随。
-- **卡片级供应商编辑**（✎）：就地改显示名、协议、端点与凭据名；只写改动过的字段，
-  清空某个字段是**移除该键**。
-- **逐模型清单编辑**：勾选、自定义 ID、上下文/最大输出、视觉/视频，写专用路由
-  `POST /provider/set-models`（服务端校验、拒绝内置路由），以声明原文为底稿——
-  保全手写的 `reasoningEfforts` / `compat`，"跟随目录"即清空该键。
+- **供应商卡就地编辑**：显示名、API 地址、协议、凭据名直接在卡片原位改——没有编辑模式、
+  没有独立表单，无改动时卡片不出现任何编辑痕迹，一有草稿才浮出「保存修改 / 取消」；
+  只写改动过的字段，清空某个字段是**移除该键**。路由 ID 是配置键保持只读。
+- **模型清单即勾选清单**：展开「模型（N）」直接勾选，与编辑按钮解耦；现有条目只读展示
+  （能力徽章 + 格式化上下文，与显示清单同款列），已配置的行给 ✕ 一键删除；只有目录里没有的
+  自定义 ID 才填上下文/最大输出与视觉/视频。保存写专用路由 `POST /provider/set-models`
+  （服务端校验、拒绝内置路由），声明原文为底稿——保全手写的 `reasoningEfforts` / `compat`；
+  「跟随目录（还原）」即删掉该键回到目录全量。
+- **pi-ai 桥接页一行化**：默认（自动下载停用）只显示「当前 pi-ai 版本 x.y.z（官方 / vendor）」；
+  `DSH_PROVIDER_UPDATE=on` 时上游版本与「检查更新」按钮自动回归。
 - **删除确认弹层**：代价清单 + 「导出配置（YAML）」备份（密钥不导出）。
 - **能力三态徽章**：支持 / 明确不支持 / **未知** 分开渲染；目录查不到的模型从路由声明与
   适配器自报补齐能力（modlens 这类合成 provider）。
