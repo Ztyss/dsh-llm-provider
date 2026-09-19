@@ -177,9 +177,12 @@ console.log('\n6. 已安装插件包里的链指向')
   // 安全区在构建产物里被 tree-shake 掉了（模块内部常量），测试自己算一遍
   const safe = join(home, 'llm-provider-bridge')
   const installed = join(home, 'profiles', 'web', 'node_modules', '@dsh-one', 'dsh-llm-provider')
-  if (!existsSync(join(installed, 'vendor'))) {
-    skipCheck('插件包 vendor/ 里的链只指向包内或安全区', '当前没装 @dsh-one/dsh-llm-provider')
+  if (!existsSync(installed)) {
+    skipCheck('安装插件包里没有任何链接（r6+ 不变量）', '当前没装 @dsh-one/dsh-llm-provider')
   } else {
+    // r6+ 不变量：**整包零链接**。桥接工作区/链田/副本全在包外安全区，插件包里只有
+    // 普通文件——这样无论谁整棵递归删这个包（Node 24.15+ 会顺 junction 清空目标），
+    // 都没有任何链接可供跟随，宿主安装树一个字节都不会动。
     const links = []
     const walk = (dir, depth) => {
       if (depth > 8) return
@@ -198,11 +201,10 @@ console.log('\n6. 已安装插件包里的链指向')
         if (stats.isDirectory()) walk(path, depth + 1)
       }
     }
-    walk(join(installed, 'vendor'), 0)
-    const bad = links.filter(({ target }) => target !== '' && !inside(target, installed) && !inside(target, safe))
-    check(bad.length === 0,
-      `★ 包内 ${links.length} 条链全部指向包内或安全区`,
-      bad.map(({ path, target }) => `${path} -> ${target}`).join(' | '))
+    walk(installed, 0)
+    check(links.length === 0,
+      '★ 安装插件包里没有任何链接（整包可被安全递归删除）',
+      links.map(({ path, target }) => `${path} -> ${target}`).join(' | '))
     if (links.length > 0) console.log(`    （链清单：${links.map(({ target }) => target).join(' , ')}）`)
   }
 }
