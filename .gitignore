@@ -2,7 +2,14 @@
 node_modules/
 
 # 构建产物（npm run build 生成，源码在 src/）
-lib/
+#
+# **注意：这里刻意不忽略 lib/**。本仓库要支持 `dsh plugin add github:<owner>/<repo>`
+# 一键安装——pnpm 走 git 依赖时只会拿到仓库里的文件，若 lib/ 不入库，装出来的包
+# 没有 lib/index.js（package.json 的 main 指向它），插件根本无法被 dsh 加载。
+# 因此构建产物随源码一起入库；改完记得 `npm run build` 后再提交。
+# （package.json 里仍留有 `prepare: tsdown` 作为兜底：万一 lib/ 缺失或过期，
+#   pnpm 安装时会把 devDependencies 一起装上并重新构建。）
+# lib/
 
 # 开发用 worktree（scripts/dev-start.sh 创建，一个任务一个）
 .worktrees/
