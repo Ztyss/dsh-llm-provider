@@ -176,7 +176,7 @@ console.log('\n6. 已安装插件包里的链指向')
   const home = process.env.DSH_HOME !== undefined && process.env.DSH_HOME !== '' ? process.env.DSH_HOME : join(homedir(), '.dsh')
   // 安全区在构建产物里被 tree-shake 掉了（模块内部常量），测试自己算一遍
   const safe = join(home, 'llm-provider-bridge')
-  const installed = join(home, 'profiles', 'web', 'node_modules', '@dsh-one', 'dsh-llm-provider')
+  const installed = join(home, 'profiles', 'web', 'node_modules', '@ztyss', 'dsh-llm-provider')
   if (!existsSync(installed)) {
     skipCheck('安装插件包里没有任何链接（r6+ 不变量）', '当前没装 @ztyss/dsh-llm-provider')
   } else {
