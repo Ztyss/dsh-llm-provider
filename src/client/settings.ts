@@ -1317,6 +1317,10 @@ export function ProviderSettingsSection() {
   var planState = react.useState(null)
   var plan = planState[0]
   var setPlan = planState[1]
+  // 用量快照首次加载中：页面刚打开时先给「正在刷新用量…」占位，数据到了才渲染 provider 界面
+  var usageWaitState = react.useState(true)
+  var usageWait = usageWaitState[0] as boolean
+  var setUsageWait = usageWaitState[1]
   var noteState = react.useState(null)
   var note = noteState[0]
   var setNote = noteState[1]
@@ -1422,9 +1426,12 @@ export function ProviderSettingsSection() {
     loadPlanStatus(force)
       .then(function (payload) {
         setPlan(payload)
+        setUsageWait(false)
       })
       .catch(function (cause) {
         setNote(cause && cause.message ? String(cause.message) : String(cause))
+        // 加载失败也不能把用户晾在占位页上：回落到空列表 + 错误提示
+        setUsageWait(false)
       })
   }, [])
 
@@ -1434,6 +1441,8 @@ export function ProviderSettingsSection() {
     function () {
       return onPlanChange(function (payload) {
         setPlan(payload)
+        // 广播到了 = 用量数据在手，占位可以撤了
+        setUsageWait(false)
       })
     },
     [],
@@ -2305,12 +2314,24 @@ export function ProviderSettingsSection() {
             bridgeLines,
             !note ? null : react.createElement('div', { className: 'plan_note' }, note)),
         )
-      : react.createElement(
-          'div',
-          { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
-          react.createElement(AddProviderPanel, { presets: presets, onAdded: onProviderAdded }),
-          cards,
-        ),
+      : usageWait === true && plan === null
+        ? // 用量快照还没就绪：先给「正在刷新用量…」占位，刷新完再渲染 provider 界面
+          react.createElement(
+            'div',
+            { className: 'pv_pc' },
+            react.createElement(
+              'div',
+              { className: 'pv_pcBody pv_usageLoading' },
+              react.createElement('span', { className: 'pv_spin' }, '↻'),
+              react.createElement('span', null, t('prov.usageLoading')),
+            ),
+          )
+        : react.createElement(
+            'div',
+            { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
+            react.createElement(AddProviderPanel, { presets: presets, onAdded: onProviderAdded }),
+            cards,
+          ),
     toast === null
       ? null
       : react.createElement(

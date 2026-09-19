@@ -111,6 +111,36 @@ try {
   })
 
   const url = 'file:///' + join(here, 'harness.html').replace(/\\/g, '/')
+
+  // 0) 用量加载占位：?planDelay=1500 把 /plan/status 拖慢——页面打开先见「正在刷新用量…」，
+  //    数据到手后才渲染 provider 界面（添加按钮 + 卡片）
+  await cdp.send('Page.navigate', { url: url + '?planDelay=1500' })
+  await sleep(400)
+  const waitProbe = await cdp.eval(`(function () {
+    var el = document.querySelector('.pv_usageLoading')
+    return {
+      loading: el !== null,
+      text: el !== null ? el.textContent : '',
+      noAddBtn: document.querySelector('.pv_addBtn') === null,
+      noCards: document.querySelector('.pv_mHead') === null,
+    }
+  })()`)
+  console.log('  用量占位探针:', JSON.stringify(waitProbe))
+  if (waitProbe.loading !== true || waitProbe.text.indexOf('正在刷新用量') === -1 || waitProbe.noAddBtn !== true || waitProbe.noCards !== true) {
+    throw new Error('用量加载占位没出现：' + JSON.stringify(waitProbe))
+  }
+  shots.push(await cdp.shot('00-usage-loading-placeholder'))
+  await cdp.waitFor('.pv_addBtn', 8000)
+  const waitDone = await cdp.eval(`({
+    loadingGone: document.querySelector('.pv_usageLoading') === null,
+    cards: document.querySelectorAll('.pv_pc').length,
+    addBtn: document.querySelector('.pv_addBtn') !== null,
+  })`)
+  console.log('  用量加载完成:', JSON.stringify(waitDone))
+  if (waitDone.loadingGone !== true || waitDone.cards < 2 || waitDone.addBtn !== true) {
+    throw new Error('占位页没被 provider 界面替换：' + JSON.stringify(waitDone))
+  }
+
   await cdp.send('Page.navigate', { url })
   await sleep(500)
 

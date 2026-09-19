@@ -352,6 +352,11 @@ var css =
   '.pv_meForm .pv_row{font-size:12px;line-height:20px}' +
   '.pv_meForm .pv_field{min-width:0;flex:1;max-width:320px}' +
   '.pv_meFormCaps{display:inline-flex;align-items:center;gap:6px}' +
+  // 用量快照加载占位：打开页面时「正在刷新用量…」居中一行（转圈 + 文案）
+  // pv_pcBody 是纵向 flex，这里必须改回横向行，转圈和文案才并排居中
+  '.pv_usageLoading{flex-direction:row;align-items:center;justify-content:center;gap:8px;padding:22px 0;' +
+  'color:var(--dsw-alias-label-tertiary)}' +
+  '.pv_usageLoading .pv_spin{font-size:16px;color:var(--dsw-alias-label-secondary)}' +
   // 清单页的「修改模型」入口行
   '.pv_mEditRow{display:flex;align-items:center;padding:7px 0 2px}' +
   '.pv_meActs{display:flex;align-items:center;gap:8px}' +
