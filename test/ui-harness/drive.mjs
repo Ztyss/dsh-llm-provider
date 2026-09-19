@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const outDir = process.argv[2] ?? 'D:/桌面/dsh-lp-evidence'
-const clientSrc = process.env.CLIENT_SRC ?? 'C:/Users/39244/.dsh/profiles/web/node_modules/@dsh-one/dsh-llm-provider/lib/client.js'
+const clientSrc = process.env.CLIENT_SRC ?? 'C:/Users/39244/.dsh/profiles/web/node_modules/@ztyss/dsh-llm-provider/lib/client.js'
 const chromePath = process.env.CHROME ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe'
 const PORT = Number(process.env.CDP_PORT ?? 9333)
 
