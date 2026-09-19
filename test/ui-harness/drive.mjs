@@ -228,7 +228,26 @@ try {
   if (edit2.actsGone !== true || edit2.urlValue !== '') throw new Error('取消后没回落：' + JSON.stringify(edit2))
 
 
-  // 2) 模型清单（勾选式，与「配置模型」按钮解耦：展开即见）
+  // 2) 模型框展开 → 先是「当前清单」只读页；点「修改模型」才进勾选编辑器
+  await cdp.waitFor('.pv_mRow')
+  const listProbe = await cdp.eval(`(function () {
+    var box = document.querySelectorAll('.pv_mBox')[0]
+    return {
+      listRows: box.querySelectorAll('.pv_mRow').length,
+      listHead: box.querySelector('.pv_mHeadRow') !== null,
+      editBtn: Array.from(box.querySelectorAll('button')).some(function (b) { return b.textContent === '修改模型' }),
+      editorHidden: document.querySelector('.pv_meRow') === null,
+    }
+  })()`)
+  console.log('  清单页探针:', JSON.stringify(listProbe))
+  if (listProbe.listRows === 0 || listProbe.listHead !== true || listProbe.editBtn !== true || listProbe.editorHidden !== true) {
+    throw new Error('清单页结构没满足（展开应先看到只读清单 + 修改模型按钮）：' + JSON.stringify(listProbe))
+  }
+  shots.push(await cdp.shot('02-model-list-page'))
+  await cdp.eval(`
+    var b = Array.from(document.querySelectorAll('.pv_mBox')[0].querySelectorAll('button')).find(function (x) { return x.textContent === '修改模型' })
+    b.click()
+  `)
   await cdp.waitFor('.pv_meRow')
   const editorProbe = await cdp.eval(`(function () {
     var rows = Array.from(document.querySelectorAll('.pv_meRow'))
@@ -261,6 +280,10 @@ try {
       noNameCol: document.querySelector('.pv_meName') === null && document.querySelectorAll('.pv_meHeadRow > span').length === 6,
       // 只预勾 settings.yaml 声明过的模型（夹具里 opencode-go 只声明 deepseek-flash）
       declaredOnly: JSON.stringify(checkedIds) === '["deepseek-flash"]',
+      // 不再显示「已勾 N / M」计数器
+      noCounter: document.querySelector('.pv_me .pv_push') === null,
+      // 旧的「加一行」内联输入已移除
+      noInlineAdd: document.querySelector('.pv_me input[placeholder^="自定义模型 ID"]') === null,
       // 目录已知模型的上下文/最大输出两列都有值
       ctxMaxShown: rows.length > 0 && rows.every(function (el) {
         var known = el.querySelector('.pv_capDeclared') === null
@@ -273,21 +296,66 @@ try {
     }
   })()`)
   console.log('  清单探针:', JSON.stringify(editorProbe))
-  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.knownRowsReadOnly !== true || editorProbe.wrapId !== true || editorProbe.noFilter !== true || editorProbe.delBtnOnConfiguredOnly !== true || editorProbe.noNameCol !== true || editorProbe.declaredOnly !== true || editorProbe.ctxMaxShown !== true || editorProbe.colAligned !== true) {
+  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.knownRowsReadOnly !== true || editorProbe.wrapId !== true || editorProbe.noFilter !== true || editorProbe.delBtnOnConfiguredOnly !== true || editorProbe.noNameCol !== true || editorProbe.declaredOnly !== true || editorProbe.noCounter !== true || editorProbe.noInlineAdd !== true || editorProbe.ctxMaxShown !== true || editorProbe.colAligned !== true) {
     throw new Error('模型清单结构没满足：' + JSON.stringify(editorProbe))
   }
-  shots.push(await cdp.shot('02-model-list-editor'))
+  shots.push(await cdp.shot('02b-model-list-editor'))
 
-  // 2b) 勾上一个未配置的目录模型再保存：声明条目原样保留 + 已知模型只写 {id}（两步分开点，
-  //     同一 eval 里连点会命中重渲染前的旧闭包——真实 UI 的两次点击在不同任务里）
+  // 2a) 「添加模型」表单：空 ID 报错 → 填全参数 → 行追加（草稿态，保存才落盘）
+  await cdp.eval(`
+    var b = Array.from(document.querySelectorAll('.pv_meActs button')).find(function (x) { return x.textContent === '添加模型' })
+    b.click()
+  `)
+  await cdp.waitFor('.pv_meForm')
+  await cdp.eval(`
+    var add = Array.from(document.querySelectorAll('.pv_meForm button')).find(function (x) { return x.textContent === '添加' })
+    add.click()
+  `)
+  await sleep(300)
+  const emptyErr = await cdp.eval(`(document.querySelector('.pv_me .plan_badText') || {}).textContent || ''`)
+  if (emptyErr === '') throw new Error('空 ID 没有报错')
+  await cdp.eval(`
+    var q = function (sel) { return document.querySelector('.pv_meForm ' + sel) }
+    var set = function (el, v) { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })) }
+    set(q('input[placeholder="目录里没有的自定义 ID"]'), 'my-custom')
+    set(q('input[placeholder="留空则同模型 ID"]'), 'My Custom')
+    set(q('input[placeholder="如 1000000"]'), '1000000')
+    set(q('input[placeholder="如 384000"]'), '100000')
+    q('.pv_meFormCaps label input').click()
+  `)
+  await sleep(300)
+  await cdp.eval(`
+    var add = Array.from(document.querySelectorAll('.pv_meForm button')).find(function (x) { return x.textContent === '添加' })
+    add.click()
+  `)
+  await sleep(400)
+  const addProbe = await cdp.eval(`(function () {
+    var rows = Array.from(document.querySelectorAll('.pv_meRow'))
+    var last = rows[rows.length - 1]
+    return {
+      rows: rows.length,
+      lastId: (last.querySelector('.pv_mId') || {}).textContent,
+      lastCustom: last.querySelector('.pv_capDeclared') !== null,
+      lastEnabled: last.querySelector('.pv_meCheck').checked,
+      formClosed: document.querySelector('.pv_meForm') === null,
+    }
+  })()`)
+  console.log('  添加模型探针:', JSON.stringify(addProbe))
+  if (addProbe.rows !== 4 || addProbe.lastId !== 'my-custom' || addProbe.lastCustom !== true || addProbe.lastEnabled !== true || addProbe.formClosed !== true) {
+    throw new Error('添加模型表单没按预期追加行：' + JSON.stringify(addProbe))
+  }
+  shots.push(await cdp.shot('02c-model-added'))
+
+  // 2b) 勾上一个未配置的目录模型再保存：声明条目原样保留 + 已知模型只写 {id} + 自定义带全参数
+  //     （两步分开点，同一 eval 里连点会命中重渲染前的旧闭包——真实 UI 的两次点击在不同任务里）
   await cdp.eval(`
     var boxes = document.querySelectorAll('.pv_meRow .pv_meCheck');
-    if (boxes.length > 1) boxes[1].click();
+    boxes[1].click();
   `)
   await sleep(300)
   await cdp.eval(`
     var n = Array.from(document.querySelectorAll('.pv_meActs button')).find(function (b) { return b.textContent.indexOf('保存清单') !== -1 });
-    if (n) n.click();
+    n.click();
   `)
   await sleep(600)
   const payload = await cdp.eval('window.__lastSetModels ?? null')
@@ -295,8 +363,9 @@ try {
   const payloadOk = payload !== null && payload.providerId === 'opencode-go' && JSON.stringify(payload.models) === JSON.stringify([
     { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', contextWindow: 1000000, maxTokens: 384000, input: ['text', 'image'], reasoningEfforts: { low: 'low', high: 'high', max: 'max' } },
     { id: 'kimi-k3' },
+    { id: 'my-custom', name: 'My Custom', contextWindow: 1000000, maxTokens: 100000, input: ['text', 'image'] },
   ])
-  if (payloadOk !== true) throw new Error('勾选保存载荷不对（声明原样 + 已知只写 id）：' + JSON.stringify(payload))
+  if (payloadOk !== true) throw new Error('勾选保存载荷不对（声明原样 + 已知只写 id + 自定义全参数）：' + JSON.stringify(payload))
   shots.push(await cdp.shot('03-model-list-saved-toast'))
 
   // 3) 删除确认弹层（issue #3）

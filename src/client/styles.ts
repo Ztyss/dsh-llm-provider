@@ -344,7 +344,16 @@ var css =
   'color:var(--dsw-alias-label-tertiary)}' +
   '.pv_meCap input{margin:0;cursor:pointer}' +
   '.pv_capOff{opacity:.6;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1,rgba(0,0,0,.15))}' +
-  '.pv_meAdd{display:flex;align-items:center;gap:8px}' +
+  // 「添加模型」表单：仿添加供应商面板（标签在左、输入在右的 pv_row 行 + 底部按钮行）
+  '.pv_meForm{display:flex;flex-direction:column;gap:4px;padding:8px 10px;margin-top:2px;' +
+  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;' +
+  'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.02))}' +
+  '.pv_meFormTitle{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}' +
+  '.pv_meForm .pv_row{font-size:12px;line-height:20px}' +
+  '.pv_meForm .pv_field{min-width:0;flex:1;max-width:320px}' +
+  '.pv_meFormCaps{display:inline-flex;align-items:center;gap:6px}' +
+  // 清单页的「修改模型」入口行
+  '.pv_mEditRow{display:flex;align-items:center;padding:7px 0 2px}' +
   '.pv_meActs{display:flex;align-items:center;gap:8px}' +
   // ---- 本地版新增：删除确认弹层（issue #3）----
   '.pv_mask{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;' +
