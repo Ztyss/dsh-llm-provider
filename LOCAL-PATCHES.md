@@ -2,8 +2,8 @@
 
 基线：`@dsh-one/dsh-llm-provider` **0.1.0-rc.2**（上游仓库 `imchangchang/dsh-llm-provider`，clone 于
 commit `1eb017f2`，2026-09-15）。本目录是**本地固化副本**：所有自定义改动落在 `src/`，
-构建产物 `lib/`，打包成 `../dsh-llm-provider-0.1.0-rc.2-local-r7.tgz`，web profile 的依赖指向那个 tgz
-（`file:` 依赖，见 `~/.dsh/profiles/web/package.json`）。
+构建产物 `lib/`。**r8 起安装方式切换为 github 安装**——profile 依赖指向 `github:Ztyss/dsh-llm-provider`
+（`lib/` 随仓库分发，见 `~/.dsh/profiles/web/package.json`），本目录保留为开发与档案副本。
 
 > 产物文件名带 `-r7`：`file:` 依赖同名 tgz 换内容时 pnpm 不会重新解析，改了内容就换新文件名（`-local.tgz`、`-local-r1..r6.tgz` 已删）。
 > 迭代：r1 = 窗口组分割线（#2 延伸）；r2 = 能力链路补上「适配器自报」（modlens 合成 provider 的视觉徽标，见 #5）；
@@ -12,6 +12,15 @@ commit `1eb017f2`，2026-09-15）。本目录是**本地固化副本**：所有�
 > **r6 = 第二次事故的结构性修复**：桥接目录与它那套链**搬出插件包**（插件包会被别人整棵递归删掉），
 > 顺带补 dsh 自带 pi-ai 的安全副本与自愈（见文末「2026-09-19 第二次事故」）。
 > **r7 = 按用户决定收敛**：不再为 dsh 自带那份 pi-ai 留备份/自愈（那份与当前版本一致，没必要多存 6 MB）；备份/补缺路径**只服务插件自管的 vendor 版本**（未来切到「插件管理的更新版 pi-ai」时天然启用）。全机链接审计脚本按同一批注未保留。
+> **r8 = 双线合并（2026-09-19）**：另一环境（`Ztyss/dsh-llm-provider` fork）独立实现了同一批 issue + P0，两边全量对比后合流——
+> **底座取本地**（安全区工作区、链感知删除、四档候选、`DSH_PROVIDER_UPDATE` 门控），
+> **整组吸收远程**：patch-condition 条件禁用（`!!js` 表达式，pi-ai 健在才禁官方条目，fail-open——补上本地静态禁用的「宿主不可启动」放大器）、
+> pi-ai-source 完整性检测与 npm pack 恢复指引、候选级诊断（CandidateProbe/RejectedCandidate.path）、
+> provider-edit 卡片编辑（修掉本地 add() 整段覆盖的数据丢失洞）、i18n 双语字典、lib/ 入库一键安装、README 重写。
+> **修掉远程带入的 P0 残留**：其 probePiAi 的 `rmSync(recursive)`（事故原句，node 24.18.1 实测第二次启动清空宿主 pi-ai）在合并树中不复存在。
+> 合并后本地安装切换为 **github 安装**（`github:Ztyss/dsh-llm-provider`，profile 依赖），tgz 产物不再需要。
+> 验证：15 项测试链全绿；host-safety 22/22 双运行时（node 24.14 / electron 24.18.1），新增不变量「**安装插件包整包零链接**」；
+> ui-harness 6 张截图人工复核（弹层含导出按钮、卡片 ✎ 编辑、桥接页停用态）。合并提交 `27b66ea..71b194f` 已推 `Ztyss/main`。
 
 ## 本机新增的补丁（对应给作者提的 issue）
 
