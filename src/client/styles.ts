@@ -2,6 +2,8 @@
  * 插件样式：沿用 GUI 的 CSS 变量，跟模型座位视觉一致。
  * installCss 一律手写 style 标签（官方 styles.insert 需要 inject 'styles'，见文件末尾注释）。
  */
+import { t } from './i18n.js'
+
 var css =
   '.plan_root{position:relative;display:inline-flex;align-items:center}' +
   '.plan_dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-label-tertiary)}' +
@@ -157,10 +159,40 @@ var css =
   'border-radius:6px;color:var(--dsw-alias-label-tertiary)}' +
   '.pv_iconBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}' +
   '.pv_delOn{color:#e03131;font-size:12px;width:auto;padding:2px 8px}' +
-  // 删除确认框：红确认 + 灰取消，点框内任意处不触发卡片折叠
-  '.pv_delBox{display:inline-flex;gap:2px;align-items:center;padding:3px 5px;' +
-  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:8px;' +
-  'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03))}' +
+  // 逐模型清单编辑器：勾选行 + 行级展开的参数编辑
+  '.pv_modelEditor{display:flex;flex-direction:column;gap:6px;padding:8px 10px;margin-top:6px;' +
+  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;' +
+  'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.02))}' +
+  '.pv_edHead{display:flex;align-items:center;gap:8px;font-size:12px;' +
+  'color:var(--dsw-alias-label-secondary)}' +
+  '.pv_edMode{margin-left:auto;font-size:11px;padding:1px 6px;border-radius:6px;' +
+  'background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}' +
+  '.pv_edItem{display:flex;flex-direction:column;gap:4px}' +
+  '.pv_edItemOff{opacity:.5}' +
+  '.pv_edRow{display:flex;align-items:center;gap:6px;font-size:12px}' +
+  '.pv_edId{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;' +
+  'text-overflow:ellipsis;white-space:nowrap}' +
+  '.pv_edTag{font-size:11px;padding:1px 6px;border-radius:6px;' +
+  'background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06));' +
+  'color:var(--dsw-alias-label-secondary)}' +
+  '.pv_edCaret{margin-left:auto;border:0;background:0 0;cursor:pointer;font:inherit;' +
+  'font-size:11px;padding:1px 6px;border-radius:6px;color:var(--dsw-alias-label-tertiary)}' +
+  '.pv_edCaret:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}' +
+  '.pv_edFields{display:flex;flex-direction:column;gap:4px;padding:6px 0 2px 22px}' +
+  '.pv_edField{display:flex;align-items:center;gap:8px;font-size:12px;' +
+  'color:var(--dsw-alias-label-secondary)}' +
+  '.pv_edField > .pv_field{flex:1;min-width:0}' +
+  '.pv_edAdd{display:flex;align-items:center;gap:6px}' +
+  '.pv_edActs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}' +
+  // 删除确认区：卡片底部的整块面板（不再与头部 ✕ 同槽位——同位置时双击即删，见 issue #3）
+  '.pv_delPanel{display:flex;flex-direction:column;gap:6px;padding:10px 12px;margin-top:2px;' +
+  'border:1px solid rgba(224,49,49,.35);border-radius:10px;background:rgba(224,49,49,.05)}' +
+  '.pv_delPanelTitle{font-size:13px;font-weight:500;color:#e03131}' +
+  '.pv_delPanelBody{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}' +
+  '.pv_delPanelActs{display:flex;gap:6px;align-items:center;flex-wrap:wrap}' +
+  '.pv_delPanel .pv_delYes{border:1px solid rgba(224,49,49,.5);background:rgba(224,49,49,.1);font-weight:500}' +
+  '.pv_delPanel .pv_delNo{border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12))}' +
+  // 旧的内联确认框样式（.pv_delBox）已随确认区下移一并撤掉
   '.pv_delYes{border:0;background:0 0;cursor:pointer;font:inherit;font-size:12px;color:#e03131;' +
   'padding:3px 9px;border-radius:6px}' +
   '.pv_delYes:hover{background:rgba(224,49,49,.12)}' +
@@ -297,8 +329,9 @@ export function installCss(): void {
 /** 测试环境标识：标题加「· 测试」后缀 + favicon 右下角盖橙色「测」角标。 */
 export function markTestEnv() {
   try {
-    if (document.title.indexOf('测试') === -1) {
-      document.title = (document.title === '' ? 'dsh' : document.title) + ' · 测试'
+    // 后缀与角标都现取：判重与追加各自调一次 t()，切语言后加的仍是当前语言的那份
+    if (document.title.indexOf(t('test.titleSuffix')) === -1) {
+      document.title = (document.title === '' ? 'dsh' : document.title) + t('test.titleSuffix')
     }
     var iconLink = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
     var img = new window.Image()
@@ -317,7 +350,7 @@ export function markTestEnv() {
         g.font = 'bold 24px sans-serif'
         g.textAlign = 'center'
         g.textBaseline = 'middle'
-        g.fillText('测', 46, 48)
+        g.fillText(t('test.faviconBadge'), 46, 48)
         setFavicon(canvas.toDataURL('image/png'))
         return
       }
@@ -328,7 +361,7 @@ export function markTestEnv() {
   } catch (cause) { /* 标不了就算了 */ }
 }
 
-/** 替换 favicon；dataUrl 为 undefined 时退到一个纯「测」字圆形 icon。 */
+/** 替换 favicon；dataUrl 为 undefined 时退到一个纯「测」字圆形 icon（文字也走字典）。 */
 function setFavicon(dataUrl: string | undefined) {
   try {
     var link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
@@ -343,7 +376,8 @@ function setFavicon(dataUrl: string | undefined) {
     }
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
       '<circle cx="32" cy="32" r="30" fill="#e8890c"/>' +
-      '<text x="32" y="43" font-size="30" font-weight="bold" fill="#fff" text-anchor="middle">测</text></svg>'
+      '<text x="32" y="43" font-size="30" font-weight="bold" fill="#fff" text-anchor="middle">' +
+      t('test.faviconBadge') + '</text></svg>'
     link.href = 'data:image/svg+xml,' + encodeURIComponent(svg)
   } catch (cause) { /* 标不了就算了 */ }
 }

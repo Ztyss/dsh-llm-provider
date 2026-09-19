@@ -111,7 +111,22 @@ Which pi-ai gets used is decided by the [compatibility check](#compatibility-che
 
 Sources that are not installed are skipped silently. A source is only listed as skipped, with a reason, when it exists but fails the compatibility check. The pi-ai that ships with dsh follows dsh's own release cycle and is not necessarily older than upstream.
 
+**On equal versions the one bundled with dsh wins.** A downloaded copy ranks first for a good reason (it may be a newer version), but when the versions are equal there is nothing to gain from letting the copy win: it duplicates a directory for nothing, and switching over requires a restart even though the host copy is already running. So on equal versions the host entry is promoted, and the "pi-ai bridge" tab shows which source ended up active.
+
 Neither of the last two directories is hardcoded. The official bundle is resolved along the module resolution chain in this order: the profile's `node_modules`, the dsh installation tree (including the `node_modules` nested inside the dsh package), then this plugin. pi-ai is resolved the same way, starting from the bundle that was found. A different dsh layout (bundle inside its own install directory, dependencies hoisted elsewhere) therefore does not make a source disappear.
+
+### Disk usage (`vendor/` is not a cache — do not delete it by hand)
+
+The plugin's own code is about 220 KB, but `vendor/` holds runtime copies — **three orders of magnitude apart**:
+
+| Path | Typical size | Contents |
+|---|---|---|
+| `vendor/pi-ai/<version>/` | ~80 MB | the downloaded pi-ai package plus its dependency closure (only the newest one is kept; older ones are reclaimed automatically) |
+| `vendor/llm-bridge/` | ~1 MB | the bridge copy that actually runs |
+
+Two former space hogs are gone from the plugin directory: the npm install cache now lives in the system temp directory and is removed right after the install (it used to stay in `vendor/.npm-cache`, measured at 178 MB once), and older pi-ai versions are pruned down to the newest one (previously every upgrade added another ~80 MB).
+
+**`vendor/` is not a cache — do not delete it by hand.** Removing `vendor/pi-ai` is not a harmless "free the space, it will re-download next time": the copy inside may be the pi-ai that is currently active, and your model list, detail cards and display names all hang off it; an extracted copy with its dependency closure is about 80 MB and re-downloading takes time. To reclaim space, use the cleanup action in the "pi-ai bridge" tab, or delete a `vendor/pi-ai/<old version>` directly (only versions beyond the retention count are reclaimed automatically).
 
 `vendor/package.json` pins the version of the optional dependency, and the two do not overwrite each other: updates only ever write to `vendor/pi-ai/<new version>/`. Both live under `vendor/` because the bridge copy at `vendor/llm-bridge/` resolves upwards into `vendor/node_modules` first, so choosing that source needs no link.
 

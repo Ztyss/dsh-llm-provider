@@ -34,11 +34,22 @@ export interface CatalogGroup {
   models: CatalogModel[]
 }
 
-/** /provider/models 里的一条模型详情（生效 pi-ai 包的元数据），按模型 id 建索引。 */
+/** /provider/models 里的一条模型详情（pi-ai 目录 + route 声明的能力），按 provider + id 建索引。 */
 export interface ModelDetail {
   id?: string
+  /** 显示名（宿主那份是必填，客户端按可选读）。 */
+  name?: string
+  /** 这条详情属于哪家路由。跨 provider 重名（claude-opus-5 这种）全靠它区分。 */
+  provider?: string
+  api?: string
+  baseUrl?: string
   contextWindow?: number
   maxTokens?: number
+  /**
+   * 视觉 / 视频 / 推理能力：`true` 支持，`false` 明确不支持，`undefined` **未知**。
+   * 界面只给 `true` 打徽章，全是 undefined 时详情卡写「能力未知」——
+   * 「没查过」不能当成「不支持」渲染。
+   */
   vision?: boolean
   video?: boolean
   reasoning?: boolean
@@ -76,11 +87,13 @@ export interface ProjectionCell {
   subscribe: () => () => void
 }
 
-/** sessions 服务：只用到 binding(sessionId).session.projections.faceOf(...)。 */
+/** sessions 服务：只用到 binding(sessionId).session.projections.faceOf(...) 与子代理寻址。 */
 export interface SessionsFace {
   binding?: (sessionId: string) => {
     session?: { projections?: { faceOf?: (name: string) => ProjectionCell } }
   }
+  /** 会话被寻址成某个子代理时返回其地址；普通会话返回 undefined（官方 /model 用它判可用性）。 */
+  subagentAddress?: (sessionId: string) => unknown
 }
 
 /** /provider/presets 里的一个预置供应商。 */
@@ -180,6 +193,12 @@ export interface CommandContribution {
   name: string
   label: () => string
   description: () => string
+  /**
+   * 官方 ui-commands 契约里的**必填**项（`CommandContribution.available(session)`，
+   * 返回该会话能否用这条命令）。声明成必填是有意的：官方 CommandUiRuntime 对注册表里
+   * 每一条贡献都裸调它、不做防御，漏一次就打挂整批 `/` 候选（issue #7）。
+   */
+  available: (session: { sessionId?: string }) => boolean
   ui: {
     kind: string
     options: () => Promise<CommandOption[]>
