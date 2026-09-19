@@ -1,9 +1,10 @@
 /**
- * provider 路由发现的单元测试。
+ * provider 路由发现的单元测试：路由从哪来，以及 route 声明的模型能力怎么并进模型详情。
  *
  *   node test/routes.mjs
  */
 import { labelOf, providerRoutes } from '../lib/routes.js'
+import { collectRouteModels, enrichModelDetails, mergeRouteModels, readResolvedModel } from '../lib/model-details.js'
 
 let failed = false
 function check(name, actual, expected) {
@@ -78,6 +79,110 @@ check('两条路抛错都被吞掉且不影响原生路由', [...providerRoutes(
 
 check('labelOf 已知 provider 用 pi-ai 名', labelOf('zai-coding-cn'), 'Z.AI Coding CN')
 check('labelOf 未知 provider 按 id 拼', labelOf('my-gateway'), 'My Gateway')
+
+// ---- 能力徽章：自定义模型 id 拿不到「视觉」徽章（详情要按 route 声明 > pi-ai 目录 > 未知取）----
+// 现状是**只有一条链路**：/provider/models 只读 pi-ai 的 providers 数据文件，而用户在 settings 里
+// route 的 `models[].input` 声明的自定义模型 id（就是 opencode-go/deepseek-flash 这种）在目录里
+// 根本不存在——实测拿那个 id 去 grep <pi-ai>/dist/providers/data 是 0 命中，于是「能识图却没徽章」，
+// 而且失败是静默的。下面测的是补第二条链路的那几个函数。
+/** 本段几乎全是「是/不是」，给 check 一个短写法。 */
+function ok(name, cond) {
+  check(name, cond === true, true)
+}
+
+// pi-ai 目录读出来的详情。注意 claude-opus-5 在目录里跨 provider 重名——实测它同时属于
+// anthropic / cloudflare-ai-gateway / openrouter 等 7 家，客户端按 id 单键索引会被后读到的那份盖掉。
+const catalogDetails = [
+  { id: 'gpt-5', name: 'GPT-5', provider: 'openai', api: 'openai-responses', vision: false, video: false, reasoning: true, thinkingLevels: [] },
+  { id: 'claude-opus-5', name: 'Claude Opus 5', provider: 'anthropic', api: 'anthropic-messages', vision: true, video: false, reasoning: true, thinkingLevels: ['high'] },
+  { id: 'claude-opus-5', name: 'Claude Opus 5', provider: 'cloudflare-ai-gateway', api: 'openai-completions', vision: false, video: false, reasoning: false, thinkingLevels: [] },
+]
+
+// ① route 声明优先，且目录里没有的自定义模型要补得进来（这正是「越是自定义越拿不到徽章」那条）
+const declared = mergeRouteModels(catalogDetails, [
+  { provider: 'opencode-go', id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', input: ['text', 'image'], contextWindow: 1000000, maxTokens: 384000 },
+])
+const custom = declared.find((detail) => detail.id === 'deepseek-flash')
+ok('自定义模型 id 进了详情（目录里查不到也有条目，徽章才有地方挂）', custom !== undefined)
+ok('能力取自 route 声明的 input：视觉 true、视频 false', custom !== undefined && custom.vision === true && custom.video === false)
+ok('合并后原有详情一条不少', declared.length === catalogDetails.length + 1)
+
+// ② route 声明覆盖目录里同 provider 同 id 的那条
+const overridden = mergeRouteModels(catalogDetails, [
+  { provider: 'anthropic', id: 'claude-opus-5', input: ['text'] },
+  { provider: 'cloudflare-ai-gateway', id: 'claude-opus-5', input: ['text', 'image'] },
+])
+ok('route 说没有视觉就按没有（覆盖目录里的 true）',
+  overridden.find((detail) => detail.provider === 'anthropic' && detail.id === 'claude-opus-5')?.vision === false)
+ok('同名模型在另一家独立取值，不互相覆盖',
+  overridden.find((detail) => detail.provider === 'cloudflare-ai-gateway' && detail.id === 'claude-opus-5')?.vision === true)
+ok('同名模型分属两家时仍是两条（按 id 去重就会丢一条）',
+  overridden.filter((detail) => detail.id === 'claude-opus-5').length === 2)
+
+// ③ 目录次之：route 没声明模态（适配器没回 inputModalities）就沿用目录
+const fromCatalog = mergeRouteModels(catalogDetails, [{ provider: 'anthropic', id: 'claude-opus-5' }])
+ok('route 没声明模态时沿用 pi-ai 目录的能力', fromCatalog.find((detail) => detail.provider === 'anthropic')?.vision === true)
+
+// ④ 都查不到 = 未知：留 undefined，不能猜成「不支持」（未知与明确不支持在界面上是两回事）
+const unknownCaps = mergeRouteModels([], [{ provider: 'some-gateway', id: 'mystery', input: [] }])
+ok('两条链路都没说 → 能力留 undefined（未知，不是 false）',
+  unknownCaps.length === 1 && unknownCaps[0].vision === undefined && unknownCaps[0].video === undefined
+    && unknownCaps[0].reasoning === undefined)
+ok('空模态表不当成「没有视觉」：那是没声明，不是不支持', unknownCaps[0]?.vision !== false)
+ok('不改入参（详情缓存跨请求复用，改坏了会串味）', catalogDetails.length === 3 && catalogDetails[1].vision === true)
+
+// 目录里没有的模型：窗口/输出上限/思考档位只能从 resolveModelInfo 的产出认
+const resolvedModel = readResolvedModel('opencode-go', 'deepseek-flash', {
+  provider: 'opencode-go',
+  id: 'deepseek-flash',
+  name: 'DeepSeek V4.1 Flash',
+  context: { contextWindow: 1000000 },
+  defaultMaxTokens: 384000,
+  reasoning: { efforts: [{ id: 'off', name: 'Off' }, { id: 'max', name: 'Max' }], defaultEffort: 'max' },
+})
+ok('解析结果里的上下文窗口带过来', resolvedModel.contextWindow === 1000000)
+ok('解析结果里的输出上限带过来', resolvedModel.maxTokens === 384000)
+ok('解析结果里的思考档位带过来', resolvedModel.reasoning === true && resolvedModel.thinkingLevels.join(',') === 'off,max')
+const noLevels = readResolvedModel('x', 'y', { context: { contextWindow: 100 } })
+ok('适配器没回思考档位 = 已知不支持思考（false，不是未知）', noLevels.reasoning === false && noLevels.thinkingLevels === undefined)
+ok('形状不对的解析结果不编数字', readResolvedModel('x', 'y', { context: {} }).contextWindow === undefined)
+
+// 收 route 模型：单条 route 拿不到不能拖垮整批（settings 里写了路由、适配器没起来就是这样）
+const fakeLlm = {
+  listModels: async (provider) => {
+    if (provider === 'broken') throw new Error('pi-ai adapter does not own provider "broken"')
+    if (provider === 'opencode-go') return [{ provider, id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', inputModalities: ['text', 'image'] }]
+    return [{ provider, id: 'gpt-5', name: 'GPT-5', inputModalities: ['text'] }]
+  },
+  resolveModelInfo: async (provider, model) => ({
+    provider, id: model, context: { contextWindow: 128000 }, defaultMaxTokens: 8192, reasoning: { efforts: [] },
+  }),
+}
+const collected = await collectRouteModels(fakeLlm, ['opencode-go', 'broken', 'openai'])
+ok('route 抛错时跳过它，其余照收', collected.map((model) => model.provider).sort().join(',') === 'openai,opencode-go')
+ok('inputModalities 收到模型上', collected.find((model) => model.provider === 'opencode-go')?.input?.join(',') === 'text,image')
+
+const enriched = await enrichModelDetails(catalogDetails, fakeLlm, ['opencode-go', 'broken', 'openai'])
+const enrichedCustom = enriched.find((detail) => detail.provider === 'opencode-go' && detail.id === 'deepseek-flash')
+ok('端到端：自定义模型带上视觉能力', enrichedCustom !== undefined && enrichedCustom.vision === true)
+ok('端到端：目录里没有的模型补上解析出来的窗口/输出上限',
+  enrichedCustom?.contextWindow === 128000 && enrichedCustom?.maxTokens === 8192)
+ok('端到端：目录里已有的模型不重复解析，能力仍以 route 声明为准',
+  enriched.find((detail) => detail.provider === 'openai')?.vision === false)
+
+// 老宿主（llm 服务上没有这两个方法）：原样返回 pi-ai 目录的详情，不崩也不猜
+const withoutApi = await enrichModelDetails(catalogDetails, {}, ['opencode-go'])
+ok('llm 没这两个方法时原样返回，能力不受影响', withoutApi.length === 3 && withoutApi.every((detail) => detail.vision !== undefined))
+
+// resolveModelInfo 抛错：能力仍在（有出处），窗口字段留空（没出处就不编数字）
+const resolveFails = {
+  listModels: async (provider) => [{ provider, id: 'deepseek-flash', inputModalities: ['text', 'image'] }],
+  resolveModelInfo: async () => { throw new Error('INVALID_CONFIG') },
+}
+const degraded = await enrichModelDetails([], resolveFails, ['opencode-go'])
+ok('解析失败时能力照旧（来自 route 声明）', degraded.length === 1 && degraded[0].vision === true)
+ok('解析失败时窗口/输出上限留空',
+  degraded.length === 1 && degraded[0].contextWindow === undefined && degraded[0].maxTokens === undefined)
 
 console.log(failed ? '\n有失败用例' : '\n路由发现测试全部通过')
 if (failed) process.exitCode = 1

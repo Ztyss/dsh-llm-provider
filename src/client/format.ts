@@ -3,6 +3,7 @@
  * 模型座位与设置页共用；文案口径见各函数注释。
  */
 import type { AnyRecord } from '../types.js'
+import { t, tf } from './i18n.js'
 import type { HeadlineChip, PlanAccount } from './types.js'
 
 /** 上下文窗口的人性化显示：1048576 → 1.0M，262144 → 262K（K/M 按 1000 进）。 */
@@ -61,7 +62,7 @@ export function relativeTime(iso: unknown): string {
   var time = new Date(iso).getTime()
   if (Number.isNaN(time)) return ''
   var seconds = Math.max(0, Math.round((Date.now() - time) / 1000))
-  if (seconds < 10) return '刚刚'
+  if (seconds < 10) return t('win.justNow')
   if (seconds < 60) return '<1min'
   var minutes = Math.floor(seconds / 60)
   if (minutes < 60) return String(minutes) + 'm'
@@ -108,17 +109,17 @@ export function shortName(account: PlanAccount): string {
 
 /** 徽标上的短字：优先余额，其次最紧窗口的剩余百分比。 */
 export function summaryOf(account: PlanAccount | undefined | null): string {
-  if (account === undefined || account === null) return '额度'
-  if (account.authConfigured === false) return shortName(account) + ' 未配置 key'
-  if (account.error !== undefined) return shortName(account) + ' 查询失败'
-  if (account.kind === 'unsupported') return shortName(account) + ' 看控制台'
-  if (account.kind === 'unknown-provider') return shortName(account) + ' 无适配器'
+  if (account === undefined || account === null) return t('quota.generic')
+  if (account.authConfigured === false) return shortName(account) + ' ' + t('quota.notConfigured')
+  if (account.error !== undefined) return shortName(account) + ' ' + t('quota.queryFailed')
+  if (account.kind === 'unsupported') return shortName(account) + ' ' + t('quota.seeConsole')
+  if (account.kind === 'unknown-provider') return shortName(account) + ' ' + t('quota.noAdapter')
   var balances = Array.isArray(account.balances) ? account.balances : []
   if (balances.length > 0) return shortName(account) + ' ' + balances[0].value
   var percent = worstPercent(account)
-  if (typeof percent === 'number') return shortName(account) + ' 余 ' + String(percent) + '%'
+  if (typeof percent === 'number') return shortName(account) + ' ' + tf('quota.remaining', { percent: percent })
   var windows = Array.isArray(account.windows) ? account.windows : []
-  if (windows.length > 0) return shortName(account) + ' ' + String(windows.length) + ' 个窗口'
+  if (windows.length > 0) return shortName(account) + ' ' + tf('quota.windows', { count: windows.length })
   return shortName(account)
 }
 
@@ -137,30 +138,31 @@ export function quotaShortOf(account: PlanAccount | undefined | null): string | 
 /** 一行里的余额短文案（给模型行/过滤 chip 复用）。 */
 export function quotaTextOf(account: PlanAccount | undefined | null): string | undefined {
   if (account === undefined || account === null) return undefined
-  if (account.authConfigured === false) return '未配置 key'
-  if (account.error !== undefined) return '查询失败'
-  if (account.kind === 'unsupported') return '看控制台'
-  if (account.kind === 'unknown-provider') return '无适配器'
+  if (account.authConfigured === false) return t('quota.notConfigured')
+  if (account.error !== undefined) return t('quota.queryFailed')
+  if (account.kind === 'unsupported') return t('quota.seeConsole')
+  if (account.kind === 'unknown-provider') return t('quota.noAdapter')
   var percent = worstPercent(account)
-  if (typeof percent === 'number') return '余 ' + String(percent) + '%'
+  if (typeof percent === 'number') return tf('quota.remaining', { percent: percent })
   var balances = Array.isArray(account.balances) ? account.balances : []
   if (balances.length > 0) return balances[0].value
   return undefined
 }
 
 /**
- * 窗口短名（卡片头部摘要）：5 小时窗口→5h，每周/订阅周期→7d，每月窗口→30d。
+ * 窗口短名（卡片头部摘要与悬停详情共用）：5 小时窗口→5h，每周/订阅周期→7d，每月→30d。
  *
- * 本地版修正（issue #2）：原来只认得出 5h 与 7d 两档，且 `每` 这个字把「每月窗口」也吞进 7d，
- * 于是 OpenCode Go 的月窗口在卡片头部显示成第二个「7d」（截图里 `5h | 7d | 7d`）。
- * 顺序上必须先判月再判周——「每月窗口」里既有「每」也有「月」。
+ * 判序要紧：裸 `每` 会把「每月窗口」也吞进 7d（那正是 issue #2 的现象：第三档被显示成第二个
+ * 7d），所以「月」必须排在「每」之前判。认不出的窗口名返回截断的原名，不再冒充 7d。
  */
 export function shortWindowLabel(name: unknown): string {
   var text = String(name ?? '')
-  if (text.indexOf('5 小时') !== -1 || text.indexOf('5小时') !== -1) return '5h'
-  if (text.indexOf('月') !== -1 || text.indexOf('30 天') !== -1 || text.indexOf('30天') !== -1 || text.indexOf('month') !== -1) return '30d'
-  if (text.indexOf('每') !== -1 || text.indexOf('订阅') !== -1 || text.indexOf('周') !== -1 || text.indexOf('week') !== -1) return '7d'
-  return text === '' ? '窗口' : text.slice(0, 4)
+  var lower = text.toLowerCase()
+  if (text.indexOf('5 小时') !== -1 || text.indexOf('5小时') !== -1 || lower.indexOf('5 hour') !== -1) return '5h'
+  if (text.indexOf('月') !== -1 || lower.indexOf('month') !== -1) return '30d'
+  if (text.indexOf('每') !== -1 || text.indexOf('订阅') !== -1 || text.indexOf('周') !== -1
+    || lower.indexOf('week') !== -1 || lower.indexOf('subscription') !== -1) return '7d'
+  return text === '' ? t('win.fallback') : text.slice(0, 4)
 }
 
 /** 重置倒计时压缩格式（最多两个单位，零尾不显示）：34m / 5h / 5h33m / 3d5h / 4d。 */
@@ -169,9 +171,9 @@ export function resetCountdownText(iso: unknown): string {
   var time = new Date(iso).getTime()
   if (Number.isNaN(time)) return ''
   var delta = time - Date.now()
-  if (delta <= 0) return '即将重置'
+  if (delta <= 0) return t('win.resettingSoon')
   var minutes = Math.round(delta / 60000)
-  if (minutes < 1) return '即将重置'
+  if (minutes < 1) return t('win.resettingSoon')
   if (minutes < 60) return String(minutes) + 'm'
   var hours = Math.floor(minutes / 60)
   var min = minutes % 60
@@ -184,12 +186,12 @@ export function resetCountdownText(iso: unknown): string {
 /** provider chip 悬停详情：各窗口余量 + 重置倒计时，或余额明细。 */
 export function quotaTipOf(account: PlanAccount | undefined | null): string | undefined {
   if (account === undefined || account === null) return undefined
-  if (account.error !== undefined) return '查询失败：' + String(account.error)
+  if (account.error !== undefined) return tf('quota.queryFailedWith', { reason: account.error })
   var parts: string[] = []
   var windows = Array.isArray(account.windows) ? account.windows : []
   for (var i = 0; i < windows.length; i += 1) {
     if (typeof windows[i].percentLeft !== 'number') continue
-    var text = shortWindowLabel(windows[i].window) + '余量 ' + String(windows[i].percentLeft) + '%'
+    var text = tf('quota.headlineRemaining', { label: shortWindowLabel(windows[i].window), percent: windows[i].percentLeft })
     if (windows[i].resetAt !== undefined && windows[i].resetAt !== '') {
       text += ' ◷ ' + resetCountdownText(windows[i].resetAt)
     }
@@ -200,47 +202,60 @@ export function quotaTipOf(account: PlanAccount | undefined | null): string | un
   return parts.length > 0 ? parts.join(' ｜ ') : undefined
 }
 
-/**
- * 卡片头部摘要：直给最关键信息——coding plan 显示各窗口余量，API 显示余额。
- *  顺序：5 小时窗 → 每周窗 → 每月窗；**每两组之间**都有分割线（本地版修正：原来只在
- *  「5 小时组」与其余之间插一条，于是 7d 与 30d 挤在一起看不出是两档窗口）。
- */
+/** 卡片头部摘要：直给最关键信息——coding plan 显示各窗口余量，API 显示余额。
+ *
+ *  按窗口档位分组（5h → 7d → 30d → 认不出的档按出现顺序），**组与组之间**都插分割线：
+ *  旧实现只分「5 小时」与「其余」两桶、只插一条线，于是 7d 与 30d 挤在一起像同一组的两个值
+ *  （issue #8）。空组不画线——只有两档时仍然只有一条线，视觉不变。
+ *
+ *  档位顺序固定，上游返回顺序变化或同一档出现多次时分割线位置不会跳。 */
+const HEADLINE_BUCKETS = ['5h', '7d', '30d'] as const
+
 export function headlineChips(account: PlanAccount | undefined | null): HeadlineChip[] {
-  if (account === undefined || account === null) return [{ text: '无数据', percent: undefined }]
-  if (account.authConfigured === false) return [{ text: '未配置 key', percent: 0 }]
-  if (account.error !== undefined) return [{ text: '查询失败', percent: 0 }]
+  if (account === undefined || account === null) return [{ text: t('quota.noData'), percent: undefined }]
+  if (account.authConfigured === false) return [{ text: t('quota.notConfigured'), percent: 0 }]
+  if (account.error !== undefined) return [{ text: t('quota.queryFailed'), percent: 0 }]
   if (account.kind === 'unsupported') return []
-  if (account.kind === 'unknown-provider') return [{ text: '无适配器', percent: undefined }]
+  if (account.kind === 'unknown-provider') return [{ text: t('quota.noAdapter'), percent: undefined }]
   var windows = Array.isArray(account.windows) ? account.windows : []
-  // 按短名分组：同一档窗口归一组（多次出现也不拆开），组与组之间才画分割线
-  var groups: { key: string; chips: HeadlineChip[] }[] = []
-  function groupOf(key: string): { key: string; chips: HeadlineChip[] } {
-    for (var g = 0; g < groups.length; g += 1) if (groups[g].key === key) return groups[g]
-    var created = { key: key, chips: [] as HeadlineChip[] }
-    groups.push(created)
-    return created
+  var groups: { label: string; chips: HeadlineChip[] }[] = []
+  var known: string[] = HEADLINE_BUCKETS.slice()
+  function groupOf(label: string): HeadlineChip[] {
+    for (var g = 0; g < groups.length; g += 1) {
+      if (groups[g].label === label) return groups[g].chips
+    }
+    var fresh: HeadlineChip[] = []
+    groups.push({ label: label, chips: fresh })
+    return fresh
   }
   for (var i = 0; i < windows.length; i += 1) {
     if (typeof windows[i].percentLeft !== 'number') continue
-    groupOf(shortWindowLabel(windows[i].window)).chips.push({
-      label: shortWindowLabel(windows[i].window),
+    var label = shortWindowLabel(windows[i].window)
+    groupOf(label).push({
+      label: label,
       text: String(windows[i].percentLeft) + '%',
       percent: windows[i].percentLeft,
       reset: windows[i].resetAt,
     })
   }
-  // 已知档位按「5h → 7d → 30d」排，其余（订阅周期、自定义窗口名）保持出现顺序排后面
-  var KNOWN_GROUPS = ['5h', '7d', '30d']
-  var ordered: { key: string; chips: HeadlineChip[] }[] = []
-  for (var k = 0; k < KNOWN_GROUPS.length; k += 1) {
-    for (var g2 = 0; g2 < groups.length; g2 += 1) if (groups[g2].key === KNOWN_GROUPS[k]) ordered.push(groups[g2])
+  // 已知档按固定序，其余档按首次出现的顺序接在后面——认不出的窗口不丢
+  var ordered: { label: string; chips: HeadlineChip[] }[] = []
+  var index = 0
+  for (var k = 0; k < known.length; k += 1) {
+    for (index = 0; index < groups.length; index += 1) {
+      if (groups[index].label === known[k]) {
+        ordered.push(groups[index])
+        break
+      }
+    }
   }
-  for (var g3 = 0; g3 < groups.length; g3 += 1) {
-    if (KNOWN_GROUPS.indexOf(groups[g3].key) === -1) ordered.push(groups[g3])
+  for (index = 0; index < groups.length; index += 1) {
+    if (known.indexOf(groups[index].label) === -1) ordered.push(groups[index])
   }
   var chips: HeadlineChip[] = []
   for (var o = 0; o < ordered.length; o += 1) {
-    if (o > 0) chips.push({ sep: true })
+    if (ordered[o].chips.length === 0) continue
+    if (chips.length > 0) chips.push({ sep: true })
     for (var c = 0; c < ordered[o].chips.length; c += 1) chips.push(ordered[o].chips[c])
   }
   if (chips.length > 0) return chips

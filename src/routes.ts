@@ -24,11 +24,13 @@ export interface ProviderRoute {
   label: string | undefined
   source: 'llm-pi-ai' | 'native'
   /**
-   * 这条路由显式声明的逐模型清单（settings 段原样带出来）。
-   * `undefined`/空数组 = 没配，服务的是 pi-ai 目录里该 provider 的全部模型——
-   * 本地版「模型服务」页的逐模型编辑器据此区分「配过」和「跟着目录走」。
+   * 已声明的逐模型清单（`settings.yaml` 里 `llm-pi-ai.providers.<id>.models` 的**原文**）。
+   * 非空表示这条 route 走的是「自定义清单」而不是目录默认——编辑界面要基于它改，
+   * 免得把用户手写的字段（reasoningEfforts / compat）丢掉。
    */
-  models?: unknown[] | undefined
+  models?: unknown[]
+  /** 逐模型参数覆盖（`modelOverrides`），与 models 互斥；界面上只读展示。 */
+  modelOverrides?: unknown
 }
 
 /**
@@ -120,9 +122,14 @@ export function providerRoutes(
       // wire 协议：卡片展开体要和「添加供应商」表单展示同一组信息，settings 段里存的就是这个值
       api: readString(route['api']),
       label: readString(route['displayName']),
-      // 逐模型清单：只有显式配过 models 的路由才带（数组；坏形状当没配）
-      models: Array.isArray(route['models']) ? route['models'] : undefined,
       source: 'llm-pi-ai',
+      // 已声明的逐模型清单原样带上（不解析、不补默认值）：它的语义是「整段替换目录」，
+      // 界面上的编辑必须基于这份原文——只写回 id/name/窗口那些字段会把用户手写的
+      // reasoningEfforts / compat 一起抹掉。
+      models: Array.isArray(route['models']) ? route['models'] : undefined,
+      modelOverrides: route['modelOverrides'] !== undefined && route['modelOverrides'] !== null
+        ? route['modelOverrides']
+        : undefined,
     })
   }
 

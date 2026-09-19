@@ -21,16 +21,16 @@
 #    它独有的逐模型清单编辑（ModelListEditor / DeepSeekModelsEditor / CustomProviderCard）
 #    没有替代——记在 README「已知缺口」一节。
 - id: llm-pi-ai
-  disabled: true
+  disabled: !!js (()=>{try{const fs=process.getBuiltinModule?process.getBuiltinModule("node:fs"):null;if(!fs||typeof fs.existsSync!=="function")return false;const sep=process.platform==="win32"?"\\":"/";const spec="node_modules"+sep+"@earendil-works"+sep+"pi-ai";const starts=[];if(process.argv&&typeof process.argv[1]==="string")starts.push(process.argv[1]);if(typeof process.execPath==="string")starts.push(process.execPath);for(const start of starts){let dir=start;for(let hop=0;hop<12;hop+=1){const cut=Math.max(dir.lastIndexOf("/"),dir.lastIndexOf("\\"));if(cut<=0)break;dir=dir.slice(0,cut);const root=dir+sep+spec;if(fs.existsSync(root+sep+"package.json")&&fs.existsSync(root+sep+"dist"+sep+"index.js"))return true}}return false}catch{return false}})()
 
 - id: llm-deepseek
-  disabled: true
+  disabled: !!js (()=>{try{const fs=process.getBuiltinModule?process.getBuiltinModule("node:fs"):null;if(!fs||typeof fs.existsSync!=="function")return false;const sep=process.platform==="win32"?"\\":"/";const spec="node_modules"+sep+"@earendil-works"+sep+"pi-ai";const starts=[];if(process.argv&&typeof process.argv[1]==="string")starts.push(process.argv[1]);if(typeof process.execPath==="string")starts.push(process.execPath);for(const start of starts){let dir=start;for(let hop=0;hop<12;hop+=1){const cut=Math.max(dir.lastIndexOf("/"),dir.lastIndexOf("\\"));if(cut<=0)break;dir=dir.slice(0,cut);const root=dir+sep+spec;if(fs.existsSync(root+sep+"package.json")&&fs.existsSync(root+sep+"dist"+sep+"index.js"))return true}}return false}catch{return false}})()
 
 - id: ui-model-selection
-  disabled: true
+  disabled: !!js (()=>{try{const fs=process.getBuiltinModule?process.getBuiltinModule("node:fs"):null;if(!fs||typeof fs.existsSync!=="function")return false;const sep=process.platform==="win32"?"\\":"/";const spec="node_modules"+sep+"@earendil-works"+sep+"pi-ai";const starts=[];if(process.argv&&typeof process.argv[1]==="string")starts.push(process.argv[1]);if(typeof process.execPath==="string")starts.push(process.execPath);for(const start of starts){let dir=start;for(let hop=0;hop<12;hop+=1){const cut=Math.max(dir.lastIndexOf("/"),dir.lastIndexOf("\\"));if(cut<=0)break;dir=dir.slice(0,cut);const root=dir+sep+spec;if(fs.existsSync(root+sep+"package.json")&&fs.existsSync(root+sep+"dist"+sep+"index.js"))return true}}return false}catch{return false}})()
 
 - id: ui-settings-models
-  disabled: true
+  disabled: !!js (()=>{try{const fs=process.getBuiltinModule?process.getBuiltinModule("node:fs"):null;if(!fs||typeof fs.existsSync!=="function")return false;const sep=process.platform==="win32"?"\\":"/";const spec="node_modules"+sep+"@earendil-works"+sep+"pi-ai";const starts=[];if(process.argv&&typeof process.argv[1]==="string")starts.push(process.argv[1]);if(typeof process.execPath==="string")starts.push(process.execPath);for(const start of starts){let dir=start;for(let hop=0;hop<12;hop+=1){const cut=Math.max(dir.lastIndexOf("/"),dir.lastIndexOf("\\"));if(cut<=0)break;dir=dir.slice(0,cut);const root=dir+sep+spec;if(fs.existsSync(root+sep+"package.json")&&fs.existsSync(root+sep+"dist"+sep+"index.js"))return true}}return false}catch{return false}})()
 
 - insert:
     - id: dsh-llm-provider

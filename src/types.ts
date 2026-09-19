@@ -59,13 +59,22 @@ export interface LlmService {
   listConfigurableProviders?: () => LlmDirectoryEntry[]
   /** 目录里的全部 provider（含插件自己注册的合成 provider，如 modlens 的 `modlens-<上游>`）。 */
   listProviders?: () => unknown[]
-  /** 某 provider 的模型清单；适配器自报，形状不稳定，按宽松读处理。 */
+  /**
+   * 一条 route 实际服务的模型，条目里带 `inputModalities`。这是模型能力的**第一来源**：
+   * 适配器已经把「route 声明 → 内置目录 → 路由默认值」解析完了（官方 llm-pi-ai 里就是
+   * `declaredInput(entry.input) ?? base?.input ?? defaultInput`），再自己解析一遍 settings
+   * 等于养第二份实现，迟早和真正发货的那份对不上。
+   *
+   * 缺席（老宿主没这个方法）或抛错（settings 里写了路由、适配器没起来）都要能退：
+   * 退到「能力未知」，不能退到「不支持」。形状不稳定，按宽松读处理；signal? 为本地防御性超集。
+   */
   listModels?: (provider: string, signal?: unknown) => Promise<unknown>
   /**
    * 某 provider 下一个模型的**精确**元数据（宿主 `llm.resolveModelInfo`）：含
    * `inputModalities` / `context.contextWindow` / `defaultMaxTokens` / `reasoning`。
    * 官方目录 RPC（`session/modelCatalog`）只下发 id/name/description/reasoning，
    * 能力字段在传输层就丢了——本插件的能力链路靠这一条拿到「适配器自报」。
+   * 同样允许缺席/抛错；signal? 为本地防御性超集。
    */
   resolveModelInfo?: (provider: string, model: string, signal?: unknown) => Promise<unknown>
 }

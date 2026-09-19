@@ -5,6 +5,7 @@
  */
 import { accountsById, loadModelCatalog, loadPlanStatus, submitSelection } from './data.js'
 import { quotaTextOf } from './format.js'
+import { t } from './i18n.js'
 import type { ClientScope, SessionsFace } from './types.js'
 
 export function registerModelCommand(scope: ClientScope): void {
@@ -16,30 +17,27 @@ export function registerModelCommand(scope: ClientScope): void {
         return commandUi!.register({
           name: 'model',
           label: function () {
-            return '切换模型'
+            return t('cmd.label')
           },
           description: function () {
-            return '按 provider 过滤 / 搜索模型 / 显示余额'
+            return t('cmd.description')
           },
           /**
-           * 官方契约**必填**：`CommandUiRuntime.candidates()` 对注册表里每一条贡献都直接调
-           * `contribution.available(session)`——漏了就是 `TypeError: contribution.available is not a
-           * function`，整批 `/` 候选（含 composer 的「＋」按钮）一起挂掉，不是只挂这一条
-           * （上游 issue #7，作者本人实测）。
+           * 官方 ui-commands 的契约里这一项是**必填**：CommandUiRuntime.candidates() 对注册表里
+           * 每一条贡献都直接调 `contribution.available(session)`，不做防御；漏了它那一抛会打挂
+           * **整批** `/` 候选（菜单一组不剩 → 自动关闭），用户看到的就是 composer 左下那枚「＋」
+           * 点了没反应、打 `/` 也不弹（issue #7）。
            *
-           * 语义照官方 ui-model-selection：子代理会话里不提供切换。**必须永远返回 boolean、永不抛**：
-           * 契约里没有防御，这里抛一次就是整批候选消失，所以连 sessions 服务缺字段都吞掉。
+           * 口径照官方 ui-model-selection 的同名实现：被寻址成子代理的会话不能用模型选择
+           * （那是 agent 自己的事），普通会话放行。sessions 面缺席或没有这个方法时一律放行——
+           * 契约只要求返回布尔，不能因为拿不到服务就抛。
            */
-          available: function (session) {
-            try {
-              var sessions = scope.sessions as SessionsFace | undefined
-              var subagentAddress = sessions === undefined || sessions === null ? undefined : sessions.subagentAddress
-              var sessionId = session === null || session === undefined ? undefined : session.sessionId
-              if (typeof subagentAddress !== 'function' || typeof sessionId !== 'string') return true
-              return subagentAddress(sessionId) === undefined
-            } catch (cause) {
-              return true
-            }
+          available: function (session: { sessionId?: string } | null | undefined): boolean {
+            var sessions = scope.sessions as SessionsFace | undefined
+            if (sessions === undefined || sessions === null || typeof sessions.subagentAddress !== 'function') return true
+            var sessionId = session !== null && session !== undefined ? session.sessionId : undefined
+            if (typeof sessionId !== 'string' || sessionId === '') return true
+            return sessions.subagentAddress(sessionId) === undefined
           },
           ui: {
             kind: 'popupSelect',
@@ -68,10 +66,10 @@ export function registerModelCommand(scope: ClientScope): void {
               var provider = parts.shift()
               var model = parts.join('/')
               if (provider === undefined || provider === '' || model === '') {
-                throw new Error('无法解析这个模型行')
+                throw new Error(t('cmd.badRow'))
               }
               var sessionId = session !== null && session !== undefined ? session.sessionId : undefined
-              if (typeof sessionId !== 'string') throw new Error('当前没有会话，无法切换模型')
+              if (typeof sessionId !== 'string') throw new Error(t('cmd.noSession'))
               return submitSelection(sessionId, provider, model, undefined)
             },
           },

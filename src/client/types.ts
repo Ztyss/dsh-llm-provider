@@ -34,16 +34,22 @@ export interface CatalogGroup {
   models: CatalogModel[]
 }
 
-/** /provider/models 里的一条模型详情（生效 pi-ai 包的元数据 + 路由声明补齐）。 */
+/** /provider/models 里的一条模型详情（pi-ai 目录 + route 声明的能力），按 provider + id 建索引。 */
 export interface ModelDetail {
   id?: string
-  /** 这条元数据属于哪个 provider（本地版：详情按 provider+id 建索引，见 data.ts）。 */
-  provider?: string
+  /** 显示名（宿主那份是必填，客户端按可选读）。 */
   name?: string
+  /** 这条详情属于哪家路由。跨 provider 重名（claude-opus-5 这种）全靠它区分。 */
+  provider?: string
   api?: string
   baseUrl?: string
   contextWindow?: number
   maxTokens?: number
+  /**
+   * 视觉 / 视频 / 推理能力：`true` 支持，`false` 明确不支持，`undefined` **未知**。
+   * 界面只给 `true` 打徽章，全是 undefined 时详情卡写「能力未知」——
+   * 「没查过」不能当成「不支持」渲染。
+   */
   vision?: boolean
   video?: boolean
   reasoning?: boolean
@@ -116,12 +122,12 @@ export interface ProjectionCell {
   subscribe: () => () => void
 }
 
-/** sessions 服务：只用到 binding(sessionId).session.projections.faceOf(...) 与 subagentAddress（/model 的 available）。 */
+/** sessions 服务：只用到 binding(sessionId).session.projections.faceOf(...) 与子代理寻址。 */
 export interface SessionsFace {
   binding?: (sessionId: string) => {
     session?: { projections?: { faceOf?: (name: string) => ProjectionCell } }
   }
-  /** 官方 ui-model-selection 用它判断「这是不是子代理会话」；拿不到就当作不是。 */
+  /** 会话被寻址成某个子代理时返回其地址；普通会话返回 undefined（官方 /model 用它判可用性）。 */
   subagentAddress?: (sessionId: string) => unknown
 }
 
@@ -226,7 +232,7 @@ export interface CommandContribution {
    * 官方契约**必填**：`CommandUiRuntime.candidates()` 对注册表里每一条贡献都直接调
    * `contribution.available(session)`，少了它就是 `TypeError: contribution.available is not a function`
    * —— 整批 `/` 候选（含 composer 的「＋」按钮）一起挂掉，不只是这一条。见上游 issue #7。
-   * 实现必须**永远返回 boolean、永不抛**。
+   * 实现必须**永远返回 boolean、永不抛**；签名容忍 null/undefined（合并版：取本地防御性超集）。
    */
   available: (session: { sessionId?: string } | null | undefined) => boolean
   ui: {

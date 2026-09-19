@@ -20,7 +20,7 @@ const manifest = JSON.parse(readFileSync(new URL('./package.json', import.meta.u
 export default defineConfig([
   {
     name: 'dsh-llm-provider/host',
-    entry: ['src/index.ts', 'src/adapters/run.ts'],
+    entry: ['src/index.ts', 'src/adapters/run.ts', 'src/patch-condition.ts', 'src/pi-ai-source.ts'],
     outDir: 'lib',
     format: ['esm'],
     platform: 'node',

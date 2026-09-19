@@ -18,6 +18,7 @@
  * 文件不可复现，也没法保证跟 lockfile 对得上。
  */
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, realpathSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync, type Stats } from 'node:fs'
+import { describeIntegrity, inspectPiAi, restoreHint } from './pi-ai-source.js'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -62,6 +63,20 @@ export interface BridgePluginModule {
 export interface RejectedCandidate {
   version: string
   error?: string
+  /** 被跳过时这条候选的目录：`目录不存在` 时要靠它定位是哪一档没装上（issue #6 的诊断盲区）。 */
+  path?: string
+}
+
+/** 一条候选的探测结论（`/provider/status` 的 `bridge.candidates`，界面「pi-ai 桥接」标签用）。 */
+export interface CandidateProbe {
+  key: string
+  version: string
+  root: string
+  exists: boolean
+  /** 这次实际选中并用上的那一条；其余为 false。桥接没装成时全为 false。 */
+  used: boolean
+  /** 没被选中的原因：目录不存在 / 体检没通过的原因 / 前面已经有中选的候选。 */
+  reason?: string
 }
 
 /** 体检结果。`unverified` = 需求没解析出来，体检没跑，放行但不算「通过」。 */
@@ -81,10 +96,12 @@ export type BridgeLoadResult =
       /** 需求没解析出来、体检没跑：选中项是靠「目录存在」放行的，没验证过 */
       probeUnverified: boolean
       rejected: RejectedCandidate[]
+      /** 逐条候选的探测结论（含「目录不存在」的那几档）。 */
+      candidates: CandidateProbe[]
       /** 本次启动用安全副本补回 dsh 自带 pi-ai 的文件数（>0 表示刚修过一次连坐删除） */
       repairedFiles: number
     }
-  | { ok: false; error: string }
+  | { ok: false; error: string; rejected: RejectedCandidate[]; candidates: CandidateProbe[] }
 
 /** 一份 pi-ai 候选。`link: false` 表示不建软链、靠自然解析落到它。 */
 export interface PiAiCandidate {
@@ -202,9 +219,68 @@ function findSourceBundle(): string | undefined {
  */
 function dshPiAiRoot(bundlePath: string | undefined): string | undefined {
   if (bundlePath === undefined) return undefined
-  return resolvePackageRoot(bundlePath, '@earendil-works/pi-ai')
+  const root = resolvePackageRoot(bundlePath, '@earendil-works/pi-ai')
+  // 必须是**真的包**（manifest + 入口 + 官方子路径，见 inspectPiAi）：全局安装布局下可能只剩空壳目录，
+  // 事故残态可能是「manifest 在、dist 被清空」——都不能当成可用候选。
+  return root !== undefined && isPiAiPackage(root) ? root : undefined
 }
 
+/**
+ * 候选目录里是不是**真有一个能用的 pi-ai 包**。
+ *
+ * 不能只判 `existsSync(root)`：全局安装（npm -g）布局下 `@deepseek-ai/dsh/node_modules/
+ * @earendil-works/pi-ai` 这个目录**存在但是空的**（没有 package.json）——那是 npm 建出来的
+ * 空壳，里面什么都没有。按"目录存在"判会把这种空壳当成可用候选，体检时才发现没有入口，
+ * 白跑一趟；也可能像这次一样，让「宿主那份」整条从候选里消失。
+ *
+ * 也不能只判 `package.json`：2026-09-18 事故的形态正是**目录在、manifest 在、
+ * `dist/` 被清空**。那时判"有 package.json"会把一份残骸报成可用，而宿主 boot 阶段
+ * 已经因此失败了。判据交给 {@link inspectPiAi}（manifest + 入口 + 官方要的子路径）。
+ */
+function isPiAiPackage(root: string): boolean {
+  return inspectPiAi(root).usable
+}
+
+/**
+ * dsh 安装树里 pi-ai 的常见落点（用于"解析不出来时也要报一条路径"）。
+ *
+ * 覆盖两种真实布局：
+ *   1. `<node>/node_modules/@earendil-works/pi-ai`（POSIX 与部分 Windows 安装）；
+ *   2. 嵌套在 dsh 包自己下面：`<node>/node_modules/@deepseek-ai/dsh/node_modules/@earendil-works/pi-ai`
+ *      —— 全局 `npm i -g @deepseek-ai/dsh` 就是这种，顶层 `@earendil-works/pi-ai`
+ *      可能只是个空壳目录（实测：目录在、package.json 不在）。
+ * @returns 第一条存在**包**的路径；一条都没有时返回最常见的那条（供诊断报"找过这里"）。
+ */
+function dshInstallTreePiAiRoot(): string | undefined {
+  const nodeDir = dirname(process.execPath)
+  const bases = [
+    join(nodeDir, 'node_modules'),
+    join(nodeDir, '..', 'lib', 'node_modules'),
+  ]
+  // profile 那条链也要算上：`dsh plugin add @earendil-works/pi-ai` 装进 profile 后，
+  // 宿主这份就落在 profile 自己的 `node_modules` 里（实测在 `profiles/<name>/node_modules`，
+  // 不是提升到 `profiles/node_modules`）——两种都试。
+  try {
+    const home = resolveDshHome()
+    bases.push(join(home, 'profiles', 'node_modules'))
+    bases.push(join(home, 'profiles', 'web', 'node_modules'))
+  } catch { /* 拿不到 DSH_HOME 就少两个落点 */ }
+  const specifier = ['@earendil-works', 'pi-ai']
+  const candidates: string[] = []
+  for (const base of bases) {
+    candidates.push(join(base, ...specifier))
+    candidates.push(join(base, '@deepseek-ai', 'dsh', 'node_modules', ...specifier))
+  }
+  for (const candidate of candidates) {
+    if (isPiAiPackage(candidate)) return candidate
+  }
+  return candidates[0]
+}
+
+/** 宿主那份 pi-ai 的默认报错路径（解析不出来时用它，让诊断说得清找过哪儿）。 */
+function defaultHostPiAiPath(): string {
+  return join(dirname(process.execPath), 'node_modules', '@earendil-works', 'pi-ai')
+}
 /**
  * 兜底那份 pi-ai：`vendor/package.json` 锁死的依赖，装在 `vendor/node_modules/` 里。
  *
@@ -233,7 +309,7 @@ export function activePiAiRoot(): string | undefined {
   const newest = versions[versions.length - 1]
   if (newest !== undefined) return join(piAiVersionsDir, newest)
   if (existsSync(pluginDependencyRoot())) return pluginDependencyRoot()
-  return dshPiAiRoot(findSourceBundle())
+  return dshPiAiRoot(findSourceBundle()) ?? dshInstallTreePiAiRoot()
 }
 
 /** 读一个 pi-ai 包的版本号；读不到返回 undefined。 */
@@ -391,6 +467,44 @@ export function removeLinkOrDir(path: string): void {
     || path === safeRoot || path.startsWith(safeRoot + sep)
   if (!inside) throw new Error(`拒绝递归删除受管目录之外的路径：${path}`)
   removeTree(path)
+}
+
+/**
+ * 这条路径是不是一条目录链接（软链或 Windows junction）。
+ *
+ * 用 lstat 而不是 stat：stat 会**跟着链接走**，链接指向目录时得到的是目标目录的信息，
+ * 于是「它是不是链接」根本判不出来。
+ * @param path - 要判的路径。
+ */
+export function isDirectoryLink(path: string): boolean {
+  try {
+    // lstat 对 junction 报 isSymbolicLink() = true（Windows 的 reparse point 就是这么暴露的）
+    return lstatSync(path).isSymbolicLink()
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 只移除**链接本身**，绝不碰它指向的内容。
+ *
+ * 这是 issue #6 那类事故（删插件的东西把宿主的东西一起删了）的结构性防线：
+ *   - 普通目录一律不动——调用方想删的是自己建的链接，不是任何目录；
+ *   - 是链接就 unlinkSync：它只摘掉链接项，**不会递归进目标目录**。
+ *     `rmSync(path, { recursive: true })` 在链接上的行为跨平台并不一致（尤其是 Windows
+ *     的 junction），拿它删链接等于把「目标内容会不会被一起删」交给平台实现决定。
+ * 幂等：路径不存在时什么也不做。
+ * @param path - 链接路径。
+ * @returns 真的移除了返回 true；不是链接（或不存在）返回 false。
+ */
+export function removeDirectoryLink(path: string): boolean {
+  if (!isDirectoryLink(path)) return false
+  try {
+    unlinkSync(path)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** 插件私有安全区根目录（`$DSH_HOME/llm-provider-bridge`）。 */
@@ -657,7 +771,7 @@ export function loadBridge(): BridgeLoadResult {
   try {
     const srcBundle = findSourceBundle()
     if (srcBundle === undefined) {
-      return { ok: false, error: '找不到官方 llm-pi-ai bundle：profile 的 node_modules 与 dsh 安装目录里都没有 @deepseek-ai/dsh-llm-pi-ai' }
+      return { ok: false, error: '找不到官方 llm-pi-ai bundle：profile 的 node_modules 与 dsh 安装目录里都没有 @deepseek-ai/dsh-llm-pi-ai', rejected: [], candidates: [] }
     }
 
     // 1. 桥接目录：bundle 副本（源更新过就重拷）+ 固定 package.json
@@ -676,6 +790,7 @@ export function loadBridge(): BridgeLoadResult {
     //    看着像故障、其实一切正常的行。
     const requirements = piAiRequirements(readFileSync(bridgeLib, 'utf8'))
     const rejected: RejectedCandidate[] = []
+    const candidates: CandidateProbe[] = []
     let chosen: PiAiCandidate | undefined
     let probeUnverified = false
     let repairedFiles = 0
@@ -699,20 +814,44 @@ export function loadBridge(): BridgeLoadResult {
       }
     }
     for (const candidate of piAiCandidates()) {
-      if (!existsSync(candidate.root)) continue
+      if (!existsSync(candidate.root)) {
+        // 目录不存在不算「体检没通过」（那是这一档没装），但要**留在报告里**：候选全不存在时，
+        // 报错必须能说出哪几条路径被找过、都不在——静默 continue 会让用户只看到一句空白报错。
+        candidates.push({ key: candidate.key, version: candidate.version, root: candidate.root, exists: false, used: false, reason: '目录不存在' })
+        continue
+      }
       prepareCandidate(candidate)
       const probe = probePiAi(requirements, candidate.root, candidate.key)
       if (probe.ok) {
         chosen = { ...candidate, root: candidate.root }
         probeUnverified = probe.unverified === true
+        candidates.push({ key: candidate.key, version: candidate.version, root: candidate.root, exists: true, used: true })
         break
       }
-      rejected.push({ version: candidate.version, error: probe.error })
+      rejected.push({ version: candidate.version, error: probe.error, path: candidate.root })
+      candidates.push({ key: candidate.key, version: candidate.version, root: candidate.root, exists: true, used: false, reason: `体检没通过：${String(probe.error)}` })
     }
     if (chosen === undefined) {
+      // 报错带上每一条候选的路径与结论：这是用户在日志里唯一能看到的东西，
+      // 一句「没有能用的 pi-ai」+ 一片空白等于没有诊断信息。宿主那份不完整时，
+      // 再给出**可执行**的恢复指引（npm 官方渠道覆盖回宿主目录，插件不代劳下载）。
+      const detail = candidates
+        .map((entry) => `${entry.version} ${entry.root}（${entry.reason ?? '未选中'}）`)
+        .join('；')
+      const host = candidates
+        .filter((entry) => entry.key === 'dsh' || entry.key === 'dsh-app')
+        .map((entry) => ({ root: entry.root, integrity: inspectPiAi(entry.root) }))
+        .find((probe) => probe.integrity.hasManifest && !probe.integrity.usable)
+      const hint = host === undefined
+        ? ''
+        : `
+${describeIntegrity(host.root, host.integrity)}
+${restoreHint(host.integrity.version)}`
       return {
         ok: false,
-        error: `没有能用的 pi-ai：${rejected.map((entry) => `${entry.version}（${String(entry.error)}）`).join('；')}`,
+        error: `没有能用的 pi-ai：${detail === '' ? '（候选清单为空）' : detail}${hint}`,
+        rejected,
+        candidates,
       }
     }
 
@@ -736,9 +875,9 @@ export function loadBridge(): BridgeLoadResult {
       repairedFiles: repairedFiles > 0 ? repairedFiles : undefined,
       ...(rejected.length === 0 ? { rejected: undefined } : { rejected }),
     })
-    return { ok: true, plugin, piAiVersion: chosen.version, piAiSource: chosen.key, probeUnverified, rejected, repairedFiles }
+    return { ok: true, plugin, piAiVersion: chosen.version, piAiSource: chosen.key, probeUnverified, rejected, candidates, repairedFiles }
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    return { ok: false, error: error instanceof Error ? error.message : String(error), rejected: [], candidates: [] }
   }
 }
 
