@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>dsh-llm-provider 本地版 · 设置页渲染验证</title>
+<style>
+  body { margin: 0; background: #f6f7f9; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; color: #1b1c1e; }
+  #bar { padding: 10px 16px; font-size: 12px; color: #555; background: #fff; border-bottom: 1px solid #e6e8eb; }
+  #root { max-width: 1080px; margin: 18px auto; padding: 18px 20px; background: #fff; border-radius: 12px;
+          box-shadow: 0 1px 3px rgba(0,0,0,.08); min-height: 400px; }
+  #err { color: #c0392b; font-size: 12px; white-space: pre-wrap; padding: 8px 16px; }
+</style>
+</head>
+<body>
+<div id="bar">dsh-llm-provider <b>本地版</b> 客户端渲染验证（真 lib/client.js + 极简 react 垫片 + 桩 fetch）</div>
+<div id="err"></div>
+<div id="root">渲染中…</div>
+
+<script src="mini-react.js"></script>
+<script>
+(function () {
+  var errors = []
+  window.onerror = function (message) { errors.push(String(message)); document.getElementById('err').textContent = errors.join('\n') }
+
+  // ---- 桩 fetch：把宿主 5 条读路由 + 2 条写路由的响应对上（数据形状取自真实实例）----
+  var MODELS = [
+    { id: 'deepseek-flash', provider: 'opencode-go', name: 'DeepSeek V4.1 Flash', api: 'openai-completions',
+      contextWindow: 1000000, maxTokens: 384000, vision: true, video: false, reasoning: true,
+      thinkingLevels: ['low', 'high', 'max'], source: 'declared' },
+    { id: 'glm-5.3-flash', provider: 'zai-coding-cn', name: 'GLM-5.3-Flash', api: 'openai-completions',
+      contextWindow: 1000000, maxTokens: 131072, vision: true, video: false, reasoning: true,
+      thinkingLevels: ['low'], source: 'pi-ai' },
+    { id: 'kimi-k3', provider: 'opencode-go', name: 'Kimi K3', api: 'openai-completions',
+      contextWindow: 1048576, maxTokens: 131072, vision: true, video: false, reasoning: true,
+      thinkingLevels: [], source: 'pi-ai' },
+    { id: 'glm-5.3', provider: 'opencode-go', name: 'GLM-5.3', api: 'openai-completions',
+      contextWindow: 1000000, maxTokens: 131072, vision: false, video: false, reasoning: true,
+      thinkingLevels: [], source: 'pi-ai' },
+  ]
+  var STATUS = {
+    bridge: { active: true, piAiVersion: '0.85.1', source: 'dsh' },
+    update: { lastCheck: new Date().toISOString(), latest: undefined },
+    updatesEnabled: false,
+    localBuild: true,
+    vendorPiAiVersions: [],
+    llmDirectorySize: 12,
+    routes: [{ id: 'opencode-go', apiKeyEnv: 'OPENCODE_GO_API_KEY', source: 'llm-pi-ai' },
+             { id: 'zai-coding-cn', apiKeyEnv: 'ZAI_API_KEY', source: 'llm-pi-ai' }],
+    deepseekRouteMissing: false,
+    testMode: false,
+  }
+  var PLAN = {
+    fetchedAt: new Date().toISOString(),
+    accounts: [
+      { id: 'opencode-go', displayName: 'OpenCode Go', kind: 'quota', authConfigured: true, api: 'openai-completions',
+        apiKeyEnv: 'OPENCODE_GO_API_KEY', baseUrl: 'https://opencode.ai/zen/go/v1', websiteUrl: 'https://opencode.ai/go',
+        keyHint: 'sk-****abcd', deletable: true, fetchedAt: new Date().toISOString(),
+        models: [{ id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', contextWindow: 1000000, maxTokens: 384000,
+                   input: ['text', 'image'], reasoningEfforts: { low: 'low', high: 'high', max: 'max' } }],
+        windows: [
+          { window: '5 小时滚动窗口', percentLeft: 97, resetAt: new Date(Date.now() + 3 * 3600e3 + 47 * 60e3).toISOString() },
+          { window: '每周窗口', percentLeft: 78, resetAt: new Date(Date.now() + 5 * 864e5 + 8 * 3600e3).toISOString() },
+          { window: '每月窗口', percentLeft: 15, resetAt: new Date(Date.now() + 8 * 864e5 + 17 * 3600e3).toISOString() },
+        ] },
+      { id: 'zai-coding-cn', displayName: 'Z.ai Coding (CN)', kind: 'quota', authConfigured: true, api: 'openai-completions',
+        apiKeyEnv: 'ZAI_API_KEY', baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4', websiteUrl: 'https://open.bigmodel.cn',
+        keyHint: 'abc****wxyz', deletable: true, fetchedAt: new Date().toISOString(),
+        models: [{ id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', contextWindow: 1000000, maxTokens: 131072, input: ['text', 'image'], reasoningEfforts: { low: 'low' } }],
+        windows: [ { window: '5 小时滚动窗口', percentLeft: 88, resetAt: new Date(Date.now() + 2 * 3600e3).toISOString() },
+                   { window: '每月窗口', percentLeft: 42, resetAt: new Date(Date.now() + 9 * 864e5).toISOString() } ] },
+    ],
+  }
+  var CATALOG = {
+    groups: [
+      { provider: 'opencode-go', name: 'OpenCode Go', models: [
+        { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', contextWindow: 1000000, reasoning: { efforts: ['low', 'high', 'max'], defaultEffort: 'high' } },
+      ] },
+      { provider: 'zai-coding-cn', name: 'Z.ai Coding', models: [
+        { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', contextWindow: 1000000 },
+      ] },
+    ],
+    default: { provider: 'opencode-go', model: 'deepseek-flash' },
+  }
+  var PRESETS = { presets: [
+    { id: 'opencode-go', label: 'OpenCode Go', configured: true, websiteUrl: 'https://opencode.ai/go' },
+    { id: 'deepseek', label: 'DeepSeek', configured: true, websiteUrl: 'https://platform.deepseek.com' },
+    { id: 'zai-coding-cn', label: 'Z.ai Coding (CN)', configured: true, missingKey: false },
+    { id: 'moonshotai-cn', label: 'Moonshot (CN)', configured: false },
+  ] }
+
+  window.__calls = []
+  function reply(body) {
+    return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve(body) } })
+  }
+  window.fetch = function (url, options) {
+    var path = String(url)
+    window.__calls.push((options && options.method ? options.method : 'GET') + ' ' + path)
+    var body = options && options.body ? JSON.parse(options.body) : undefined
+    if (path.indexOf('/provider/status') === 0) return reply(STATUS)
+    if (path.indexOf('/plan/status') === 0) return reply(PLAN)
+    if (path.indexOf('/provider/models') === 0) return reply({ models: MODELS, fetchedAt: new Date().toISOString() })
+    if (path.indexOf('/provider/presets') === 0) return reply(PRESETS)
+    if (path.indexOf('/api/session/modelCatalog') === 0) return reply({ result: { ok: true, value: CATALOG } })
+    if (path.indexOf('/provider/set-models') === 0) {
+      window.__lastSetModels = body
+      return reply({ ok: true, mode: body && body.models === null ? 'catalog' : 'declared' })
+    }
+    if (path.indexOf('/provider/refresh') === 0) return reply({ ok: true, account: PLAN.accounts[0] })
+    if (path.indexOf('/provider/remove') === 0) { window.__lastRemove = body; return reply({ ok: true, keyCleared: true }) }
+    if (path.indexOf('/provider/update') === 0) return reply({ ok: true, disabled: true, error: '本地版已停用 pi-ai 自动下载' })
+    return reply({})
+  }
+
+  // ---- 用假 __ModuleLoader__ 接住插件工厂 ----
+  var captured = null
+  window.__ModuleLoader__ = { load: function (config) { captured = config } }
+  var script = document.createElement('script')
+  script.src = 'client.js'
+  script.onload = function () {
+    try {
+      // 插件 bundle 里是 `react = __toESM(require("react"), 1)` 再 `react.default.useState`：
+      // 直接把 API 对象交出去，__toESM 会把它包成 { ...api, default: api }
+      var mod = captured.factory(function (name) { return name === 'react' ? window.__React : {} })
+      var sections = {}
+      // available 的实现要按 subagentAddress 过滤：既给「子代理会话」也给「一调就抛」的两种 id
+      var sessionsStub = {
+        subagentAddress: function (sessionId) {
+          if (sessionId === 'boom-session') throw new Error('subagentAddress 抛错（契约要求 available 吞掉它）')
+          return sessionId === 'subagent-session' ? { agent: 'some-agent' } : undefined
+        },
+      }
+      var ctx = {
+        slots: {
+          inject: function (name, callback) { callback() },
+          register: function (options, component) { sections[options.id] = component; return function () {} },
+        },
+        inject: function (names, callback) {
+          // 真实装配里 sessions 是 injection 面的一部分（插件 inject 了它），这里必须一起给
+          callback({
+            effect: function (fn) { return fn() },
+            modelDirectories: undefined,
+            sessions: sessionsStub,
+            // 捕获 /model 贡献：用来验证官方契约必填的 available（上游 issue #7）
+            commandUi: { register: function (contribution) { window.__commandContribution = contribution; return function () {} } },
+          })
+        },
+        effect: function (fn) { try { return fn() } catch (cause) { return function () {} } },
+        sessions: sessionsStub,
+      }
+      mod.apply(ctx)
+      window.__sections = sections
+      window.__afterRender = function () { window.__renderTick = (window.__renderTick || 0) + 1 }
+      window.__render = window.__mount(sections.provider, document.getElementById('root'))
+      window.__ready = true
+    } catch (cause) {
+      document.getElementById('err').textContent = 'apply/render 抛错：' + (cause && cause.stack ? cause.stack : cause)
+      window.__fatal = String(cause && cause.message ? cause.message : cause)
+    }
+  }
+  document.head.appendChild(script)
+})()
+</script>
+</body>
+</html>

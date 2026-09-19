@@ -17,7 +17,7 @@
  * 边界：本模块只写插件自己的 vendor/ 目录，pi-ai 本身的文件一个字节都不改——改第三方包的
  * 文件不可复现，也没法保证跟 lockfile 对得上。
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readlinkSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, realpathSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync, type Stats } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -26,10 +26,22 @@ import { asRecord, readString, type AnyRecord } from './types.js'
 
 const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 export const vendorDir = join(pluginRoot, 'vendor')
-const bridgeDir = join(vendorDir, 'llm-bridge')
-const bridgeLib = join(bridgeDir, 'lib', 'index.js')
 const piAiVersionsDir = join(vendorDir, 'pi-ai')
 const statusFile = join(vendorDir, 'status.json')
+
+/**
+ * 插件私有安全区（`$DSH_HOME/llm-provider-bridge`，默认 `~/.dsh/llm-provider-bridge`）。
+ *
+ * 存在的唯一理由是：**插件包目录会被别人递归删掉**。包管理器、插件市场、宿主都会把
+ * `profiles/<profile>/node_modules/<插件>` 整棵删掉重建，而递归删除在 Node 24.15+（本机实测：
+ * DSH 自带运行时 electron 43.3.0 / node 24.18.1）会**顺着目录 junction 把目标内容一起清空**。
+ * 所以桥接副本与它那套「指向别处」的链一律放这儿，插件包里只留一个纯文件副本：
+ * 插件包被删时被连坐的是安全区里的东西，dsh 安装树一个字节不动。
+ */
+const safeRoot = join(resolveDshHome(), 'llm-provider-bridge')
+const safePiAiDir = join(safeRoot, 'pi-ai')
+const bridgeDir = join(safeRoot, 'llm-bridge')
+const bridgeLib = join(bridgeDir, 'lib', 'index.js')
 
 const BRIDGE_PACKAGE_JSON = JSON.stringify({
   name: 'dsh-llm-provider-llm-bridge',
@@ -69,6 +81,8 @@ export type BridgeLoadResult =
       /** 需求没解析出来、体检没跑：选中项是靠「目录存在」放行的，没验证过 */
       probeUnverified: boolean
       rejected: RejectedCandidate[]
+      /** 本次启动用安全副本补回 dsh 自带 pi-ai 的文件数（>0 表示刚修过一次连坐删除） */
+      repairedFiles: number
     }
   | { ok: false; error: string }
 
@@ -289,6 +303,11 @@ export function bridgeRequirements(): PiAiRequirement[] {
   }
 }
 
+/** 路径是否在插件包外面：包外面的候选才需要先落地成安全区副本（见 safeRoot 的说明）。 */
+function isOutsidePlugin(path: string): boolean {
+  return !(path === pluginRoot || path.startsWith(pluginRoot + sep))
+}
+
 /**
  * 建一条目录链要用的目标与类型。
  *
@@ -302,6 +321,224 @@ function linkSpec(from: string, target: string): { target: string; type: 'dir' |
   return process.platform === 'win32'
     ? { target: resolve(target), type: 'junction' }
     : { target: relative(from, target), type: 'dir' }
+}
+
+/**
+ * 删掉一条目录链（symlink/junction）或一个真目录——**只能用这个函数删链**。
+ *
+ * ⚠️ 绝对不能用 `rmSync(link, { recursive: true, force: true })` 删 Windows 目录 junction：
+ * Node 24.15 起（本机实测：DSH 自带运行时 electron 43.3.0 / node 24.18.1）它会**把 junction
+ * 目标目录的内容一起删掉**，只留下一个空目录。同一句在 node 24.14 上是安全的——所以这个雷
+ * 只有在 DSH 自己的运行时里才炸得出来，日常用 node 复现不了。
+ *
+ * 链指向 dsh 自带那份 pi-ai 时，后果就是「重启一次 DSH，pi-ai 被清空」：探针目录的链每轮启动
+ * 都会先删后建，等于每启动一次就清一次目标。正确做法是先 lstat——是链就 `unlink`（只摘链，
+ * 目标一个字节不动），只有真目录才递归删；递归删之前再确认路径在 vendor/ 里面。
+ * @param path - 要删的链或目录。
+ */
+/**
+ * 目录链感知的递归删除：**只摘链，绝不跟进目标**。
+ *
+ * `rmSync(path, { recursive: true })` 在 Windows 上不能用来删「可能藏着 junction 的目录树」：
+ * Node 24.15 起（本机实测：electron 43.3.0 / node 24.18.1）它会顺着 junction 把目标内容一起
+ * 清空。所以递归删除自己走目录：遇到链就 unlink，遇到真目录才回溯删；这样即使上层路径里藏着
+ * 链，被删的也只有链本身。
+ * @param path - 要删的文件、链或目录树。
+ */
+export function removeTree(path: string): void {
+  let stats: Stats
+  try {
+    stats = lstatSync(path)
+  } catch {
+    return // 不存在，没什么可删
+  }
+  if (stats.isSymbolicLink()) {
+    unlinkSync(path)
+    return
+  }
+  if (!stats.isDirectory()) {
+    rmSync(path, { force: true })
+    return
+  }
+  let entries: string[] = []
+  try {
+    entries = readdirSync(path)
+  } catch { /* 读不到就当空目录，交给下面的 rmdir 收尾 */ }
+  for (const name of entries) removeTree(join(path, name))
+  try {
+    rmdirSync(path)
+  } catch { /* 还有删不掉的（占用/权限）：留给下一次调用 */ }
+}
+
+/**
+ * 删掉一条目录链（symlink/junction）或一个真目录——**只能用这个函数删链**。
+ *
+ * 递归那一支永远走 {@link removeTree}（只摘链、不跟进目标），并且限定在插件自己的两个
+ * 受管目录里：插件包的 `vendor/` 与 DSH_HOME 下的安全区。@param path - 要删的链或目录。
+ */
+export function removeLinkOrDir(path: string): void {
+  let stats: Stats
+  try {
+    stats = lstatSync(path)
+  } catch {
+    return // 不存在，没什么可删
+  }
+  if (stats.isSymbolicLink()) {
+    unlinkSync(path) // junction / symlink：只摘链，绝不跟进目标
+    return
+  }
+  const inside = path === vendorDir || path.startsWith(vendorDir + sep)
+    || path === safeRoot || path.startsWith(safeRoot + sep)
+  if (!inside) throw new Error(`拒绝递归删除受管目录之外的路径：${path}`)
+  removeTree(path)
+}
+
+/** 插件私有安全区根目录（`$DSH_HOME/llm-provider-bridge`）。 */
+export function safeRootDir(): string {
+  return safeRoot
+}
+
+/**
+ * 复制一棵目录树，**不跟进任何链**（链一律跳过）。
+ *
+ * 跳过而不是跟进是安全要求：源里可能有指向 dsh 安装树别处的 junction，跟进就等于把
+ * dsh 自己的东西抄进副本、还会把「链」带进安全区。
+ * @param source - 源目录。
+ * @param dest - 目标目录（按需创建）。
+ * @returns 新写入的文件数。
+ */
+export function copyTreeNoLinks(source: string, dest: string): number {
+  const counter = { files: 0 }
+  copyInto(source, dest, counter)
+  return counter.files
+}
+
+function copyInto(source: string, dest: string, counter: { files: number }): void {
+  let stats: Stats
+  try {
+    stats = lstatSync(source)
+  } catch {
+    return
+  }
+  if (stats.isSymbolicLink()) return
+  if (stats.isDirectory()) {
+    try {
+      mkdirSync(dest, { recursive: true })
+    } catch {
+      return
+    }
+    let entries: string[] = []
+    try {
+      entries = readdirSync(source)
+    } catch {
+      return
+    }
+    for (const name of entries) copyInto(join(source, name), join(dest, name), counter)
+    return
+  }
+  if (!stats.isFile()) return
+  // 已存在且大小一致就跳过：重复调用要幂等，也不覆盖别处（可能更新）的同名文件
+  try {
+    if (existsSync(dest) && statSync(dest).size === stats.size) return
+  } catch { /* 探测失败就当需要写 */ }
+  try {
+    copyFileSync(source, dest)
+    counter.files += 1
+  } catch { /* 单个文件写不了不该让整次复制失败 */ }
+}
+
+/**
+ * 把一个**插件包外面**的候选（dsh 自带那份 pi-ai）复制成安全区里的私有副本。
+ *
+ * 副本就是链的目标：插件包被递归删除时，被连坐的是副本而不是 dsh 安装树。副本丢了不算事故，
+ * 下次启动从 dsh 那份重新复制即可（{@link repairPiAiFromCopy} 反过来用它补 dsh 那份）。
+ * @param source - 候选的包目录（必须在插件包外面，调用方判断）。
+ * @param version - 版本号：副本按版本分目录，版本一致就复用。
+ * @param destRoot - 副本根目录，默认安全区（测试用来注入临时目录）。
+ * @returns 副本目录；复制失败返回 undefined（调用方退回直连，不能让桥因此不可用）。
+ */
+export function ensureSafeCopy(source: string, version: string, destRoot: string = safePiAiDir): string | undefined {
+  const dest = join(destRoot, version)
+  try {
+    // 候选自己可能是一条链（profile 的 node_modules 农场就是），复制要复制**链的目标**——
+    // 直接抄链会被 copyTreeNoLinks 按「链一律跳过」的规矩跳过，落一个空副本。
+    const from = (() => {
+      try {
+        return realpathSync(source)
+      } catch {
+        return source
+      }
+    })()
+    if (existsSync(join(dest, 'package.json')) && piAiVersionOf(dest) === piAiVersionOf(from)) return dest
+    // 用 removeTree 而不是 removeLinkOrDir：这里的 dest 是自己拼出来的副本目录，
+    // 不受「只能在受管目录里递归删」那条约束（测试会注入临时 destRoot），但**同样必须**
+    // 走链感知的递归删除——万一副本目录里被塞了链，跟进就会删到链的目标。
+    removeTree(dest)
+    mkdirSync(dest, { recursive: true })
+    copyTreeNoLinks(from, dest)
+    return existsSync(join(dest, 'package.json')) ? dest : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * dsh 自带那份 pi-ai 的入口是否已经解不开（只看文件在不在，不加载）。
+ *
+ * 「目录还在、入口没了」正是 junction 连坐删除留下的残状态：官方 `llm-pi-ai` 入口会以
+ * `Cannot find package '<目录>\index.js'` 失败，dsh 连启动都起不来。
+ * @param root - pi-ai 包目录。
+ */
+export function piAiEntryMissing(root: string): boolean {
+  let pkg: AnyRecord
+  try {
+    pkg = asRecord(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')))
+  } catch {
+    return true
+  }
+  const exportsField = pkg['exports']
+  if (exportsField !== undefined) {
+    const entry = exportsEntry(exportsField)
+    if (entry !== undefined) return !existsSync(resolve(root, entry))
+  }
+  const main = readString(pkg['main'])
+  if (main !== undefined) return !existsSync(resolve(root, main))
+  return !existsSync(join(root, 'index.js'))
+}
+
+/** 从 `exports` 里抠出 `.` 这条的入口文件：够 pi-ai 这种简单映射用。 */
+function exportsEntry(value: unknown): string | undefined {
+  if (typeof value === 'string') return value
+  if (value === null || typeof value !== 'object') return undefined
+  const record = asRecord(value)
+  const dot: unknown = record['.'] ?? record
+  if (typeof dot === 'string') return dot
+  const inner = asRecord(dot)
+  for (const key of ['import', 'default', 'node', 'module']) {
+    const target = inner[key]
+    if (typeof target === 'string') return target
+    if (target !== null && typeof target === 'object') {
+      const nested = asRecord(target)['default']
+      if (typeof nested === 'string') return nested
+    }
+  }
+  return undefined
+}
+
+/**
+ * 用安全副本把 dsh 自带那份 pi-ai 补回来（**只补缺，不删任何东西**）。
+ *
+ * 只在「目录还在、入口/package.json 丢了」这种残状态下动手。本插件挂在根 include 之前，
+ * 所以这里补上就等于把 dsh 从「打不开」救回「能启动」——同一次启动里，官方 `llm-pi-ai`
+ * 入口随后就会正常加载。
+ * @param target - dsh 自带的 pi-ai 包目录。
+ * @param copy - 安全副本目录。
+ * @returns 补回来的文件数（0 表示没动手）。
+ */
+export function repairPiAiFromCopy(target: string, copy: string): number {
+  if (!existsSync(target) || !existsSync(copy)) return 0
+  if (!piAiEntryMissing(target)) return 0
+  return copyTreeNoLinks(copy, target)
 }
 
 /**
@@ -330,7 +567,7 @@ export function probePiAi(requirements: readonly PiAiRequirement[], root: string
     const linkDir = join(dir, 'node_modules', '@earendil-works')
     mkdirSync(linkDir, { recursive: true })
     const link = join(linkDir, 'pi-ai')
-    rmSync(link, { force: true, recursive: true })
+    removeLinkOrDir(link)
     const spec = linkSpec(linkDir, root)
     symlinkSync(spec.target, link, spec.type)
     // 具名需求验证导出存在；bare 需求（namespace/默认/副作用导入、export *）只要子路径能加载
@@ -364,6 +601,15 @@ export function piAiCandidates(): PiAiCandidate[] {
   }
   const dependency = pluginDependencyRoot()
   list.push({ key: 'dependency', version: piAiVersionOf(dependency) ?? '内置依赖', root: dependency, link: false })
+  // dsh 安装树里那份真目录：优先于「沿 bundle 解析链找到的那条」。理由有两个——
+  //   1. pi-ai 的依赖（typebox 等）只在 dsh 安装树的 node_modules 里，所以它必须是真目录、
+  //      必须还在安装树里（见 syncBridgeLinks 的说明）；
+  //   2. 沿 bundle 链找到的往往是一层手工 junction 农场（`profiles/node_modules/...`），
+  //      依赖那条链等于把插件挂到别人的手工修复上，那条链没了桥就找不到 pi-ai。
+  const appRoot = dshPiAiRoot(join(dirname(process.execPath), 'resources', 'app', 'lib', '_anchor.js'))
+  if (appRoot !== undefined) {
+    list.push({ key: 'dsh-app', version: piAiVersionOf(appRoot) ?? 'dsh 自带', root: appRoot, link: true })
+  }
   const dshRoot = dshPiAiRoot(findSourceBundle())
   if (dshRoot !== undefined) {
     list.push({ key: 'dsh', version: piAiVersionOf(dshRoot) ?? 'dsh 自带', root: dshRoot, link: true })
@@ -432,11 +678,32 @@ export function loadBridge(): BridgeLoadResult {
     const rejected: RejectedCandidate[] = []
     let chosen: PiAiCandidate | undefined
     let probeUnverified = false
+    let repairedFiles = 0
+    let safeCopy: string | undefined
+    /**
+     * 备份/自愈只服务**插件自己管理的 pi-ai**（updater 下载进 `vendor/pi-ai/<版本>/` 的那些）：
+     * 备份放在插件包外的安全区，包管理器整棵删插件包时丢的也只是这份可重建的备份。
+     *
+     * 用 dsh 自带那份时**不留副本、不做修复**（用户 09-19 决定）：那份是 dsh 的东西，与当前
+     * 版本一致，多复制 ≈6 MB 没有意义；r6 之后本插件也不可能再把它清空。哪天真切换成「插件
+     * 管理的更新版本」，这一路径天然就会启用——候选落在本插件里，备份/补缺都走下面这套。
+     * @param candidate - 候选。
+     */
+    const prepareCandidate = (candidate: PiAiCandidate): void => {
+      if (isOutsidePlugin(candidate.root)) return // dsh 自带那份：不备份、不修复
+      const copy = ensureSafeCopy(candidate.root, candidate.version)
+      if (copy === undefined) return
+      safeCopy = copy
+      if (piAiEntryMissing(candidate.root)) {
+        repairedFiles += repairPiAiFromCopy(candidate.root, copy)
+      }
+    }
     for (const candidate of piAiCandidates()) {
       if (!existsSync(candidate.root)) continue
+      prepareCandidate(candidate)
       const probe = probePiAi(requirements, candidate.root, candidate.key)
       if (probe.ok) {
-        chosen = candidate
+        chosen = { ...candidate, root: candidate.root }
         probeUnverified = probe.unverified === true
         break
       }
@@ -449,9 +716,10 @@ export function loadBridge(): BridgeLoadResult {
       }
     }
 
-    // 3. 生效：热更新档挂软链指过去；兜底档（插件自己的依赖）不挂，让 Node 自然往上找到它
-    if (chosen.link) setPiAiLink(chosen.root)
-    else clearPiAiLink()
+    // 3. 生效：把桥接副本要的包全铺成链田（pi-ai 指中选那份，其余按 bundle 的 bare 导入
+    //    逐个指过去）。链田在安全区里——插件包被递归删除时，被连坐的只会是安全区里的东西，
+    //    而 dsh 安装树里的 pi-ai 一个字节都不会动。
+    syncBridgeLinks(srcBundle, chosen.root)
 
     // 4. 同步 require 加载（Node 22.12+/24 支持 require ESM；bundle 无 TLA）
     const require = createRequire(import.meta.url)
@@ -464,38 +732,114 @@ export function loadBridge(): BridgeLoadResult {
       needsRestart: false,
       piAiSource: chosen.key,
       probeUnverified: probeUnverified || undefined,
+      safeCopy: safeCopy ?? undefined,
+      repairedFiles: repairedFiles > 0 ? repairedFiles : undefined,
       ...(rejected.length === 0 ? { rejected: undefined } : { rejected }),
     })
-    return { ok: true, plugin, piAiVersion: chosen.version, piAiSource: chosen.key, probeUnverified, rejected }
+    return { ok: true, plugin, piAiVersion: chosen.version, piAiSource: chosen.key, probeUnverified, rejected, repairedFiles }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
 }
 
-/** 把桥接副本的 pi-ai 链指向指定包目录（指向没变就不动，避免无谓的 mtime 抖动）。 */
-function setPiAiLink(target: string): void {
-  const linkDir = join(bridgeDir, 'node_modules', '@earendil-works')
-  mkdirSync(linkDir, { recursive: true })
-  const linkPath = join(linkDir, 'pi-ai')
-  const spec = linkSpec(linkDir, target)
-  let current: string | undefined
+/**
+ * 把桥接副本需要的包铺成链田，pi-ai 指中选那份。
+ *
+ * 为什么需要链田：桥接副本在安全区里，从它往上走的 node_modules 链到不了 profile 的
+ * node_modules，bundle 里的 `@deepseek-ai/*` 就解析不到；pi-ai 也要一条链指过去。
+ *
+ * 为什么 pi-ai 那条链指向**真目录**而不是副本：pi-ai 自己的依赖（typebox、openai、
+ * @anthropic-ai/sdk……）靠它就地的 node_modules 链解析。本机实测把 pi-ai 复制到
+ * `~/.dsh/` 下再导入，直接报 `Cannot find package 'typebox'`——Node 按链解析完之后的
+ * **真实路径**去找依赖，所以 pi-ai 必须留在 dsh 安装树里。
+ *
+ * 一个指向没变的链不重建：避免每次启动都动一遍目录 mtime。目标不存在（悬空）则重建。
+ * @param bundlePath - 官方 bundle 的入口文件（用来解析它依赖的包在哪）。
+ * @param piAiRoot - 中选的 pi-ai 包目录。
+ */
+export function syncBridgeLinks(bundlePath: string, piAiRoot: string): number {
+  const farm = join(bridgeDir, 'node_modules')
+  let links = 0
+  const wire = (specifier: string, target: string | undefined): void => {
+    if (target === undefined) return
+    const parts = specifier.split('/')
+    const linkDir = join(farm, ...parts.slice(0, -1))
+    const linkPath = join(farm, ...parts)
+    mkdirSync(linkDir, { recursive: true })
+    const spec = linkSpec(linkDir, target)
+    let current: string | undefined
+    try {
+      // readlink 而不是 readFile：链指向的是目录，readFile 会解析进去抛 EISDIR
+      current = readlinkSync(linkPath)
+    } catch { /* 还没有链 */ }
+    const healthy = existsSync(linkPath)
+    if (current === spec.target && healthy) return
+    removeLinkOrDir(linkPath)
+    try {
+      symlinkSync(spec.target, linkPath, spec.type)
+      links += 1
+    } catch { /* 单条链建不起来不该让整次装载失败：体检会给出结论 */ }
+  }
+
+  wire('@earendil-works/pi-ai', piAiRoot)
+  let source = ''
   try {
-    // readlink 而不是 readFile：链指向的是目录，readFile 会解析进去抛 EISDIR，
-    // 于是"指向没变"永远判不出来，每次加载都白删白建一次。
-    current = readlinkSync(linkPath)
-  } catch { /* 还没有链 */ }
-  if (current === spec.target) return
-  rmSync(linkPath, { force: true, recursive: true })
-  symlinkSync(spec.target, linkPath, spec.type)
+    source = readFileSync(bundlePath, 'utf8')
+  } catch {
+    return links
+  }
+  for (const specifier of bundleSpecifiers(source)) {
+    if (specifier.startsWith('@earendil-works/pi-ai')) continue // 上面已经指过了
+    wire(specifier, resolvePackageRoot(bundlePath, specifier))
+  }
+  return links
 }
 
 /**
- * 删掉软链，让那份拷贝走自然解析，落到插件自己的 node_modules。
+ * bundle 里的 bare specifier 清单（相对路径、node: 内置、URL 都排除）。
  *
- * 这就是"回退到内置依赖"的动作——不用另外指一条链过去，Node 会自己往上找。
+ * 链田按它铺：bundle 里每一个外部包都要能在桥接副本的解析路径上找到。
+ * @param source - bundle 源码。
  */
-function clearPiAiLink(): void {
-  rmSync(join(bridgeDir, 'node_modules', '@earendil-works', 'pi-ai'), { force: true, recursive: true })
+export function bundleSpecifiers(source: string): string[] {
+  const found = new Set<string>()
+  const pattern = /(?:\bfrom|\bimport|\bexport)\s*\(?\s*["']([^"']+)["']/g
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(source)) !== null) {
+    const specifier = match[1] ?? ''
+    if (specifier === '' || specifier.startsWith('.') || specifier.startsWith('/')) continue
+    if (/^[a-zA-Z]+:/.test(specifier)) continue // node:fs、data:、file:……
+    found.add(specifier)
+  }
+  return [...found].sort()
+}
+
+/**
+ * 把一条链换回真目录：摘链（只摘链，目标不动）后从安全副本复制文件进来。
+ *
+ * 用于修「别人把 dsh 自带的 pi-ai 换成了指向别处的 junction」这种残状态——解析会走到链的
+ * 目标去，pi-ai 的依赖随即找不到（`Cannot find package 'typebox'`）。已经是真目录就什么都不做。
+ * @param target - 候选包目录。
+ * @param copy - 安全副本目录。
+ * @returns 复制进来的文件数（0 表示没动手）。
+ */
+export function materializeFromCopy(target: string, copy: string): number {
+  if (!existsSync(copy)) return 0
+  let stats: Stats | undefined
+  try {
+    stats = lstatSync(target)
+  } catch {
+    stats = undefined
+  }
+  if (stats !== undefined && !stats.isSymbolicLink()) return 0 // 真目录/真文件：不动
+  if (stats !== undefined) {
+    try {
+      unlinkSync(target)
+    } catch {
+      return 0
+    }
+  }
+  return copyTreeNoLinks(copy, target)
 }
 
 /**

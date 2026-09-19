@@ -148,11 +148,18 @@ export function quotaTextOf(account: PlanAccount | undefined | null): string | u
   return undefined
 }
 
-/** 窗口短名（卡片头部摘要）：5 小时窗口→5h，每周/订阅周期→7d（对齐 CC Switch 的 7 天口径）。 */
+/**
+ * 窗口短名（卡片头部摘要）：5 小时窗口→5h，每周/订阅周期→7d，每月窗口→30d。
+ *
+ * 本地版修正（issue #2）：原来只认得出 5h 与 7d 两档，且 `每` 这个字把「每月窗口」也吞进 7d，
+ * 于是 OpenCode Go 的月窗口在卡片头部显示成第二个「7d」（截图里 `5h | 7d | 7d`）。
+ * 顺序上必须先判月再判周——「每月窗口」里既有「每」也有「月」。
+ */
 export function shortWindowLabel(name: unknown): string {
   var text = String(name ?? '')
   if (text.indexOf('5 小时') !== -1 || text.indexOf('5小时') !== -1) return '5h'
-  if (text.indexOf('每') !== -1 || text.indexOf('订阅') !== -1 || text.indexOf('周') !== -1) return '7d'
+  if (text.indexOf('月') !== -1 || text.indexOf('30 天') !== -1 || text.indexOf('30天') !== -1 || text.indexOf('month') !== -1) return '30d'
+  if (text.indexOf('每') !== -1 || text.indexOf('订阅') !== -1 || text.indexOf('周') !== -1 || text.indexOf('week') !== -1) return '7d'
   return text === '' ? '窗口' : text.slice(0, 4)
 }
 
@@ -193,8 +200,11 @@ export function quotaTipOf(account: PlanAccount | undefined | null): string | un
   return parts.length > 0 ? parts.join(' ｜ ') : undefined
 }
 
-/** 卡片头部摘要：直给最关键信息——coding plan 显示各窗口余量，API 显示余额。
- *  顺序：5 小时窗在前、订阅周期在后，两组之间带分割线。 */
+/**
+ * 卡片头部摘要：直给最关键信息——coding plan 显示各窗口余量，API 显示余额。
+ *  顺序：5 小时窗 → 每周窗 → 每月窗；**每两组之间**都有分割线（本地版修正：原来只在
+ *  「5 小时组」与其余之间插一条，于是 7d 与 30d 挤在一起看不出是两档窗口）。
+ */
 export function headlineChips(account: PlanAccount | undefined | null): HeadlineChip[] {
   if (account === undefined || account === null) return [{ text: '无数据', percent: undefined }]
   if (account.authConfigured === false) return [{ text: '未配置 key', percent: 0 }]
@@ -202,23 +212,37 @@ export function headlineChips(account: PlanAccount | undefined | null): Headline
   if (account.kind === 'unsupported') return []
   if (account.kind === 'unknown-provider') return [{ text: '无适配器', percent: undefined }]
   var windows = Array.isArray(account.windows) ? account.windows : []
-  var fiveHour: HeadlineChip[] = []
-  var others: HeadlineChip[] = []
+  // 按短名分组：同一档窗口归一组（多次出现也不拆开），组与组之间才画分割线
+  var groups: { key: string; chips: HeadlineChip[] }[] = []
+  function groupOf(key: string): { key: string; chips: HeadlineChip[] } {
+    for (var g = 0; g < groups.length; g += 1) if (groups[g].key === key) return groups[g]
+    var created = { key: key, chips: [] as HeadlineChip[] }
+    groups.push(created)
+    return created
+  }
   for (var i = 0; i < windows.length; i += 1) {
     if (typeof windows[i].percentLeft !== 'number') continue
-    var chip: HeadlineChip = {
+    groupOf(shortWindowLabel(windows[i].window)).chips.push({
       label: shortWindowLabel(windows[i].window),
       text: String(windows[i].percentLeft) + '%',
       percent: windows[i].percentLeft,
       reset: windows[i].resetAt,
-    }
-    if (/5\s*小时/.test(String(windows[i].window))) fiveHour.push(chip)
-    else others.push(chip)
+    })
+  }
+  // 已知档位按「5h → 7d → 30d」排，其余（订阅周期、自定义窗口名）保持出现顺序排后面
+  var KNOWN_GROUPS = ['5h', '7d', '30d']
+  var ordered: { key: string; chips: HeadlineChip[] }[] = []
+  for (var k = 0; k < KNOWN_GROUPS.length; k += 1) {
+    for (var g2 = 0; g2 < groups.length; g2 += 1) if (groups[g2].key === KNOWN_GROUPS[k]) ordered.push(groups[g2])
+  }
+  for (var g3 = 0; g3 < groups.length; g3 += 1) {
+    if (KNOWN_GROUPS.indexOf(groups[g3].key) === -1) ordered.push(groups[g3])
   }
   var chips: HeadlineChip[] = []
-  for (var f = 0; f < fiveHour.length; f += 1) chips.push(fiveHour[f])
-  if (fiveHour.length > 0 && others.length > 0) chips.push({ sep: true })
-  for (var o = 0; o < others.length; o += 1) chips.push(others[o])
+  for (var o = 0; o < ordered.length; o += 1) {
+    if (o > 0) chips.push({ sep: true })
+    for (var c = 0; c < ordered[o].chips.length; c += 1) chips.push(ordered[o].chips[c])
+  }
   if (chips.length > 0) return chips
   var balances = Array.isArray(account.balances) ? account.balances : []
   if (balances.length > 0) chips.push({ text: String(balances[0].value), percent: undefined })

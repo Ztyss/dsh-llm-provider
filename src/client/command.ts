@@ -5,7 +5,7 @@
  */
 import { accountsById, loadModelCatalog, loadPlanStatus, submitSelection } from './data.js'
 import { quotaTextOf } from './format.js'
-import type { ClientScope } from './types.js'
+import type { ClientScope, SessionsFace } from './types.js'
 
 export function registerModelCommand(scope: ClientScope): void {
   var commandUi = scope.commandUi
@@ -20,6 +20,26 @@ export function registerModelCommand(scope: ClientScope): void {
           },
           description: function () {
             return '按 provider 过滤 / 搜索模型 / 显示余额'
+          },
+          /**
+           * 官方契约**必填**：`CommandUiRuntime.candidates()` 对注册表里每一条贡献都直接调
+           * `contribution.available(session)`——漏了就是 `TypeError: contribution.available is not a
+           * function`，整批 `/` 候选（含 composer 的「＋」按钮）一起挂掉，不是只挂这一条
+           * （上游 issue #7，作者本人实测）。
+           *
+           * 语义照官方 ui-model-selection：子代理会话里不提供切换。**必须永远返回 boolean、永不抛**：
+           * 契约里没有防御，这里抛一次就是整批候选消失，所以连 sessions 服务缺字段都吞掉。
+           */
+          available: function (session) {
+            try {
+              var sessions = scope.sessions as SessionsFace | undefined
+              var subagentAddress = sessions === undefined || sessions === null ? undefined : sessions.subagentAddress
+              var sessionId = session === null || session === undefined ? undefined : session.sessionId
+              if (typeof subagentAddress !== 'function' || typeof sessionId !== 'string') return true
+              return subagentAddress(sessionId) === undefined
+            } catch (cause) {
+              return true
+            }
           },
           ui: {
             kind: 'popupSelect',

@@ -34,15 +34,53 @@ export interface CatalogGroup {
   models: CatalogModel[]
 }
 
-/** /provider/models 里的一条模型详情（生效 pi-ai 包的元数据），按模型 id 建索引。 */
+/** /provider/models 里的一条模型详情（生效 pi-ai 包的元数据 + 路由声明补齐）。 */
 export interface ModelDetail {
   id?: string
+  /** 这条元数据属于哪个 provider（本地版：详情按 provider+id 建索引，见 data.ts）。 */
+  provider?: string
+  name?: string
+  api?: string
+  baseUrl?: string
   contextWindow?: number
   maxTokens?: number
   vision?: boolean
   video?: boolean
   reasoning?: boolean
   thinkingLevels?: string[]
+  /** 'pi-ai' = 上游目录；'declared' = 用户在路由里声明的；'adapter' = 适配器自报的（本地版新增，issue #5）。 */
+  source?: 'pi-ai' | 'declared' | 'adapter'
+}
+
+/** 一条路由里声明的模型（settings 形状，编辑器只动这几个字段）。 */
+export interface DeclaredModel {
+  id: string
+  name?: string
+  contextWindow?: number
+  maxTokens?: number
+  input?: string[]
+  /** 其余字段（reasoningEfforts / compat / api …）原样保留，不在这里声明。 */
+  [key: string]: unknown
+}
+
+/** 逐模型编辑器里的一行：候选模型 + 勾选态 + 可编辑字段。 */
+export interface ModelEditRow {
+  id: string
+  name: string
+  enabled: boolean
+  contextWindow: string
+  maxTokens: string
+  vision: boolean
+  video: boolean
+  /** 该 id 在生效 pi-ai 目录里有没有权威元数据（没有就得把上下文/最大输出写全）。 */
+  known: boolean
+  /** 目录里那份的原值：用于（a）输入框的 placeholder（b）判断用户是否改过能力。 */
+  knownContextWindow: number | undefined
+  knownMaxTokens: number | undefined
+  originVision: boolean
+  originVideo: boolean
+  /** 本来就在路由声明里的原始条目（保存时以它为底，保住 reasoningEfforts/compat 等字段）。 */
+  declared: DeclaredModel | undefined
 }
 
 /** /plan/status 的 accounts 项：额度快照里的一家 provider（宿主在通用字段外还会带几个）。 */
@@ -62,6 +100,8 @@ export interface PlanAccount {
   fetchedAt?: string
   balances?: BalanceRow[]
   windows?: QuotaWindow[]
+  /** 这条路由显式声明的模型清单（undefined = 没配，服务 pi-ai 目录全量）。 */
+  models?: DeclaredModel[] | undefined
 }
 
 /** 官方目录服务的 snapshot store；subscribe 契约各版本不一，我们只用 getSnapshot。 */
@@ -76,11 +116,13 @@ export interface ProjectionCell {
   subscribe: () => () => void
 }
 
-/** sessions 服务：只用到 binding(sessionId).session.projections.faceOf(...)。 */
+/** sessions 服务：只用到 binding(sessionId).session.projections.faceOf(...) 与 subagentAddress（/model 的 available）。 */
 export interface SessionsFace {
   binding?: (sessionId: string) => {
     session?: { projections?: { faceOf?: (name: string) => ProjectionCell } }
   }
+  /** 官方 ui-model-selection 用它判断「这是不是子代理会话」；拿不到就当作不是。 */
+  subagentAddress?: (sessionId: string) => unknown
 }
 
 /** /provider/presets 里的一个预置供应商。 */
@@ -116,9 +158,9 @@ export interface HeadlineChip {
   reset?: string | undefined
 }
 
-/** createElement 里 input/select 的 onChange 事件对象：只读得到 target.value。 */
+/** createElement 里 input/select 的 onChange 事件对象：只读得到 target.value / target.checked。 */
 export interface FieldEvent {
-  target: { value: string }
+  target: { value: string; checked?: boolean }
 }
 
 /** conversation.input.model 座位的注入面：会话 + 官方目录 store + 两个动作（见 directoryFace）。 */
@@ -180,6 +222,13 @@ export interface CommandContribution {
   name: string
   label: () => string
   description: () => string
+  /**
+   * 官方契约**必填**：`CommandUiRuntime.candidates()` 对注册表里每一条贡献都直接调
+   * `contribution.available(session)`，少了它就是 `TypeError: contribution.available is not a function`
+   * —— 整批 `/` 候选（含 composer 的「＋」按钮）一起挂掉，不只是这一条。见上游 issue #7。
+   * 实现必须**永远返回 boolean、永不抛**。
+   */
+  available: (session: { sessionId?: string } | null | undefined) => boolean
   ui: {
     kind: string
     options: () => Promise<CommandOption[]>

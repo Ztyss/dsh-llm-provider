@@ -18,7 +18,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
-import { bridgeRequirements, compareVersions, installedVersions, probePiAi, updateStatus, vendorDir } from './bridge.js'
+import { bridgeRequirements, compareVersions, installedVersions, probePiAi, removeTree, updateStatus, vendorDir } from './bridge.js'
 import { asRecord, readString, type AnyRecord, type Logger } from './types.js'
 
 const execFileAsync = promisify(execFile)
@@ -29,6 +29,19 @@ const VERSIONS_DIR = join(vendorDir, 'pi-ai')
 const STATE_FILE = join(vendorDir, 'updater-state.json')
 const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 小时
 
+/**
+ * 本地版（-local）开关：pi-ai 自动下载**默认关闭**。
+ *
+ * 上游 rc.2 在启动时（6 小时节流）与点「检查更新」时会把 @earendil-works/pi-ai 连依赖闭包
+ * 下到 `vendor/pi-ai/<版本>/`（实测一次几百 MB，还带一份 `vendor/.npm-cache`），dsh 自带
+ * 同版本时也会白下一份——正是本仓库 issue #4 报的磁盘问题。本机把插件职责收窄成「用 dsh
+ * 自带那份 pi-ai + 计费/界面」：默认不再下载任何 pi-ai，vendor/ 里只留 llm-bridge/
+ * （官方适配器 bundle 的副本，约 113 KB，不是 pi-ai）。
+ *
+ * 要手动跟上游：`DSH_PROVIDER_UPDATE=on` 启动 dsh，再点设置页的「检查更新」。
+ */
+export const UPDATES_ENABLED = process.env.DSH_PROVIDER_UPDATE === 'on'
+
 /** 一次检查 + 更新的结果（/provider/update 的响应体）。 */
 export interface UpdateResult {
   checkedAt: string
@@ -37,6 +50,8 @@ export interface UpdateResult {
   applied: boolean
   compatible: boolean | undefined
   error: string | undefined
+  /** 本地版：自动下载被停用（响应里带上，界面据此提示，不是失败）。 */
+  disabled?: boolean | undefined
 }
 
 /** registry 上最新版：版本号 + tarball 的 sha512（base64，无前缀）。 */
@@ -111,7 +126,10 @@ export async function installVersion(release: RegistryRelease, log: (line: strin
     log(`${version} 已就位，跳过下载`)
     return target
   }
-  rmSync(target, { force: true, recursive: true })
+  // 用 removeTree 而不是 rmSync(recursive)：vendor/pi-ai/<v>/ 里理论上不该有链，但
+  // 「理论上」在 Windows junction 上是要付代价的（Node 24.15+ 的递归删除会跟进 junction，
+  // 把目标内容一起清空），递归删除统一走链感知的那条路。
+  removeTree(target)
   mkdirSync(target, { recursive: true })
 
   const tgzPath = join(tmpdir(), `pi-ai-${version}-${Date.now()}.tgz`)
@@ -170,6 +188,13 @@ export async function checkAndUpdate(
     compatible: undefined,
     error: undefined,
   }
+  // 本地版默认不下载：连 registry 都不询问，直接如实回报「已停用」。
+  if (!UPDATES_ENABLED) {
+    result.disabled = true
+    result.error = '本地版已停用 pi-ai 自动下载（vendor/ 不落地任何 pi-ai 副本）。要跟上游就用 DSH_PROVIDER_UPDATE=on 启动 dsh 后再点这里'
+    log('已停用自动下载（本地版）')
+    return result
+  }
   try {
     const release = await latestRelease()
     result.latest = release.version
@@ -220,6 +245,11 @@ export async function checkAndUpdate(
  * @param activeVersion - 当前生效的 pi-ai 版本（见 {@link checkAndUpdate}）。
  */
 export function startBackgroundCheck(logger: Logger | undefined, activeVersion: string | undefined): void {
+  // 本地版：整个关掉（不是上游那种 opt-out 的 off，而是 opt-in 的 on）。
+  if (!UPDATES_ENABLED) {
+    logger?.info?.('本地版已停用 pi-ai 自动下载，跳过启动检查（vendor/ 不落地 pi-ai）')
+    return
+  }
   if (process.env.DSH_PROVIDER_UPDATE === 'off') return
   const last = readString(readState()['lastCheck'])
   if (last !== undefined && Date.now() - Date.parse(last) < AUTO_CHECK_INTERVAL_MS) return

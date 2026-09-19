@@ -23,6 +23,12 @@ export interface ProviderRoute {
   api?: string | undefined
   label: string | undefined
   source: 'llm-pi-ai' | 'native'
+  /**
+   * 这条路由显式声明的逐模型清单（settings 段原样带出来）。
+   * `undefined`/空数组 = 没配，服务的是 pi-ai 目录里该 provider 的全部模型——
+   * 本地版「模型服务」页的逐模型编辑器据此区分「配过」和「跟着目录走」。
+   */
+  models?: unknown[] | undefined
 }
 
 /**
@@ -114,6 +120,8 @@ export function providerRoutes(
       // wire 协议：卡片展开体要和「添加供应商」表单展示同一组信息，settings 段里存的就是这个值
       api: readString(route['api']),
       label: readString(route['displayName']),
+      // 逐模型清单：只有显式配过 models 的路由才带（数组；坏形状当没配）
+      models: Array.isArray(route['models']) ? route['models'] : undefined,
       source: 'llm-pi-ai',
     })
   }

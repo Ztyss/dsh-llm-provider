@@ -57,6 +57,17 @@ export interface LlmDirectoryEntry {
 
 export interface LlmService {
   listConfigurableProviders?: () => LlmDirectoryEntry[]
+  /** 目录里的全部 provider（含插件自己注册的合成 provider，如 modlens 的 `modlens-<上游>`）。 */
+  listProviders?: () => unknown[]
+  /** 某 provider 的模型清单；适配器自报，形状不稳定，按宽松读处理。 */
+  listModels?: (provider: string, signal?: unknown) => Promise<unknown>
+  /**
+   * 某 provider 下一个模型的**精确**元数据（宿主 `llm.resolveModelInfo`）：含
+   * `inputModalities` / `context.contextWindow` / `defaultMaxTokens` / `reasoning`。
+   * 官方目录 RPC（`session/modelCatalog`）只下发 id/name/description/reasoning，
+   * 能力字段在传输层就丢了——本插件的能力链路靠这一条拿到「适配器自报」。
+   */
+  resolveModelInfo?: (provider: string, model: string, signal?: unknown) => Promise<unknown>
 }
 
 /** settings 的一次写操作（跟宿主 mutate 的入参形状一致）。 */

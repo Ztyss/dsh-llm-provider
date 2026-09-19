@@ -86,14 +86,60 @@ export function loadProviderStatus() {
 /** 桥接状态拿不到时的占位：设置页据此渲染错误行，界面不至于空着。 */
 export var STATUS_UNAVAILABLE = { bridge: { active: false, error: '宿主端状态不可用' } }
 
-/** 模型详情（生效 pi-ai 包的全量元数据），按模型 id 建索引：悬浮详情卡与能力徽章共用。 */
+/** 详情索引键：provider + id（本地版 issue #5：不同家的同名模型不会互相顶掉）。 */
+export function detailKey(provider: unknown, id: unknown): string {
+  return String(provider) + '/' + String(id)
+}
+
+/**
+ * 模型详情（生效 pi-ai 包的全量元数据 + 路由声明补齐），建两套索引：
+ *   - `provider/id`：首选——同一个 id 在不同 provider 下能力可能不同（issue #5 的索引口径）；
+ *   - 裸 `id`：兜底——老版本宿主不下发 provider 字段时还能查到，先到先得。
+ */
 export function loadModelDetailMap(): Promise<Record<string, ModelDetail>> {
   return getJson('/provider/models').then(function (payload) {
     var map: Record<string, ModelDetail> = {}
     if (payload === null || payload === undefined || !Array.isArray(payload.models)) return map
-    for (var i = 0; i < payload.models.length; i += 1) map[payload.models[i].id] = payload.models[i]
+    for (var i = 0; i < payload.models.length; i += 1) {
+      var detail = payload.models[i]
+      if (detail === null || typeof detail !== 'object') continue
+      if (typeof detail.provider === 'string' && detail.provider !== '') {
+        map[detailKey(detail.provider, detail.id)] = detail
+      }
+      var bare = String(detail.id)
+      if (map[bare] === undefined) map[bare] = detail
+    }
     return map
   })
+}
+
+/** 查一条模型详情：先按 provider+id，查不到再退回裸 id。 */
+export function lookupDetail(
+  map: Record<string, ModelDetail> | undefined | null,
+  providerId: string,
+  modelId: string,
+): ModelDetail | undefined {
+  if (map === undefined || map === null) return undefined
+  var qualified = map[detailKey(providerId, modelId)]
+  if (qualified !== undefined) return qualified
+  return map[modelId]
+}
+
+/** 生效目录里属于某个 provider 的全部模型（逐模型编辑器的候选来源）。 */
+export function detailsOfProvider(
+  map: Record<string, ModelDetail> | undefined | null,
+  providerId: string,
+): ModelDetail[] {
+  if (map === undefined || map === null) return []
+  var own: ModelDetail[] = []
+  var prefix = providerId + '/'
+  for (var key in map) {
+    if (key.indexOf('/') === -1 || key.slice(0, prefix.length) !== prefix) continue
+    var detail = map[key]
+    if (typeof detail.id !== 'string') continue
+    own.push(detail)
+  }
+  return own
 }
 
 /** 不可变地合并一组 key（几个 setState 都这么写，集中一处）。 */

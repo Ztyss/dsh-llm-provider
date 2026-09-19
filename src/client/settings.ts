@@ -7,6 +7,7 @@ import type { AnyRecord } from '../types.js'
 import {
   STATUS_UNAVAILABLE,
   apiCall,
+  detailsOfProvider,
   dropPlanAccount,
   findById,
   getJson,
@@ -14,6 +15,7 @@ import {
   loadModelDetailMap,
   loadPlanStatus,
   loadProviderStatus,
+  lookupDetail,
   mergePlanAccount,
   onPlanChange,
   postJson,
@@ -23,7 +25,7 @@ import {
 import { dotClass, formatContext, fuzzyMatch, headlineChips, linkTextOf, relativeTime, resetCountdownText, shortName, toneColor, worstPercent } from './format.js'
 import { caretSvg } from './icons.js'
 import { t } from './i18n.js'
-import type { AddProviderPanelProps, BridgeRow, CatalogModel, FieldEvent, HeadlineChip, ModelDetail, PlanAccount, ProviderPreset } from './types.js'
+import type { AddProviderPanelProps, BridgeRow, CatalogModel, DeclaredModel, FieldEvent, HeadlineChip, ModelDetail, ModelEditRow, PlanAccount, ProviderPreset } from './types.js'
 
 /** 当前用的是哪一档 pi-ai。宿主报的 source：版本号 / 'dependency' / 'dsh'。 */
 function piAiSourceLabel(source: unknown): string {
@@ -45,7 +47,7 @@ function piAiSourceHint(source: unknown): string {
  * @param update - 同上的 update 段（上游最新 / 待生效 / 体检没过的）。
  * @returns `[{ key, text, value?, title?, warn? }]`；value 是右侧的次要文字。
  */
-export function piAiBridgeRows(bridge: unknown, update: unknown): BridgeRow[] {
+export function piAiBridgeRows(bridge: unknown, update: unknown, updatesEnabled?: boolean): BridgeRow[] {
   var rows: BridgeRow[] = []
   if (bridge === undefined || bridge === null) return rows
   var bridgeRecord = bridge as AnyRecord
@@ -59,6 +61,15 @@ export function piAiBridgeRows(bridge: unknown, update: unknown): BridgeRow[] {
     value: String(bridgeRecord.piAiVersion) + '（' + piAiSourceLabel(bridgeRecord.source) + '）',
     title: piAiSourceHint(bridgeRecord.source),
   })
+  // 本地版（issue #4）：自动下载默认关闭，vendor/ 里不留第二份 pi-ai
+  if (updatesEnabled === false) {
+    rows.push({
+      key: 'local',
+      text: '本地版：pi-ai 自动下载已停用',
+      value: 'vendor/ 不落地 pi-ai',
+      title: '本机不再下载 @earendil-works/pi-ai：桥接直接用 dsh 自带那份（vendor/ 里只有官方适配器 bundle 的副本，约 113 KB）。要跟上游就用 DSH_PROVIDER_UPDATE=on 启动 dsh',
+    })
+  }
   // 体检没执行（bundle 的 import 需求解析不出）：这份 pi-ai 是靠「目录存在」放行的，没验证过
   if (bridgeRecord.probeUnverified === true) {
     rows.push({
@@ -101,8 +112,9 @@ export function piAiBridgeRows(bridge: unknown, update: unknown): BridgeRow[] {
   return rows
 }
 
-/** 上游那一行的文字（右侧按钮由组件补）。 */
-export function piAiUpstreamText(update: unknown): string {
+/** 上游那一行的文字（右侧按钮由组件补）。updatesEnabled === false 时说明自动下载已停用。 */
+export function piAiUpstreamText(update: unknown, updatesEnabled?: boolean): string {
+  if (updatesEnabled === false) return '上游 自动检查已停用（本地版）'
   if (update === undefined || update === null) return '上游 未检查'
   var updateRecord = update as AnyRecord
   if (updateRecord.latest === undefined) return '上游 未检查'
@@ -135,7 +147,8 @@ function headlineChip(chip: HeadlineChip, key: number) {
 
 /** 模型行：名称 + 能力徽章（视觉/推理/视频）+ 上下文标签，悬浮出 Cherry 式详情卡。 */
 function modelRow(model: CatalogModel, account: PlanAccount, detailsById: Record<string, ModelDetail> | undefined | null) {
-  var detail = detailsById === undefined || detailsById === null ? undefined : detailsById[model.id]
+  // 本地版 issue #5：详情按 provider+id 查（同名模型不串家），查不到才退回裸 id
+  var detail = lookupDetail(detailsById, account.id, model.id)
   var cw = detail !== undefined && detail.contextWindow !== undefined ? detail.contextWindow : model.contextWindow
   var ctx = formatContext(cw)
   var caps = []
@@ -143,6 +156,10 @@ function modelRow(model: CatalogModel, account: PlanAccount, detailsById: Record
     if (detail.vision === true) caps.push(react.createElement('span', { key: 'v', className: 'pv_capMini pv_capVision' }, '视觉'))
     if (detail.reasoning === true) caps.push(react.createElement('span', { key: 'r', className: 'pv_capMini pv_capReason' }, '推理'))
     if (detail.video === true) caps.push(react.createElement('span', { key: 't', className: 'pv_capMini pv_capVideo' }, '视频'))
+    // 能力来自路由声明（pi-ai 目录没收录这个 id）：标记一下，别让人以为是从上游目录读的
+    if (detail.source === 'declared') {
+      caps.push(react.createElement('span', { key: 'd', className: 'pv_capMini pv_capDeclared', title: 'pi-ai 目录里没有这个模型，能力按你在路由里声明的 input 显示' }, '声明'))
+    }
   }
   return react.createElement(
     'div',
@@ -171,6 +188,9 @@ function modelTip(model: CatalogModel, account: PlanAccount, detail: ModelDetail
     rows.push(tipLine('思维链', detail.reasoning === true
       ? (Array.isArray(detail.thinkingLevels) && detail.thinkingLevels.length > 0 ? detail.thinkingLevels.join('、') : '自动')
       : '关闭', 'tk'))
+    if (detail.source === 'declared') {
+      rows.push(react.createElement('div', { className: 'pv_tipDim', key: 'src' }, '能力来自这条路由的声明（pi-ai 目录没收录这个模型 ID）'))
+    }
   } else {
     rows.push(react.createElement('div', { className: 'pv_tipDim', key: 'dim' }, '该模型没有本地元数据'))
   }
@@ -520,6 +540,410 @@ function AddProviderPanel(props: AddProviderPanelProps) {
   )
 }
 
+/** 逐模型编辑器的一行（勾选 + 可编辑字段 + 移除）。 */
+function modelEditRow(
+  row: ModelEditRow,
+  patch: (id: string, next: AnyRecord) => void,
+  remove: (id: string) => void,
+) {
+  return react.createElement(
+    'div',
+    { className: 'pv_meRow' + (row.enabled ? '' : ' pv_meRowOff'), key: row.id },
+    react.createElement('input', {
+      type: 'checkbox',
+      className: 'pv_meCheck',
+      checked: row.enabled,
+      title: row.enabled ? '取消勾选 = 保存后不再服务这个模型' : '勾上 = 让这家服务这个模型',
+      onChange: function (event: FieldEvent) { patch(row.id, { enabled: event.target.checked === true }) },
+    }),
+    react.createElement(
+      'span',
+      { className: 'pv_meIdBox' },
+      react.createElement('span', { className: 'pv_mId', title: row.id }, row.id),
+      row.known
+        ? null
+        : react.createElement('span', { className: 'pv_capMini pv_capDeclared', title: '生效 pi-ai 目录里没有这个 ID——上下文窗口与最大输出必须自己填' }, '自定义'),
+    ),
+    react.createElement('span', { className: 'pv_meName', title: row.name }, row.name),
+    react.createElement('input', {
+      className: 'pv_meNum',
+      type: 'text',
+      inputMode: 'numeric',
+      placeholder: row.knownContextWindow === undefined ? '上下文' : String(row.knownContextWindow),
+      title: '上下文窗口（留空 = 跟着 pi-ai 目录）',
+      value: row.contextWindow,
+      onChange: function (event: FieldEvent) { patch(row.id, { contextWindow: event.target.value }) },
+    }),
+    react.createElement('input', {
+      className: 'pv_meNum',
+      type: 'text',
+      inputMode: 'numeric',
+      placeholder: row.knownMaxTokens === undefined ? '最大输出' : String(row.knownMaxTokens),
+      title: '最大输出 token（留空 = 跟着 pi-ai 目录）',
+      value: row.maxTokens,
+      onChange: function (event: FieldEvent) { patch(row.id, { maxTokens: event.target.value }) },
+    }),
+    react.createElement(
+      'label',
+      { className: 'pv_meCap', title: '声明支持图片输入（写进模型的 input 模态）' },
+      react.createElement('input', {
+        type: 'checkbox',
+        checked: row.vision,
+        onChange: function (event: FieldEvent) { patch(row.id, { vision: event.target.checked === true }) },
+      }),
+      '视觉',
+    ),
+    react.createElement(
+      'label',
+      { className: 'pv_meCap', title: '声明支持视频输入（写进模型的 input 模态）' },
+      react.createElement('input', {
+        type: 'checkbox',
+        checked: row.video,
+        onChange: function (event: FieldEvent) { patch(row.id, { video: event.target.checked === true }) },
+      }),
+      '视频',
+    ),
+    react.createElement('button', {
+      type: 'button',
+      className: 'pv_iconBtn',
+      title: '把这一行从清单里去掉（保存后生效）',
+      onClick: function () { remove(row.id) },
+    }, '✕'),
+  )
+}
+
+/** 编辑器初始行：当前生效的目录模型 + 目录里该 provider 的全部模型 + 路由声明过的模型。 */
+function buildEditRows(
+  account: PlanAccount,
+  catalog: CatalogModel[],
+  details: Record<string, ModelDetail> | undefined | null,
+): ModelEditRow[] {
+  var declared = Array.isArray(account.models) ? account.models : []
+  var rows: ModelEditRow[] = []
+  var seen: AnyRecord = {}
+  function add(id: string, name: string, detail: ModelDetail | undefined, entry: DeclaredModel | undefined) {
+    if (id === '' || seen[id] === true) return
+    seen[id] = true
+    var declaredInput = Array.isArray(entry === undefined ? undefined : entry.input) ? entry.input : []
+    rows.push({
+      id: id,
+      name: name,
+      // 没配过 models = 目录全量服务，编辑器里全部默认勾上；配过就只勾清单里的
+      enabled: declared.length === 0 ? true : declared.some(function (item) { return item.id === id }),
+      contextWindow: entry !== undefined && entry.contextWindow !== undefined ? String(entry.contextWindow) : '',
+      maxTokens: entry !== undefined && entry.maxTokens !== undefined ? String(entry.maxTokens) : '',
+      vision: detail !== undefined ? detail.vision === true : declaredInput.indexOf('image') !== -1,
+      video: detail !== undefined ? detail.video === true : declaredInput.indexOf('video') !== -1,
+      known: detail !== undefined,
+      knownContextWindow: detail === undefined ? undefined : detail.contextWindow,
+      knownMaxTokens: detail === undefined ? undefined : detail.maxTokens,
+      originVision: detail !== undefined ? detail.vision === true : declaredInput.indexOf('image') !== -1,
+      originVideo: detail !== undefined ? detail.video === true : declaredInput.indexOf('video') !== -1,
+      declared: entry,
+    })
+  }
+  // 1. 声明过的（含别名 id）优先占位；2. 当前生效目录；3. 目录里该 provider 的全量候选
+  for (var d = 0; d < declared.length; d += 1) {
+    var entry = declared[d]
+    if (entry === null || typeof entry !== 'object') continue
+    var entryId = typeof entry.id === 'string' ? entry.id : ''
+    if (entryId === '') continue
+    var entryDetail = lookupDetail(details, account.id, entryId)
+    add(entryId, entry.name !== undefined ? String(entry.name) : (entryDetail !== undefined && entryDetail.name !== undefined ? entryDetail.name : entryId), entryDetail, entry)
+  }
+  for (var c = 0; c < catalog.length; c += 1) {
+    var model = catalog[c]
+    add(model.id, model.name, lookupDetail(details, account.id, model.id), undefined)
+  }
+  var own = detailsOfProvider(details, account.id)
+  for (var o = 0; o < own.length; o += 1) {
+    if (typeof own[o].id !== 'string') continue
+    add(own[o].id as string, own[o].name === undefined ? String(own[o].id) : String(own[o].name), own[o], undefined)
+  }
+  return rows
+}
+
+/**
+ * 逐模型清单编辑器（本地版新增，实现 issue #1）。
+ *
+ * 官方 Models 页被本插件禁用（cordis.patch.yml），而它独有的「逐模型清单编辑」没有替代，
+ * 于是「只想留 DeepSeek 三个模型里的一个」这类需求在界面上无处可做。这里补上：
+ * 勾选 → 保存 → 写 settings 的 `llm-pi-ai.providers.<id>.models`（与官方 Models 页同一条写路径，
+ * 官方 adapter 的 resolveRouteModels 认这个键，`models` 非空就替换整份服务目录）。
+ *
+ * 语义两条：
+ *   保存清单 —— 只留勾上的；目录里没有的自定义 ID 必须填全上下文/最大输出（官方 strict 校验会拒）；
+ *   跟随目录 —— 删掉 models 键，回到「pi-ai 目录收录什么就服务什么」。
+ */
+function ModelListEditor(props: {
+  account: PlanAccount
+  catalog: CatalogModel[]
+  details: Record<string, ModelDetail> | undefined | null
+  onSaved: (message: string) => void
+  onClose: () => void
+}) {
+  var account = props.account
+  var rowsState = react.useState(function () { return buildEditRows(account, props.catalog, props.details) })
+  var rows = rowsState[0] as ModelEditRow[]
+  var setRows = rowsState[1] as (updater: (prev: ModelEditRow[]) => ModelEditRow[]) => void
+  var draftState = react.useState('')
+  var draft = draftState[0] as string
+  var setDraft = draftState[1] as (next: string) => void
+  var busyState = react.useState(false)
+  var busy = busyState[0] as boolean
+  var setBusy = busyState[1] as (next: boolean) => void
+  var errorState = react.useState(null)
+  var error = errorState[0] as string | null
+  var setError = errorState[1] as (next: string | null) => void
+  var declaredCount = Array.isArray(account.models) ? account.models.length : 0
+
+  function patch(id: string, next: AnyRecord) {
+    setRows(function (prev) {
+      return prev.map(function (row) {
+        return row.id === id ? withKeys(row as unknown as AnyRecord, next) as unknown as ModelEditRow : row
+      })
+    })
+  }
+  function remove(id: string) {
+    setRows(function (prev) {
+      return prev.filter(function (row) { return row.id !== id })
+    })
+  }
+  function addRow() {
+    var id = draft.trim()
+    if (id === '') { setError('先在右边填一个模型 ID'); return }
+    var exists = false
+    for (var i = 0; i < rows.length; i += 1) if (rows[i].id === id) exists = true
+    if (exists) { setError('「' + id + '」已经在清单里了'); return }
+    var detail = lookupDetail(props.details, account.id, id)
+    setRows(function (prev) {
+      return prev.concat([{
+        id: id,
+        name: detail !== undefined && detail.name !== undefined ? detail.name : id,
+        enabled: true,
+        contextWindow: '',
+        maxTokens: '',
+        vision: detail !== undefined && detail.vision === true,
+        video: detail !== undefined && detail.video === true,
+        known: detail !== undefined,
+        knownContextWindow: detail === undefined ? undefined : detail.contextWindow,
+        knownMaxTokens: detail === undefined ? undefined : detail.maxTokens,
+        originVision: detail !== undefined && detail.vision === true,
+        originVideo: detail !== undefined && detail.video === true,
+        declared: undefined,
+      }])
+    })
+    setDraft('')
+    setError(null)
+  }
+
+  /** 当前编辑结果 → settings 的 models 数组；形状不合法时返回 undefined 并写好错误提示。 */
+  function payload(): DeclaredModel[] | undefined {
+    var out: DeclaredModel[] = []
+    for (var i = 0; i < rows.length; i += 1) {
+      var row = rows[i]
+      if (row.enabled !== true) continue
+      var entry: DeclaredModel = row.declared === undefined ? { id: row.id } : { ...row.declared, id: row.id }
+      var name = row.name.trim()
+      if (name !== '' && name !== row.id) entry.name = name
+      var ctx = row.contextWindow.trim()
+      if (ctx !== '') {
+        var ctxNum = Number(ctx)
+        if (!isFinite(ctxNum) || Math.floor(ctxNum) !== ctxNum || ctxNum <= 0) { setError('「' + row.id + '」的上下文窗口要填正整数'); return undefined }
+        entry.contextWindow = ctxNum
+      } else if (entry.contextWindow === undefined && row.known !== true) {
+        setError('pi-ai 目录里没有「' + row.id + '」，上下文窗口与最大输出都要填（官方适配器会拒绝缺字段的声明）')
+        return undefined
+      }
+      var max = row.maxTokens.trim()
+      if (max !== '') {
+        var maxNum = Number(max)
+        if (!isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) { setError('「' + row.id + '」的最大输出要填正整数'); return undefined }
+        entry.maxTokens = maxNum
+      } else if (entry.maxTokens === undefined && row.known !== true) {
+        setError('pi-ai 目录里没有「' + row.id + '」，上下文窗口与最大输出都要填')
+        return undefined
+      }
+      // 能力只有「改过」或「目录没收录」时才写 input，避免把跟着目录走的模型钉死
+      if (row.vision !== row.originVision || row.video !== row.originVideo || entry.input !== undefined || row.known !== true) {
+        var input = ['text']
+        if (row.vision === true) input.push('image')
+        if (row.video === true) input.push('video')
+        entry.input = input
+      }
+      out.push(entry)
+    }
+    if (out.length === 0) { setError('至少留一个模型；要让这家回到「目录全量」请点「跟随目录」'); return undefined }
+    return out
+  }
+
+  function submit(models: DeclaredModel[] | null, done: string) {
+    setBusy(true)
+    setError(null)
+    postJson('/provider/set-models', { providerId: account.id, models: models })
+      .then(function (res) {
+        if (res === null || res === undefined || res.ok !== true) {
+          setError('保存失败：' + String((res && res.error) || '未知错误'))
+          return
+        }
+        props.onSaved(done)
+        props.onClose()
+      })
+      .catch(function (cause) {
+        setError('保存失败：' + String(cause && cause.message ? cause.message : cause))
+      })
+      .then(function () { setBusy(false) })
+  }
+
+  var rows_ = []
+  for (var r = 0; r < rows.length; r += 1) rows_.push(modelEditRow(rows[r], patch, remove))
+  var enabledCount = 0
+  for (var e = 0; e < rows.length; e += 1) if (rows[e].enabled === true) enabledCount += 1
+
+  return react.createElement(
+    'div',
+    { className: 'pv_me' },
+    react.createElement(
+      'div',
+      { className: 'pv_meHead' },
+      react.createElement('span', { className: 'pv_meTitle' }, '逐模型清单'),
+      react.createElement(
+        'span',
+        { className: 'pv_hint' },
+        declaredCount > 0
+          ? '当前只服务清单里的 ' + String(declaredCount) + ' 个模型'
+          : '当前跟随 pi-ai 目录（' + String(rows.length) + ' 个模型全部可用）',
+      ),
+    ),
+    react.createElement(
+      'div',
+      { className: 'pv_hint' },
+      '保存后写进 settings.yaml 的 llm-pi-ai.providers.' + account.id + '.models：没勾的模型不会出现在模型选择器里。目录里没有的自定义 ID 必须把「上下文」和「最大输出」填全。',
+    ),
+    react.createElement('div', { className: 'pv_meList' }, rows_),
+    react.createElement(
+      'div',
+      { className: 'pv_meAdd' },
+      react.createElement('input', {
+        className: 'pv_field',
+        type: 'text',
+        placeholder: '自定义模型 ID（目录里没有的）',
+        value: draft,
+        onChange: function (event: FieldEvent) { setDraft(event.target.value) },
+      }),
+      react.createElement('button', { type: 'button', className: 'pv_action', style: { marginLeft: '0' }, disabled: busy, onClick: addRow }, '加一行'),
+      react.createElement('span', { className: 'pv_hint pv_push' }, '已勾 ' + String(enabledCount) + ' / ' + String(rows.length)),
+    ),
+    react.createElement(
+      'div',
+      { className: 'pv_meActs' },
+      react.createElement('button', {
+        type: 'button',
+        className: 'pv_action',
+        style: { marginLeft: '0' },
+        disabled: busy,
+        onClick: function () {
+          setError(null)
+          var models = payload()
+          if (models === undefined) return
+          submit(models, '✓ ' + shortName(account) + ' 的模型清单已保存（' + String(models.length) + ' 个）')
+        },
+      }, busy ? '保存中…' : '保存清单'),
+      react.createElement('button', {
+        type: 'button',
+        className: 'pv_action',
+        disabled: busy,
+        title: '删掉这条路由的 models 键：回到「pi-ai 目录收录什么就服务什么」',
+        onClick: function () { submit(null, '✓ ' + shortName(account) + ' 已回到目录全量') },
+      }, '跟随目录（清空清单）'),
+      react.createElement('button', {
+        type: 'button',
+        className: 'pv_action',
+        style: { marginLeft: 'auto' },
+        disabled: busy,
+        onClick: props.onClose,
+      }, '取消'),
+    ),
+    error === null ? null : react.createElement('div', { className: 'plan_note plan_badText' }, error),
+  )
+}
+
+/**
+ * 删除 provider 的确认弹层（本地版新增，实现 issue #3）。
+ *
+ * 上游第一版是在 ✕ 旁边原地摊开「确认删除 / 取消」两个小按钮：位置就是刚点过的那个槽位，
+ * 代价（清掉哪条配置、哪把密钥、影响谁）一句没说，误点一次就等于把一整家供应商拆掉。
+ * 这里改成遮罩弹层：把要清的东西逐条列出来，危险按钮单独一个色，取消是默认落点。
+ */
+function DeleteProviderModal(props: {
+  account: PlanAccount
+  busy: boolean
+  error: string | null
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  var account = props.account
+  var modelCount = Array.isArray(account.models) ? account.models.length : 0
+  var keyRef = typeof account.apiKeyEnv === 'string' && account.apiKeyEnv !== '' ? String(account.apiKeyEnv) : undefined
+  var facts = [
+    { key: 'id', label: '路由 ID', value: String(account.id) },
+    {
+      key: 'cfg',
+      label: '删除的配置',
+      value: 'settings.yaml → llm-pi-ai.providers.' + String(account.id)
+        + '（baseURL / 协议' + (modelCount > 0 ? ' / 模型清单 ' + String(modelCount) + ' 个' : '') + ' 一并删除）',
+    },
+    {
+      key: 'key',
+      label: '删除的密钥',
+      value: keyRef === undefined ? '这条路由没有绑定凭据名' : keyRef + '（凭据仓库里的值一起清掉）',
+    },
+    {
+      key: 'impact',
+      label: '影响',
+      value: '模型选择器里这家会消失；正在用 ' + shortName(account) + ' 的会话下次落到默认模型',
+    },
+  ]
+  var rows = []
+  for (var i = 0; i < facts.length; i += 1) {
+    rows.push(react.createElement(
+      'div',
+      { className: 'pv_modalRow', key: facts[i].key },
+      react.createElement('span', { className: 'pv_modalLabel' }, facts[i].label),
+      react.createElement('span', { className: 'pv_modalValue' }, facts[i].value),
+    ))
+  }
+  return react.createElement(
+    'div',
+    {
+      className: 'pv_mask',
+      onClick: function () { if (props.busy !== true) props.onCancel() },
+    },
+    react.createElement(
+      'div',
+      {
+        className: 'pv_modal',
+        onClick: function (event: MouseEvent) { if (typeof event.stopPropagation === 'function') event.stopPropagation() },
+      },
+      react.createElement('div', { className: 'pv_modalTitle' }, '删除 provider：' + shortName(account) + '？'),
+      rows,
+      react.createElement('div', { className: 'pv_modalWarn' }, '删除后需要重新填一遍密钥与端点才能恢复，不能撤销。'),
+      props.error === null ? null : react.createElement('div', { className: 'plan_note plan_badText' }, props.error),
+      react.createElement(
+        'div',
+        { className: 'pv_modalActs' },
+        react.createElement('button', { type: 'button', className: 'pv_action', disabled: props.busy, onClick: props.onCancel }, '取消'),
+        react.createElement('button', {
+          type: 'button',
+          className: 'pv_delYes pv_dangerBtn',
+          disabled: props.busy,
+          onClick: props.onConfirm,
+        }, props.busy === true ? '删除中…' : '删除这条路由'),
+      ),
+    ),
+  )
+}
+
 /**
  * Provider 标签：CC Switch 式卡片。
  * 每个 provider 一张分割明显的卡片，头部一行直给最关键信息（coding plan 的
@@ -556,9 +980,20 @@ export function ProviderSettingsSection() {
   var setPresets = presetsState[1]
   var catTickState = react.useState(0)
   var setCatTick = catTickState[1]
-  var delState = react.useState({})
-  var delConfirm = delState[0]
-  var setDelConfirm = delState[1]
+  // 删除确认：目标账户 + 进行中 + 失败原因（弹层式二次确认，见 DeleteProviderModal；issue #3）
+  var delState = react.useState(null)
+  var delTarget = delState[0] as PlanAccount | null
+  var setDelTarget = delState[1] as (next: PlanAccount | null) => void
+  var delBusyState = react.useState(false)
+  var delBusy = delBusyState[0] as boolean
+  var setDelBusy = delBusyState[1] as (next: boolean) => void
+  var delErrorState = react.useState(null)
+  var delError = delErrorState[0] as string | null
+  var setDelError = delErrorState[1] as (next: string | null) => void
+  // 逐模型清单编辑器正在编辑哪一家（issue #1）
+  var editModelsState = react.useState(null)
+  var editModelsFor = editModelsState[0] as string | null
+  var setEditModelsFor = editModelsState[1] as (next: string | null) => void
   var refreshingState = react.useState({})
   var setRefreshing = refreshingState[1]
   // 卡片里"补密钥"的输入草稿与保存中标记（都按 provider id 存）
@@ -776,21 +1211,24 @@ export function ProviderSettingsSection() {
       })
   }
 
-  // 删除 provider（✕ → 二次确认）：配置与密钥一起清掉
+  // 删除 provider（✕ → 弹层二次确认 → 这里）：配置与密钥一起清掉
   function removeProvider(account: PlanAccount) {
+    setDelBusy(true)
+    setDelError(null)
     postJson('/provider/remove', { providerId: account.id })
       .then(function (res) {
-        setDelConfirm(function (prev: AnyRecord) {
-          return withKey(prev, account.id, false)
-        })
         if (res === null || res === undefined || res.ok !== true) {
-          setNote('删除失败：' + String((res && res.error) || '未知错误'))
+          setDelError('删除失败：' + String((res && res.error) || '未知错误'))
           return
         }
+        setDelTarget(null)
         onProviderRemoved(account)
       })
       .catch(function (cause) {
-        setNote('删除失败：' + String(cause && cause.message ? cause.message : cause))
+        setDelError('删除失败：' + String(cause && cause.message ? cause.message : cause))
+      })
+      .then(function () {
+        setDelBusy(false)
       })
   }
 
@@ -799,7 +1237,9 @@ export function ProviderSettingsSection() {
     setNote('正在检查上游 ...')
     postJson('/provider/update')
       .then(function (result) {
-        if (result.error !== undefined) {
+        if (result.disabled === true) {
+          setNote('本地版已停用 pi-ai 自动下载：vendor/ 不会落地第二份 pi-ai。要跟上游就用 DSH_PROVIDER_UPDATE=on 启动 dsh')
+        } else if (result.error !== undefined) {
           setNote('更新失败：' + String(result.error))
         } else if (result.applied === true) {
           setNote('已下载 ' + String(result.latest) + '，验证通过（完整性 + 兼容性），重启 dsh 后生效')
@@ -836,8 +1276,10 @@ export function ProviderSettingsSection() {
 
   var bridge = status === null || status.bridge === undefined ? undefined : status.bridge
   var update = status === null || status.update === undefined ? undefined : status.update
+  // 本地版：/provider/status 报 updatesEnabled=false（自动下载是 opt-in），桥接页据此说明并置灰按钮
+  var updatesEnabled = status === null || status.updatesEnabled === undefined ? undefined : status.updatesEnabled === true
   // 桥接明细：放在「pi-ai 桥接」二级标签页里展示。行的内容由 piAiBridgeRows 给（纯函数，离线可测）
-  var bridgeRows = piAiBridgeRows(bridge, update)
+  var bridgeRows = piAiBridgeRows(bridge, update, updatesEnabled)
   var bridgeLines = []
   for (var bi = 0; bi < bridgeRows.length; bi += 1) {
     var row = bridgeRows[bi]
@@ -855,16 +1297,25 @@ export function ProviderSettingsSection() {
       children,
     ))
   }
-  // 上游那一行右侧跟按钮：检查更新（宿主先校验下载内容、再做兼容性体检，都过了才等重启生效）
+  // 上游那一行右侧跟按钮：检查更新（宿主先校验下载内容、再做兼容性体检，都过了才等重启生效）。
+  // 本地版默认停用自动下载，按钮置灰并说明原因（issue #4）。
   bridgeLines.push(
     react.createElement(
       'div',
       { className: 'pv_line', key: 'action' },
-      piAiUpstreamText(update),
+      piAiUpstreamText(update, updatesEnabled),
       react.createElement(
         'button',
-        { type: 'button', className: 'pv_action pv_push', disabled: busy, onClick: checkUpdate },
-        busy ? '检查中 ...' : '检查更新',
+        {
+          type: 'button',
+          className: 'pv_action pv_push',
+          disabled: busy || updatesEnabled === false,
+          title: updatesEnabled === false
+            ? '本地版已停用 pi-ai 自动下载：vendor/ 不会落地第二份 pi-ai（要跟上游就用 DSH_PROVIDER_UPDATE=on 启动 dsh）'
+            : '',
+          onClick: checkUpdate,
+        },
+        updatesEnabled === false ? '自动下载已停用' : (busy ? '检查中 ...' : '检查更新'),
       ),
     ),
   )
@@ -971,7 +1422,7 @@ export function ProviderSettingsSection() {
         var models = modelsByProvider[account.id]
         if (models === undefined) {
           bodyRows.push(react.createElement('div', { className: 'pv_line', key: 'm-load' }, '模型目录加载中…'))
-        } else if (models.length === 0) {
+        } else if (models.length === 0 && account.deletable !== true) {
           bodyRows.push(react.createElement('div', { className: 'pv_line', key: 'm-none' }, '目录里没有这个 provider 的模型'))
         } else {
           // 模型区（带外框）独立折叠：卡片展开时默认收起，点「模型（N）」头展开
@@ -994,6 +1445,22 @@ export function ProviderSettingsSection() {
               react.createElement('span', null, '模型（' + (needle === '' ? String(models.length) : String(filtered.length) + '/' + String(models.length)) + '）'),
             ),
           ]
+          // 逐模型清单入口（本地版 issue #1）：只有 settings 里的 llm-pi-ai 路由能改
+          if (account.deletable === true) {
+            mTopChildren.push(
+              react.createElement('button', {
+                type: 'button',
+                className: 'pv_action pv_meOpen',
+                key: 'm-config',
+                title: '编辑这条路由服务的模型清单（写 settings.yaml 的 llm-pi-ai.providers.' + account.id + '.models）',
+                onClick: function () {
+                  toggle(account.id + ':models', false)
+                  setEditModelsFor(editModelsFor === account.id ? null : account.id)
+                  setOpenMap(function (prev: AnyRecord) { return withKey(prev, account.id, true) })
+                },
+              }, editModelsFor === account.id ? '收起清单' : '配置模型'),
+            )
+          }
           if (modelsOpen) {
             mTopChildren.push(
               react.createElement(
@@ -1036,7 +1503,22 @@ export function ProviderSettingsSection() {
             ),
           )
           mBoxRows.push(react.createElement('div', { className: 'pv_mTop', key: 'm-top' }, mTopChildren))
-          if (modelsOpen) {
+          if (modelsOpen || editModelsFor === account.id) {
+            if (editModelsFor === account.id) {
+              // 逐模型清单编辑器（本地版 issue #1）：就地替换列表视图
+              mBoxRows.push(react.createElement(ModelListEditor, {
+                key: 'm-edit',
+                account: account,
+                catalog: models,
+                details: detailsById,
+                onSaved: function (message: string) {
+                  showToast(message, true)
+                  // 清单变了：重拉余额/路由元信息 + 模型目录 + 预设
+                  onProviderAdded()
+                },
+                onClose: function () { setEditModelsFor(null) },
+              }))
+            } else {
             var mListRows = []
             // 列标题：与模型行同一套列宽类，保证严格对齐
             mListRows.push(
@@ -1058,6 +1540,7 @@ export function ProviderSettingsSection() {
             }
             // 列表区：分割线上边缘贯穿模型框
             mBoxRows.push(react.createElement('div', { className: 'pv_mList', key: 'm-list' }, mListRows))
+            }
           }
           bodyRows.push(react.createElement('div', { className: 'pv_mBox', key: 'mbox' }, mBoxRows))
         }
@@ -1150,43 +1633,19 @@ export function ProviderSettingsSection() {
                   '↻',
                 ),
                 account.deletable === true
-                  ? (delConfirm[account.id] === true
-                      ? react.createElement(
-                          'span',
-                          { className: 'pv_delBox' },
-                          react.createElement(
-                            'button',
-                            { type: 'button', className: 'pv_delYes', onClick: function () { removeProvider(account) } },
-                            '确认删除',
-                          ),
-                          react.createElement(
-                            'button',
-                            {
-                              type: 'button',
-                              className: 'pv_delNo',
-                              onClick: function () {
-                                setDelConfirm(function (prev: AnyRecord) {
-                                  return withKey(prev, account.id, false)
-                                })
-                              },
-                            },
-                            '取消',
-                          ),
-                        )
-                      : react.createElement(
-                          'button',
-                          {
-                            type: 'button',
-                            className: 'pv_iconBtn',
-                            title: '删除这个 provider',
-                            onClick: function () {
-                              setDelConfirm(function (prev: AnyRecord) {
-                                return withKey(prev, account.id, true)
-                              })
-                            },
-                          },
-                          '✕',
-                        ))
+                  ? react.createElement(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'pv_iconBtn',
+                        title: '删除这个 provider（会先弹出确认，列清要删的配置与密钥）',
+                        onClick: function () {
+                          setDelError(null)
+                          setDelTarget(account)
+                        },
+                      },
+                      '✕',
+                    )
                   : null,
               ),
             ),
@@ -1250,5 +1709,19 @@ export function ProviderSettingsSection() {
           { className: 'pv_toast ' + (toast.ok === true ? 'pv_toastOk' : 'pv_toastFail') },
           toast.text,
         ),
+    // 删除确认弹层（本地版 issue #3）：遮罩 + 代价清单 + 危险按钮
+    delTarget === null
+      ? null
+      : react.createElement(DeleteProviderModal, {
+          account: delTarget,
+          busy: delBusy,
+          error: delError,
+          onCancel: function () {
+            if (delBusy === true) return
+            setDelTarget(null)
+            setDelError(null)
+          },
+          onConfirm: function () { removeProvider(delTarget) },
+        }),
   )
 }

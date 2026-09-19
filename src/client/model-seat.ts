@@ -5,7 +5,7 @@
  *   → 推理等级面板（Default + 档位，选中打勾）。
  */
 import react from 'react'
-import { accountsById, findModel, loadModelCatalog, loadModelDetailMap, loadPlanStatus, normalizeGroups, onPlanChange, selectionCell, submitSelection, unwrap, usePolledSnapshot } from './data.js'
+import { accountsById, findModel, loadModelCatalog, loadModelDetailMap, loadPlanStatus, lookupDetail, normalizeGroups, onPlanChange, selectionCell, submitSelection, unwrap, usePolledSnapshot } from './data.js'
 import { recordDiagnostic } from './diag.js'
 import { defaultEffortOf, dotClass, effortLabel, formatContext, fuzzyMatch, quotaShortOf, quotaTipOf, reasoningTextOf, toneColor, worstPercent } from './format.js'
 import { caretSvg, checkSvg, chevronRightSvg } from './icons.js'
@@ -496,7 +496,9 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
             if (needle !== '' && fuzzyMatch(query, model.id + ' ' + model.name + ' ' + g.name + ' ' + g.id) !== true) return
             var isCurrent = selection !== undefined && selection !== null
               && selection.provider === g.id && selection.model === model.id
-            var detail = detailsById[model.id]
+            // 详情按 provider+id 查（同名模型不串家），查不到再退回裸 id —— modlens 这类
+            // 合成 provider 的模型 id 跟上游同名，只有带上 provider 才分得开
+            var detail = lookupDetail(detailsById, g.id, model.id)
             var caps = []
             if (detail !== undefined) {
               if (detail.vision === true) caps.push(react.createElement('span', { key: 'v', className: 'pv_capMini pv_capVision' }, '视觉'))

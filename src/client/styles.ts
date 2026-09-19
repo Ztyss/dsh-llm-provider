@@ -273,7 +273,50 @@ var css =
   '.pv_cap{font-size:11px;padding:1px 8px;border-radius:999px}' +
   '.pv_capVision{color:#2f9e44;background:rgba(47,158,68,.12)}' +
   '.pv_capVideo{color:#7c3aed;background:rgba(124,58,237,.12)}' +
-  '.pv_capReason{color:#b8860b;background:rgba(217,162,0,.15)}'
+  '.pv_capReason{color:#b8860b;background:rgba(217,162,0,.15)}' +
+  // ---- 本地版新增：能力来源标记（issue #5）----
+  '.pv_capDeclared{color:#0b7285;background:rgba(11,114,133,.12)}' +
+  // ---- 本地版新增：逐模型清单编辑器（issue #1）----
+  '.pv_meOpen{flex:none;margin-left:0;height:26px;padding:0 10px;font-size:12px}' +
+  '.pv_me{display:flex;flex-direction:column;gap:8px;padding:10px 0 4px;border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12))}' +
+  '.pv_meHead{display:flex;align-items:center;gap:10px}' +
+  '.pv_meTitle{font-size:13px;font-weight:600;line-height:18px}' +
+  '.pv_meList{display:flex;flex-direction:column;max-height:320px;overflow:auto;' +
+  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:10px}' +
+  '.pv_meRow{display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:12px;line-height:18px;' +
+  'border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.06))}' +
+  '.pv_meRow:last-child{border-bottom:0}' +
+  '.pv_meRowOff{opacity:.45}' +
+  '.pv_meCheck{flex:none;margin:0;cursor:pointer}' +
+  '.pv_meIdBox{flex:none;display:inline-flex;align-items:center;gap:6px;width:220px;min-width:0}' +
+  '.pv_meIdBox .pv_mId{max-width:150px}' +
+  '.pv_meName{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
+  'color:var(--dsw-alias-label-secondary)}' +
+  '.pv_meNum{flex:none;width:96px;box-sizing:border-box;padding:3px 8px;font:inherit;font-size:12px;' +
+  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:7px;outline:0;' +
+  'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-primary)}' +
+  '.pv_meNum:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}' +
+  '.pv_meCap{flex:none;display:inline-flex;align-items:center;gap:4px;cursor:pointer;' +
+  'color:var(--dsw-alias-label-tertiary);user-select:none}' +
+  '.pv_meCap input{margin:0;cursor:pointer}' +
+  '.pv_meAdd{display:flex;align-items:center;gap:8px}' +
+  '.pv_meActs{display:flex;align-items:center;gap:8px}' +
+  // ---- 本地版新增：删除确认弹层（issue #3）----
+  '.pv_mask{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;' +
+  'background:rgba(0,0,0,.42);padding:24px}' +
+  '.pv_modal{width:min(520px,100%);box-sizing:border-box;display:flex;flex-direction:column;gap:10px;' +
+  'padding:18px 20px;border-radius:14px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));' +
+  'background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-primary);' +
+  'box-shadow:var(--dsw-elevation-prominent,0 18px 48px rgba(0,0,0,.28))}' +
+  '.pv_modalTitle{font-size:14px;font-weight:600;line-height:20px}' +
+  '.pv_modalRow{display:flex;gap:12px;font-size:12px;line-height:19px}' +
+  '.pv_modalLabel{flex:none;width:80px;color:var(--dsw-alias-label-tertiary)}' +
+  '.pv_modalValue{flex:1 1 auto;min-width:0;word-break:break-word}' +
+  '.pv_modalWarn{font-size:12px;line-height:18px;padding:8px 10px;border-radius:8px;' +
+  'color:#a33;background:rgba(217,83,79,.12)}' +
+  '.pv_modalActs{display:flex;justify-content:flex-end;gap:10px;margin-top:2px}' +
+  '.pv_dangerBtn{color:#fff !important;background:#d9534f !important;border-color:#d9534f !important}' +
+  '.pv_dangerBtn:disabled{opacity:.6;cursor:default}'
 
 var tagId = 'dsh-llm-provider/plan.css'
 

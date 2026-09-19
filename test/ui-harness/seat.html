@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>dsh-llm-provider 本地版 · 模型面板（座位）渲染验证</title>
+<style>
+  body { margin: 0; background: #f6f7f9; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; color: #1b1c1e; }
+  #bar { padding: 10px 16px; font-size: 12px; color: #555; background: #fff; border-bottom: 1px solid #e6e8eb; }
+  /* 面板是向上弹的（.ms_menu{bottom:calc(100% + 6px);right:0}）且左对齐座位：把座位放低、往右挪，
+     否则面板会贴到视口左侧外/上方外，截图里看不全 */
+  #root { position: relative; min-height: 980px; padding: 700px 32px 24px 720px; }
+  #err { color: #c0392b; font-size: 12px; white-space: pre-wrap; padding: 8px 16px; }
+</style>
+</head>
+<body>
+<div id="bar">座位模型面板渲染验证（真 lib/client.js + 极简 react 垫片 + 桩 fetch）：<b>modlens 合成 provider 的视觉徽标</b></div>
+<div id="err"></div>
+<div id="root"></div>
+
+<script src="mini-react.js"></script>
+<script>
+(function () {
+  window.onerror = function (message) { document.getElementById('err').textContent = String(message) }
+
+  // 与真机同形状：pi-ai 的 opencode-go + modlens 的合成 provider（能力由适配器自报）
+  var MODELS = [
+    { id: 'deepseek-flash', provider: 'opencode-go', name: 'DeepSeek V4.1 Flash', contextWindow: 1000000, maxTokens: 384000,
+      vision: true, video: false, reasoning: true, thinkingLevels: ['low', 'high', 'max'], source: 'declared' },
+    { id: 'deepseek-v4-flash', provider: 'modlens-opencode-go', name: 'DeepSeek V4 Flash (modlens vision)', contextWindow: 1000000,
+      maxTokens: 384000, vision: true, video: false, reasoning: true, thinkingLevels: ['high', 'max'], source: 'adapter' },
+    { id: 'glm-5.3', provider: 'opencode-go', name: 'GLM-5.3', contextWindow: 1000000, maxTokens: 131072,
+      vision: false, video: false, reasoning: true, thinkingLevels: [], source: 'pi-ai' },
+  ]
+  var CATALOG = {
+    groups: [
+      { provider: 'opencode-go', name: 'OpenCode Go', models: [
+        { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', contextWindow: 1000000 },
+        { id: 'glm-5.3', name: 'GLM-5.3', contextWindow: 1000000 },
+      ] },
+      { provider: 'modlens-opencode-go', name: 'OpenCode Go (modlens vision)', models: [
+        { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash (modlens vision)', contextWindow: 1000000 },
+      ] },
+    ],
+    default: { provider: 'opencode-go', model: 'deepseek-flash' },
+  }
+  var PLAN = { fetchedAt: new Date().toISOString(), accounts: [
+    { id: 'opencode-go', displayName: 'OpenCode Go', kind: 'quota', authConfigured: true, deletable: true,
+      keyHint: 'sk-****abcd', windows: [ { window: '5 小时滚动窗口', percentLeft: 100 },
+      { window: '每周窗口', percentLeft: 65 }, { window: '每月窗口', percentLeft: 8 } ] },
+    { id: 'modlens-opencode-go', displayName: 'OpenCode Go (modlens vision)', kind: 'unknown-provider',
+      authConfigured: true, windows: [] },
+  ] }
+  function reply(body) {
+    return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve(body) } })
+  }
+  window.fetch = function (url, options) {
+    var path = String(url)
+    if (path.indexOf('/provider/models') === 0) return reply({ models: MODELS })
+    if (path.indexOf('/plan/status') === 0) return reply(PLAN)
+    if (path.indexOf('/provider/status') === 0) return reply({ bridge: { active: true, piAiVersion: '0.85.1', source: 'dsh' }, updatesEnabled: false, routes: [] })
+    if (path.indexOf('/provider/presets') === 0) return reply({ presets: [] })
+    if (path.indexOf('/api/session/modelCatalog') === 0) return reply({ result: { ok: true, value: CATALOG } })
+    return reply({})
+  }
+
+  var captured = null
+  window.__ModuleLoader__ = { load: function (config) { captured = config } }
+  var script = document.createElement('script')
+  script.src = 'client.js'
+  script.onload = function () {
+    try {
+      var mod = captured.factory(function (name) { return name === 'react' ? window.__React : {} })
+      var registrations = {}
+      var ctx = {
+        slots: { inject: function (n, cb) { cb() }, register: function (o, c) { registrations[o.id] = c; return function () {} } },
+        inject: function (names, cb) { cb({ effect: function (fn) { return fn() }, modelDirectories: undefined, commandUi: { register: function () { return function () {} } } }) },
+        effect: function (fn) { try { return fn() } catch (cause) { return function () {} } },
+        sessions: undefined,
+      }
+      mod.apply(ctx)
+      // 座位：从同源 RPC 拿目录（directory 省略 → 走 loadModelCatalog 路径）
+      var seat = registrations['provider-model-seat']
+      if (seat === undefined) throw new Error('没有注册 provider-model-seat 座位')
+      window.__render = window.__mount(seat, document.getElementById('root'))
+      window.__ready = true
+    } catch (cause) {
+      document.getElementById('err').textContent = 'apply/render 抛错：' + (cause && cause.stack ? cause.stack : cause)
+      window.__fatal = String(cause && cause.message ? cause.message : cause)
+    }
+  }
+  document.head.appendChild(script)
+})()
+</script>
+</body>
+</html>
