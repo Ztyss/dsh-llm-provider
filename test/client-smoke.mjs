@@ -260,8 +260,10 @@ const healthy = piAiBridgeRows(
   { latest: '0.85.1', lastCheck: new Date().toISOString() },
 )
 rowsCheck('健康的桥接只出一行版本', healthy.length === 1)
-rowsCheck('版本行带来源档位', healthy[0].value === '0.85.1（兜底依赖）')
+rowsCheck('版本行带来源档位（dependency 归入 vendor 桶）', healthy[0].value === '0.85.1（vendor）')
 rowsCheck('版本行带来源说明', typeof healthy[0].title === 'string' && healthy[0].title.length > 0)
+rowsCheck('官方档（dsh）标「官方」', piAiBridgeRows({ active: true, piAiVersion: '0.85.1', source: 'dsh' }, undefined)[0].value === '0.85.1（官方）')
+rowsCheck('官方档（dsh-app）也标「官方」（曾被误标成「已下载」）', piAiBridgeRows({ active: true, piAiVersion: '0.85.1', source: 'dsh-app' }, undefined)[0].value === '0.85.1（官方）')
 
 const fellBack = piAiBridgeRows(
   { active: true, piAiVersion: '0.85.1', source: 'dependency', rejected: [{ version: '0.86.0', error: '不提供导出 createModels' }] },
@@ -277,7 +279,7 @@ const pending = piAiBridgeRows(
   { latest: '0.86.0', pending: '0.86.0' },
 )
 rowsCheck('待生效版本提示重启', pending.some((r) => r.key === 'pending' && r.text.indexOf('重启 dsh') !== -1))
-rowsCheck('已下载档标成「已下载」', pending[0].value === '0.85.1（已下载）')
+rowsCheck('vendor 档（版本号 source）标成 vendor', pending[0].value === '0.85.1（vendor）')
 
 const rejectedByUpdater = piAiBridgeRows(
   { active: true, piAiVersion: '0.85.1', source: '0.85.1' },
@@ -604,8 +606,8 @@ i18nCheck('倒计时 zh = 即将重置', zhReset === '即将重置')
 i18nCheck('倒计时 en = Resetting soon', enReset === 'Resetting soon' && !hasHan(enReset))
 i18nCheck('相对时间 1 分钟前 = 1m（单位是机器口径，两边都不翻）', zhRel === '1m' && enRel === '1m')
 i18nCheck('相对时间 30 秒前 = <1min', zhRelUnder === '<1min' && enRelUnder === '<1min')
-i18nCheck('桥接版本行 zh 是中文来源档', zhRow.value === '0.85.1（兜底依赖）')
-i18nCheck('桥接版本行 en 是英文来源档', enRow.value === '0.85.1 (vendored fallback)' && !hasHan(enRow.value))
+i18nCheck('桥接版本行 zh 是中文来源档（dependency 归入 vendor 桶）', zhRow.value === '0.85.1（vendor）')
+i18nCheck('桥接版本行 en 是英文来源档', enRow.value === '0.85.1 (vendor)' && !hasHan(enRow.value))
 i18nCheck('上游未检查 zh = 上游 未检查', zhUpstream === '上游 未检查')
 i18nCheck('上游未检查 en = Upstream not checked', enUpstream === 'Upstream not checked' && !hasHan(enUpstream))
 i18nCheck('上游已检查 zh 带版本与检查时间',

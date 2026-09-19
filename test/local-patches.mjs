@@ -88,9 +88,9 @@ check('#5 同名模型按 provider 分开查（zai-coding-cn）', client.lookupD
 check('#5 裸 id 兜底还在', client.lookupDetail({ 'x': { id: 'x', vision: true } }, 'any', 'x').vision, true)
 check('#5 detailsOfProvider 只吐该家的', client.detailsOfProvider(map, 'opencode-go').length, 1)
 
-// 4. issue #4：桥接页在「更新停用」时的行 / 文案
+// 4. issue #4：桥接页在「更新停用」时只留版本一行（官方 / vendor），说明行与上游行整行不渲染
 const rows = client.piAiBridgeRows({ active: true, piAiVersion: '0.85.1', source: 'dsh' }, undefined, false)
-check('#4 停用更新时多一行说明', rows.some((row) => row.text.includes('自动下载已停用')), true)
+check('#4 停用更新时只留版本一行且标「官方」', rows.length === 1 && rows[0].value, '0.85.1 (official)')
 check('#4 上游文案标已停用', client.piAiUpstreamText({ latest: '0.86.0' }, false), 'Upstream auto-check disabled (no vendored copies)')
 
 // ---- 宿主端：真跑 lib/model-details.js ----

@@ -18,12 +18,10 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     // ---- pi-ai 桥接明细（设置页第二个二级标签）----
     'bridge.tab': 'pi-ai 桥接',
     'bridge.version': '当前 pi-ai 版本',
-    'bridge.srcDependency': '兜底依赖',
-    'bridge.srcDsh': 'dsh 自带',
-    'bridge.srcVendored': '已下载',
-    'bridge.hintDependency': '插件 vendor/ 下手动安装的兜底版本（可选档；没装就会落到 dsh 自带那份）',
-    'bridge.hintDsh': 'dsh 自己装的那份 pi-ai，版本随 dsh 发布走（不一定比上游旧）',
-    'bridge.hintVendored': '按需下载并验证过的版本，放在 vendor/pi-ai/<版本>/；换版本需重启 dsh',
+    'bridge.srcOfficial': '官方',
+    'bridge.srcVendored': 'vendor',
+    'bridge.hintOfficial': 'dsh 自带的那份 pi-ai，版本随 dsh 发布走（不一定比上游旧）',
+    'bridge.hintVendored': '插件包里自带的那份 pi-ai（vendor/pi-ai/<版本>/）；默认停用下载，不落地',
     'bridge.srcParen': '{version}（{source}）',
     'bridge.reason': '看原因',
     'bridge.probeUnverified': '当前这份 pi-ai 没做过兼容性体检',
@@ -38,10 +36,8 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'bridge.check': '检查更新',
     'bridge.downloadOff': 'pi-ai 只使用 DSH 自带那一份，插件的下载/更新入口已关闭',
     'bridge.hostOnly': 'pi-ai：只用 DSH 自带那份（已关闭下载）',
-    // 合并版：下载是 opt-in（DSH_PROVIDER_UPDATE=on），默认停用时的上游行与按钮
+    // 合并版：下载是 opt-in（DSH_PROVIDER_UPDATE=on）；停用时上游行与按钮整行不渲染，只留版本一行
     'bridge.upstreamPaused': '上游 自动检查已停用（vendor/ 不落地第二份 pi-ai）',
-    'bridge.pausedTitle': '本地版已停用 pi-ai 自动下载：vendor/ 不会落地第二份 pi-ai（要跟上游就用 DSH_PROVIDER_UPDATE=on 启动 dsh）',
-    'bridge.pausedBtn': '自动下载已停用',
 
     // ---- 模型能力 / 详情卡 ----
     'cap.vision': '视觉',
@@ -216,12 +212,10 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     // ---- pi-ai bridge detail rows ----
     'bridge.tab': 'pi-ai bridge',
     'bridge.version': 'Current pi-ai version',
-    'bridge.srcDependency': 'vendored fallback',
-    'bridge.srcDsh': 'bundled with dsh',
-    'bridge.srcVendored': 'downloaded',
-    'bridge.hintDependency': 'Fallback version installed manually under the plugin vendor/ directory (optional tier; without it the copy bundled with dsh is used)',
-    'bridge.hintDsh': 'The pi-ai copy dsh installs for itself; its version follows dsh releases (not necessarily older than upstream)',
-    'bridge.hintVendored': 'A version downloaded and verified on demand, kept in vendor/pi-ai/<version>/; switching versions needs a dsh restart',
+    'bridge.srcOfficial': 'official',
+    'bridge.srcVendored': 'vendor',
+    'bridge.hintOfficial': 'The pi-ai copy bundled with dsh; its version follows dsh releases (not necessarily older than upstream)',
+    'bridge.hintVendored': "The pi-ai copy shipped inside the plugin package (vendor/pi-ai/<version>/); absent while auto-download is off",
     'bridge.srcParen': '{version} ({source})',
     'bridge.reason': 'Why',
     'bridge.probeUnverified': 'This pi-ai copy never passed the compatibility probe',
@@ -236,10 +230,8 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'bridge.check': 'Check for updates',
     'bridge.downloadOff': 'pi-ai uses only the copy bundled with DSH; the plugin download/update entry is disabled',
     'bridge.hostOnly': 'pi-ai: DSH-bundled copy only (downloads disabled)',
-    // merged: downloads are opt-in (DSH_PROVIDER_UPDATE=on); paused state of the upstream row
+    // merged: downloads are opt-in (DSH_PROVIDER_UPDATE=on); with auto-download off the whole upstream row is not rendered
     'bridge.upstreamPaused': 'Upstream auto-check disabled (no vendored copies)',
-    'bridge.pausedTitle': 'pi-ai auto-download is disabled: no second copy lands in vendor/ (set DSH_PROVIDER_UPDATE=on to follow upstream)',
-    'bridge.pausedBtn': 'Auto-download off',
 
     // ---- model capabilities / detail card ----
     'cap.vision': 'Vision',

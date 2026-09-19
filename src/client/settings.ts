@@ -32,16 +32,14 @@ import { PROVIDER_API_OPTIONS, isProviderEditDirty, providerEditForm, providerEd
 import type { ProviderEditForm } from './provider-edit.js'
 import type { AddProviderPanelProps, BridgeRow, CatalogModel, DeclaredModel, FieldEvent, HeadlineChip, ModelDetail, ModelEditRow, PlanAccount, ProviderPreset } from './types.js'
 
-/** 当前用的是哪一档 pi-ai。宿主报的 source：版本号 / 'dependency' / 'dsh'。 */
+/** 当前用的是哪一档 pi-ai，只分两桶：官方（'dsh' / 'dsh-app'，dsh 自带）vs vendor（'vendor' / 'dependency' / 版本号，插件包自带）。 */
 function piAiSourceLabel(source: unknown): string {
-  if (source === 'dependency') return t('bridge.srcDependency')
-  if (source === 'dsh') return t('bridge.srcDsh')
+  if (source === 'dsh' || source === 'dsh-app') return t('bridge.srcOfficial')
   return t('bridge.srcVendored')
 }
 
 function piAiSourceHint(source: unknown): string {
-  if (source === 'dependency') return t('bridge.hintDependency')
-  if (source === 'dsh') return t('bridge.hintDsh')
+  if (source === 'dsh' || source === 'dsh-app') return t('bridge.hintOfficial')
   return t('bridge.hintVendored')
 }
 
@@ -66,15 +64,8 @@ export function piAiBridgeRows(bridge: unknown, update: unknown, updatesEnabled?
     value: tf('bridge.srcParen', { version: bridgeRecord.piAiVersion, source: piAiSourceLabel(bridgeRecord.source) }),
     title: piAiSourceHint(bridgeRecord.source),
   })
-  // 本地版（issue #4）：自动下载默认关闭，vendor/ 里不留第二份 pi-ai
-  if (updatesEnabled === false) {
-    rows.push({
-      key: 'local',
-      text: '本地版：pi-ai 自动下载已停用',
-      value: 'vendor/ 不落地 pi-ai',
-      title: '本机不再下载 @earendil-works/pi-ai：桥接直接用 dsh 自带那份（vendor/ 里只有官方适配器 bundle 的副本，约 113 KB）。要跟上游就用 DSH_PROVIDER_UPDATE=on 启动 dsh',
-    })
-  }
+  // 本地版（issue #4）：默认停用自动下载时不再显示说明行——桥接页只留版本一行（官方 / vendor）；
+  // updatesEnabled 只由组件用来决定上游行与按钮是否渲染
   // 体检没执行（bundle 的 import 需求解析不出）：这份 pi-ai 是靠「目录存在」放行的，没验证过
   if (bridgeRecord.probeUnverified === true) {
     rows.push({
@@ -1762,25 +1753,27 @@ export function ProviderSettingsSection() {
     ))
   }
   // 上游那一行右侧跟按钮：检查更新（宿主先校验下载内容、再做兼容性体检，都过了才等重启生效）。
-  // 本地版默认停用自动下载，按钮置灰并说明原因（issue #4）。
-  bridgeLines.push(
-    react.createElement(
-      'div',
-      { className: 'pv_line', key: 'action' },
-      piAiUpstreamText(update, updatesEnabled),
+  // 只在开启自动下载（DSH_PROVIDER_UPDATE=on）时渲染；默认收起，桥接页只留版本一行（issue #4）。
+  if (updatesEnabled !== false) {
+    bridgeLines.push(
       react.createElement(
-        'button',
-        {
-          type: 'button',
-          className: 'pv_action pv_push',
-          disabled: busy || updatesEnabled === false,
-          title: updatesEnabled === false ? t('bridge.pausedTitle') : '',
-          onClick: checkUpdate,
-        },
-        updatesEnabled === false ? t('bridge.pausedBtn') : (busy ? t('bridge.checking') : t('bridge.check')),
+        'div',
+        { className: 'pv_line', key: 'action' },
+        piAiUpstreamText(update, updatesEnabled),
+        react.createElement(
+          'button',
+          {
+            type: 'button',
+            className: 'pv_action pv_push',
+            disabled: busy,
+            title: '',
+            onClick: checkUpdate,
+          },
+          busy ? t('bridge.checking') : t('bridge.check'),
+        ),
       ),
-    ),
-  )
+    )
+  }
   var accounts = plan !== null && Array.isArray(plan.accounts) ? plan.accounts : []
   var modelsByProvider: Record<string, CatalogModel[]> = {}
   for (var gi = 0; gi < catalogGroups.length; gi += 1) {
