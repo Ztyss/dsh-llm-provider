@@ -132,7 +132,6 @@ window.__ModuleLoader__.load({
 				"prov.modelsLoading": "模型目录加载中…",
 				"prov.noModels": "目录里没有这个 provider 的模型",
 				"prov.models": "模型（{count}）",
-				"prov.modelsFiltered": "模型（{shown}/{total}）",
 				"prov.clear": "清除",
 				"prov.collapse": "收起",
 				"prov.expand": "展开",
@@ -300,7 +299,6 @@ window.__ModuleLoader__.load({
 				"prov.modelsLoading": "Loading model catalog…",
 				"prov.noModels": "The catalog has no models for this provider",
 				"prov.models": "Models ({count})",
-				"prov.modelsFiltered": "Models ({shown}/{total})",
 				"prov.clear": "Clear",
 				"prov.collapse": "Collapse",
 				"prov.expand": "Expand",
@@ -2583,8 +2581,50 @@ window.__ModuleLoader__.load({
 				}
 			}, t("prov.cancel"))), test.message === "" ? null : react.default.createElement("div", { className: "plan_note" + (test.phase === "fail" ? " plan_badText" : "") }, test.message), note === null ? null : react.default.createElement("div", { className: "plan_note" }, note)));
 		}
-		/** 逐模型编辑器的一行（勾选 + 可编辑字段 + 移除）。 */
+		/**
+		* 逐模型编辑器的一行：列与显示清单对齐（勾选 | 模型 ID | 名称 | 能力 | 上下文 | 最大输出 | 移除）。
+		* 现有条目（目录收录 / 已声明）只读展示——清单只做新增与移除；自定义条目才有输入框和能力开关。
+		* 长 ID / 长名称在列内自动换行，不再截断（title 仍兜底完整值）。
+		*/
 		function modelEditRow(row, patch, remove) {
+			var known = row.known === true;
+			var caps = known ? [
+				row.vision === true ? react.default.createElement("span", {
+					key: "v",
+					className: "pv_capMini pv_capVision",
+					title: "目录元数据：支持图片输入"
+				}, "视觉") : null,
+				row.video === true ? react.default.createElement("span", {
+					key: "d",
+					className: "pv_capMini pv_capVideo",
+					title: "目录元数据：支持视频输入"
+				}, "视频") : null,
+				row.knownReasoning === true ? react.default.createElement("span", {
+					key: "r",
+					className: "pv_capMini pv_capReason",
+					title: "目录元数据：支持思维链"
+				}, "推理") : null
+			] : [react.default.createElement("label", {
+				key: "vision",
+				className: "pv_meCap" + (row.vision ? " pv_capVision" : " pv_capOff"),
+				title: "声明支持图片输入（写进模型的 input 模态）"
+			}, react.default.createElement("input", {
+				type: "checkbox",
+				checked: row.vision,
+				onChange: function(event) {
+					patch(row.id, { vision: event.target.checked === true });
+				}
+			}), "视觉"), react.default.createElement("label", {
+				key: "video",
+				className: "pv_meCap" + (row.video ? " pv_capVideo" : " pv_capOff"),
+				title: "声明支持视频输入（写进模型的 input 模态）"
+			}, react.default.createElement("input", {
+				type: "checkbox",
+				checked: row.video,
+				onChange: function(event) {
+					patch(row.id, { video: event.target.checked === true });
+				}
+			}), "视频")];
 			return react.default.createElement("div", {
 				className: "pv_meRow" + (row.enabled ? "" : " pv_meRowOff"),
 				key: row.id
@@ -2599,58 +2639,44 @@ window.__ModuleLoader__.load({
 			}), react.default.createElement("span", { className: "pv_meIdBox" }, react.default.createElement("span", {
 				className: "pv_mId",
 				title: row.id
-			}, row.id), row.known ? null : react.default.createElement("span", {
+			}, row.id), known ? null : react.default.createElement("span", {
 				className: "pv_capMini pv_capDeclared",
 				title: "生效 pi-ai 目录里没有这个 ID——上下文窗口与最大输出必须自己填"
 			}, "自定义")), react.default.createElement("span", {
 				className: "pv_meName",
 				title: row.name
-			}, row.name), react.default.createElement("input", {
+			}, row.name), react.default.createElement("span", { className: "pv_mCaps" }, caps), known ? react.default.createElement("span", {
+				className: "pv_mCtx",
+				style: { textAlign: "right" },
+				title: "目录里的上下文窗口（只读）"
+			}, formatContext(row.knownContextWindow) ?? "") : react.default.createElement("input", {
 				className: "pv_meNum",
 				type: "text",
 				inputMode: "numeric",
-				placeholder: row.knownContextWindow === void 0 ? "上下文" : String(row.knownContextWindow),
-				title: "上下文窗口（留空 = 跟着 pi-ai 目录）",
+				placeholder: "上下文",
+				title: "上下文窗口（自定义模型必填）",
 				value: row.contextWindow,
 				onChange: function(event) {
 					patch(row.id, { contextWindow: event.target.value });
 				}
-			}), react.default.createElement("input", {
+			}), known ? react.default.createElement("span") : react.default.createElement("input", {
 				className: "pv_meNum",
 				type: "text",
 				inputMode: "numeric",
-				placeholder: row.knownMaxTokens === void 0 ? "最大输出" : String(row.knownMaxTokens),
-				title: "最大输出 token（留空 = 跟着 pi-ai 目录）",
+				placeholder: "最大输出",
+				title: "最大输出 token（自定义模型必填）",
 				value: row.maxTokens,
 				onChange: function(event) {
 					patch(row.id, { maxTokens: event.target.value });
 				}
-			}), react.default.createElement("label", {
-				className: "pv_meCap",
-				title: "声明支持图片输入（写进模型的 input 模态）"
-			}, react.default.createElement("input", {
-				type: "checkbox",
-				checked: row.vision,
-				onChange: function(event) {
-					patch(row.id, { vision: event.target.checked === true });
-				}
-			}), "视觉"), react.default.createElement("label", {
-				className: "pv_meCap",
-				title: "声明支持视频输入（写进模型的 input 模态）"
-			}, react.default.createElement("input", {
-				type: "checkbox",
-				checked: row.video,
-				onChange: function(event) {
-					patch(row.id, { video: event.target.checked === true });
-				}
-			}), "视频"), react.default.createElement("button", {
+			}), row.enabled === true || known === false ? react.default.createElement("button", {
 				type: "button",
 				className: "pv_iconBtn",
-				title: "把这一行从清单里去掉（保存后生效）",
+				title: known ? "从已配置清单里删除这个模型（保存后生效）" : "把这行自定义条目从清单里去掉",
 				onClick: function() {
 					remove(row.id);
 				}
-			}, "✕"));
+			}, "✕") : react.default.createElement("span", { key: "del-slot" }));
 		}
 		/** 编辑器初始行：当前生效的目录模型 + 目录里该 provider 的全部模型 + 路由声明过的模型。 */
 		function buildEditRows(account, catalog, details) {
@@ -2674,6 +2700,7 @@ window.__ModuleLoader__.load({
 					known: detail !== void 0,
 					knownContextWindow: detail === void 0 ? void 0 : detail.contextWindow,
 					knownMaxTokens: detail === void 0 ? void 0 : detail.maxTokens,
+					knownReasoning: detail !== void 0 && detail.reasoning === true,
 					originVision: detail !== void 0 ? detail.vision === true : declaredInput.indexOf("image") !== -1,
 					originVideo: detail !== void 0 ? detail.video === true : declaredInput.indexOf("video") !== -1,
 					declared: entry
@@ -2766,6 +2793,7 @@ window.__ModuleLoader__.load({
 						known: detail !== void 0,
 						knownContextWindow: detail === void 0 ? void 0 : detail.contextWindow,
 						knownMaxTokens: detail === void 0 ? void 0 : detail.maxTokens,
+						knownReasoning: detail !== void 0 && detail.reasoning === true,
 						originVision: detail !== void 0 && detail.vision === true,
 						originVideo: detail !== void 0 && detail.video === true,
 						declared: void 0
@@ -2774,52 +2802,61 @@ window.__ModuleLoader__.load({
 				setDraft("");
 				setError(null);
 			}
-			/** 当前编辑结果 → settings 的 models 数组；形状不合法时返回 undefined 并写好错误提示。 */
+			/**
+			* 当前编辑结果 → settings 的 models 数组；形状不合法时返回 undefined 并写好错误提示。
+			*
+			* 清单只做「新增 / 移除」，不改现有条目的字段：
+			*   现有条目（路由声明过的 / 目录收录的）——原样保留：声明过的整条带回去，目录收录的只写 {id}；
+			*   自定义条目（目录里没有）——上下文 / 最大输出必填，能力开关写进 input 模态。
+			*/
 			function payload() {
 				var out = [];
 				for (var i = 0; i < rows.length; i += 1) {
 					var row = rows[i];
 					if (row.enabled !== true) continue;
-					var entry = row.declared === void 0 ? { id: row.id } : {
-						...row.declared,
-						id: row.id
-					};
-					var name = row.name.trim();
-					if (name !== "" && name !== row.id) entry.name = name;
+					if (row.declared !== void 0) {
+						out.push({
+							...row.declared,
+							id: row.id
+						});
+						continue;
+					}
+					if (row.known === true) {
+						out.push({ id: row.id });
+						continue;
+					}
 					var ctx = row.contextWindow.trim();
-					if (ctx !== "") {
-						var ctxNum = Number(ctx);
-						if (!isFinite(ctxNum) || Math.floor(ctxNum) !== ctxNum || ctxNum <= 0) {
-							setError("「" + row.id + "」的上下文窗口要填正整数");
-							return;
-						}
-						entry.contextWindow = ctxNum;
-					} else if (entry.contextWindow === void 0 && row.known !== true) {
-						setError("pi-ai 目录里没有「" + row.id + "」，上下文窗口与最大输出都要填（官方适配器会拒绝缺字段的声明）");
+					if (ctx === "") {
+						setError("自定义模型「" + row.id + "」要填上下文窗口");
+						return;
+					}
+					var ctxNum = Number(ctx);
+					if (!isFinite(ctxNum) || Math.floor(ctxNum) !== ctxNum || ctxNum <= 0) {
+						setError("「" + row.id + "」的上下文窗口要填正整数");
 						return;
 					}
 					var max = row.maxTokens.trim();
-					if (max !== "") {
-						var maxNum = Number(max);
-						if (!isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) {
-							setError("「" + row.id + "」的最大输出要填正整数");
-							return;
-						}
-						entry.maxTokens = maxNum;
-					} else if (entry.maxTokens === void 0 && row.known !== true) {
-						setError("pi-ai 目录里没有「" + row.id + "」，上下文窗口与最大输出都要填");
+					if (max === "") {
+						setError("自定义模型「" + row.id + "」要填最大输出");
 						return;
 					}
-					if (row.vision !== row.originVision || row.video !== row.originVideo || entry.input !== void 0 || row.known !== true) {
-						var input = ["text"];
-						if (row.vision === true) input.push("image");
-						if (row.video === true) input.push("video");
-						entry.input = input;
+					var maxNum = Number(max);
+					if (!isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) {
+						setError("「" + row.id + "」的最大输出要填正整数");
+						return;
 					}
-					out.push(entry);
+					var input = ["text"];
+					if (row.vision === true) input.push("image");
+					if (row.video === true) input.push("video");
+					out.push({
+						id: row.id,
+						contextWindow: ctxNum,
+						maxTokens: maxNum,
+						input
+					});
 				}
 				if (out.length === 0) {
-					setError("至少留一个模型；要让这家回到「目录全量」请点「跟随目录」");
+					setError("至少留一个模型；要让这家回到「目录全量」请点「跟随目录（还原）」");
 					return;
 				}
 				return out;
@@ -2847,7 +2884,14 @@ window.__ModuleLoader__.load({
 			for (var r = 0; r < rows.length; r += 1) rows_.push(modelEditRow(rows[r], patch, remove));
 			var enabledCount = 0;
 			for (var e = 0; e < rows.length; e += 1) if (rows[e].enabled === true) enabledCount += 1;
-			return react.default.createElement("div", { className: "pv_me" }, react.default.createElement("div", { className: "pv_meHead" }, react.default.createElement("span", { className: "pv_meTitle" }, "逐模型清单"), react.default.createElement("span", { className: "pv_hint" }, declaredCount > 0 ? "当前只服务清单里的 " + String(declaredCount) + " 个模型" : "当前跟随 pi-ai 目录（" + String(rows.length) + " 个模型全部可用）")), react.default.createElement("div", { className: "pv_hint" }, "保存后写进 settings.yaml 的 llm-pi-ai.providers." + account.id + ".models：没勾的模型不会出现在模型选择器里。目录里没有的自定义 ID 必须把「上下文」和「最大输出」填全。"), react.default.createElement("div", { className: "pv_meList" }, rows_), react.default.createElement("div", { className: "pv_meAdd" }, react.default.createElement("input", {
+			var colHead = react.default.createElement("div", {
+				className: "pv_meHeadRow",
+				key: "colhead"
+			}, react.default.createElement("span", { key: "h-check" }), react.default.createElement("span", {
+				key: "h-id",
+				style: { fontFamily: "inherit" }
+			}, t("prov.modelId")), react.default.createElement("span", { key: "h-name" }, t("prov.name")), react.default.createElement("span", { key: "h-caps" }, t("prov.caps")), react.default.createElement("span", { key: "h-ctx" }, t("prov.ctx")), react.default.createElement("span", { key: "h-max" }, t("cap.maxTokens")), react.default.createElement("span", { key: "h-del" }));
+			return react.default.createElement("div", { className: "pv_me" }, react.default.createElement("div", { className: "pv_hint" }, declaredCount > 0 ? "当前只服务清单里的 " + String(declaredCount) + " 个模型。" : "当前跟随 pi-ai 目录（" + String(rows.length) + " 个全部可用）。勾选即草稿，点「保存清单」才写进 settings.yaml 的 llm-pi-ai.providers." + account.id + ".models。"), react.default.createElement("div", { className: "pv_meList" }, [colHead].concat(rows_)), react.default.createElement("div", { className: "pv_meAdd" }, react.default.createElement("input", {
 				className: "pv_field",
 				type: "text",
 				placeholder: "自定义模型 ID（目录里没有的）",
@@ -2875,18 +2919,13 @@ window.__ModuleLoader__.load({
 			}, busy ? "保存中…" : "保存清单"), react.default.createElement("button", {
 				type: "button",
 				className: "pv_action",
+				style: { marginLeft: "auto" },
 				disabled: busy,
-				title: "删掉这条路由的 models 键：回到「pi-ai 目录收录什么就服务什么」",
+				title: "还原：删掉这条路由的 models 键，回到「pi-ai 目录收录什么就服务什么」",
 				onClick: function() {
 					submit(null, "✓ " + shortName(account) + " 已回到目录全量");
 				}
-			}, "跟随目录（清空清单）"), react.default.createElement("button", {
-				type: "button",
-				className: "pv_action",
-				style: { marginLeft: "auto" },
-				disabled: busy,
-				onClick: props.onClose
-			}, "取消")), error === null ? null : react.default.createElement("div", { className: "plan_note plan_badText" }, error));
+			}, "跟随目录（还原）")), error === null ? null : react.default.createElement("div", { className: "plan_note plan_badText" }, error));
 		}
 		/**
 		* 删除 provider 的确认弹层（本地版新增，实现 issue #3）。
@@ -2981,9 +3020,6 @@ window.__ModuleLoader__.load({
 			var detailsState = react.default.useState({});
 			var detailsById = detailsState[0];
 			var setDetailsById = detailsState[1];
-			var filtersState = react.default.useState({});
-			var filters = filtersState[0];
-			var setFilters = filtersState[1];
 			var presetsState = react.default.useState([]);
 			var presets = presetsState[0];
 			var setPresets = presetsState[1];
@@ -3007,9 +3043,6 @@ window.__ModuleLoader__.load({
 			var delErrorState = react.default.useState(null);
 			var delError = delErrorState[0];
 			var setDelError = delErrorState[1];
-			var editModelsState = react.default.useState(null);
-			var editModelsFor = editModelsState[0];
-			var setEditModelsFor = editModelsState[1];
 			var refreshingState = react.default.useState({});
 			var setRefreshing = refreshingState[1];
 			var keyDraftState = react.default.useState({});
@@ -3304,12 +3337,6 @@ window.__ModuleLoader__.load({
 					return withKey(prev, key, isOpen(key, dflt) !== true);
 				});
 			}
-			/** 模型列表过滤词（按模型 ID 或名称匹配）。 */
-			function setFilter(id, value) {
-				setFilters(function(prev) {
-					return withKey(prev, id, value);
-				});
-			}
 			var bridge = status === null || status.bridge === void 0 ? void 0 : status.bridge;
 			var update = status === null || status.update === void 0 ? void 0 : status.update;
 			var updatesEnabled = status === null || status.updatesEnabled === void 0 ? void 0 : status.updatesEnabled === true;
@@ -3497,10 +3524,6 @@ window.__ModuleLoader__.load({
 					}, t("prov.noModels")));
 					else {
 						var modelsOpen = isOpen(account.id + ":models", false);
-						var filterText = filters[account.id] === void 0 ? "" : String(filters[account.id]);
-						var needle = filterText.trim().toLowerCase();
-						var filtered = [];
-						for (var fi = 0; fi < models.length; fi += 1) if (fuzzyMatch(filterText, models[fi].id + " " + models[fi].name)) filtered.push(models[fi]);
 						var mBoxRows = [];
 						var mTopChildren = [react.default.createElement("button", {
 							type: "button",
@@ -3509,42 +3532,7 @@ window.__ModuleLoader__.load({
 							onClick: function() {
 								toggle(account.id + ":models", false);
 							}
-						}, react.default.createElement("span", null, needle === "" ? tf("prov.models", { count: models.length }) : tf("prov.modelsFiltered", {
-							shown: filtered.length,
-							total: models.length
-						})))];
-						if (account.deletable === true) mTopChildren.push(react.default.createElement("button", {
-							type: "button",
-							className: "pv_action pv_meOpen",
-							key: "m-config",
-							title: "编辑这条路由服务的模型清单（写 settings.yaml 的 llm-pi-ai.providers." + account.id + ".models）",
-							onClick: function() {
-								toggle(account.id + ":models", false);
-								setEditModelsFor(editModelsFor === account.id ? null : account.id);
-								setOpenMap(function(prev) {
-									return withKey(prev, account.id, true);
-								});
-							}
-						}, editModelsFor === account.id ? "收起清单" : "配置模型"));
-						if (modelsOpen) mTopChildren.push(react.default.createElement("span", {
-							className: "pv_fbox",
-							key: "m-filter"
-						}, react.default.createElement("input", {
-							className: "pv_mFilter",
-							type: "text",
-							placeholder: t("prov.filter"),
-							value: filterText,
-							onChange: function(event) {
-								setFilter(account.id, event.target.value);
-							}
-						}), filterText === "" ? null : react.default.createElement("button", {
-							type: "button",
-							className: "pv_fclear",
-							title: t("prov.clear"),
-							onClick: function() {
-								setFilter(account.id, "");
-							}
-						}, "×")));
+						}, react.default.createElement("span", null, tf("prov.models", { count: models.length })))];
 						mTopChildren.push(react.default.createElement("div", {
 							className: "pv_mCaretCol",
 							key: "m-caret",
@@ -3557,8 +3545,8 @@ window.__ModuleLoader__.load({
 							className: "pv_mTop",
 							key: "m-top"
 						}, mTopChildren));
-						if (modelsOpen || editModelsFor === account.id) {
-							if (editModelsFor === account.id) mBoxRows.push(react.default.createElement(ModelListEditor, {
+						if (modelsOpen) {
+							if (account.deletable === true) mBoxRows.push(react.default.createElement(ModelListEditor, {
 								key: "m-edit",
 								account,
 								catalog: models,
@@ -3568,7 +3556,9 @@ window.__ModuleLoader__.load({
 									onProviderAdded();
 								},
 								onClose: function() {
-									setEditModelsFor(null);
+									setOpenMap(function(prev) {
+										return withKey(prev, account.id + ":models", false);
+									});
 								}
 							}));
 							else {
@@ -3580,11 +3570,7 @@ window.__ModuleLoader__.load({
 									className: "pv_mId",
 									style: { fontFamily: "inherit" }
 								}, t("prov.modelId")), react.default.createElement("span", { className: "pv_mName" }, t("prov.name")), react.default.createElement("span", { className: "pv_mCaps" }, t("prov.caps")), react.default.createElement("span", { className: "pv_mCtx" }, t("prov.ctx"))));
-								if (filtered.length === 0) mListRows.push(react.default.createElement("div", {
-									className: "pv_line",
-									key: "m-empty"
-								}, tf("m.noMatch", { query: filterText })));
-								else for (var m = 0; m < filtered.length; m += 1) mListRows.push(modelRow(filtered[m], account, detailsById));
+								for (var m = 0; m < models.length; m += 1) mListRows.push(modelRow(models[m], account, detailsById));
 								mBoxRows.push(react.default.createElement("div", {
 									className: "pv_mList",
 									key: "m-list"
@@ -3713,7 +3699,7 @@ window.__ModuleLoader__.load({
 		* 插件样式：沿用 GUI 的 CSS 变量，跟模型座位视觉一致。
 		* installCss 一律手写 style 标签（官方 styles.insert 需要 inject 'styles'，见文件末尾注释）。
 		*/
-		var css = ".plan_root{position:relative;display:inline-flex;align-items:center}.plan_dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-label-tertiary)}.plan_dot_ok{background:#22a06b}.plan_dot_warn{background:#d9a300}.plan_dot_bad{background:#d9534f}.plan_tag{margin-left:auto;font-size:12px;color:var(--dsw-alias-label-tertiary);font-weight:400}.plan_warnText{color:#b8860b}.plan_badText{color:#d9534f}.plan_note{margin-top:3px;font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);word-break:break-word}.mp_search{box-sizing:border-box;width:100%;padding:6px 10px;margin-bottom:4px;font:inherit;font-size:12px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:8px;outline:0}.mp_search:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}.mp_chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}.mp_chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;font:inherit;font-size:12.5px;line-height:18px;color:var(--dsw-alias-label-secondary);background:0 0;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:999px;cursor:pointer}.mp_chip[data-on=\"1\"]{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.05));border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}.mp_modelName{font-weight:500}.mp_empty{padding:14px 10px;text-align:center;font-size:12px;color:var(--dsw-alias-label-tertiary)}.ms_trigger{display:flex;align-items:center;gap:4px;min-width:0;max-width:min(560px,60vw);max-width:min(560px,60cqw);height:28px;padding:0 4px 0 8px;border:0;border-radius:24px;background:transparent;outline:0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:20px;font-weight:500;cursor:pointer;white-space:nowrap}.ms_trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.ms_trigger:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.ms_tLabel{min-width:0;overflow:hidden;text-overflow:ellipsis}.ms_tProvider{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;flex-shrink:999}.ms_tModel{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;flex-shrink:1}.ms_tSlash{flex:0 0 auto}.ms_tEffort{flex:0 0 auto;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary))}.ms_tQuota{flex:0 0 auto;display:inline-flex;align-items:center;gap:3px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary))}@container (max-width:760px){.ms_tProvider,.ms_tSlash{display:none}}@container (max-width:620px){.ms_tQuotaText{display:none}}.ms_chev{flex:0 0 auto;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary));transition:transform .12s ease}.ms_chevOpen{transform:rotate(180deg)}.ms_menu{position:absolute;bottom:calc(100% + 6px);right:0;z-index:1100;display:flex;flex-direction:column;width:max-content;min-width:min(240px,calc(100vw - 32px));max-width:min(420px,calc(100vw - 32px));max-height:min(360px,calc(100vh - 96px));overflow:hidden;padding:4px;border:0;border-radius:20px;background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18));color:var(--dsw-alias-label-primary)}.ms_cell{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:auto;min-width:100%;height:40px;padding:0 10px;border:0;border-radius:10px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:22px;cursor:pointer;text-align:left}.ms_cell:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.ms_cellLabel{flex:0 0 auto;white-space:nowrap}.ms_cellValue{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:var(--dsw-alias-label-tertiary)}.ms_cellChev{flex:0 0 auto;color:var(--dsw-alias-label-tertiary)}.ms_scroll{min-height:0;overflow-y:auto;display:flex;flex-direction:column}.ms_group{margin-top:4px}.ms_groupTitle{position:sticky;top:0;z-index:1;padding:5px 8px 3px;background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;font-weight:500}.ms_option{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:auto;min-width:100%;min-height:38px;padding:6px 8px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;font-size:14px;line-height:20px;text-align:left;cursor:pointer}.ms_option:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.ms_option:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.ms_name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}.ms_capsCol{flex:none;width:92px;display:flex;justify-content:flex-end;align-items:center;gap:4px}.ms_ctxCol{flex:none;width:48px;text-align:right;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}.ms_check{flex:0 0 18px;display:grid;place-items:center;color:var(--dsw-alias-label-primary)}.ms_status{padding:10px;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}.pv_section{display:flex;flex-direction:column;gap:12px;max-width:640px}.pv_card{padding:14px 16px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:12px;background:var(--dsw-alias-bg-layer-1,#fff)}.pv_title{font-size:13px;font-weight:600;line-height:18px;margin-bottom:8px}.pv_line{display:flex;align-items:center;gap:10px;font-size:13px;line-height:22px;padding:3px 0;color:var(--dsw-alias-label-secondary)}.pv_action{margin-left:auto;font:inherit;font-size:12px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.05));border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:6px;padding:4px 12px;cursor:pointer}.pv_action:disabled{opacity:.5;cursor:default}.pv_stack{display:flex;flex-direction:column;gap:14px;max-width:600px}.pv_pc{list-style:none;border:.5px solid var(--dsw-alias-border-l4,rgba(0,0,0,.15));border-radius:16px;background:var(--dsw-alias-bg-layer-3,#fff);transition:border-color .16s,background .16s;display:flex;flex-direction:column}.pv_pc:hover{border-color:var(--dsw-alias-label-dimmed,rgba(0,0,0,.3))}.pv_pcOpen{background:var(--dsw-alias-bg-layer-2,#f4f5f6);border-color:var(--dsw-alias-label-dimmed,rgba(0,0,0,.3))}.pv_pcTop{display:flex;align-items:stretch}.pv_pcMain{flex:1;min-width:0;display:flex;flex-direction:column}.pv_pcCaretCol{flex:none;width:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--dsw-alias-label-tertiary)}.pv_pcCaretCol:hover{color:var(--dsw-alias-label-secondary)}.pv_pcHead{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border:0;background:0 0;cursor:pointer;font:inherit;color:inherit;text-align:left;border-radius:12px}.pv_pcHead:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#3b5bdb);outline-offset:-2px}.pv_pcName{font-size:15px;font-weight:600;line-height:1.4;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv_pcChips{flex:none;display:flex;align-items:center;gap:10px;font-size:13px;white-space:nowrap}.pv_chipItem{display:inline-flex;align-items:baseline;gap:2px}.pv_chipLabel{color:var(--dsw-alias-label-secondary)}.pv_chipSep{flex:none;width:1px;height:12px;margin:0 4px;background:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}.pv_chipReset{color:var(--dsw-alias-label-tertiary);font-size:12px}.pv_pcCaret{flex:none;display:block;color:var(--dsw-alias-label-tertiary);transition:transform .16s}.pv_pcCaretOpen{transform:rotate(180deg)}.pv_pcMeta{display:flex;align-items:center;gap:10px;padding:2px 16px 14px;font-size:13px;flex-wrap:wrap}.pv_metaActs{margin-left:auto;display:inline-flex;align-items:center;gap:4px}.pv_pcWeb{display:inline-flex;align-items:center;color:var(--dsw-alias-label-tertiary);text-decoration:none;font-size:14px;line-height:20px;padding:0 2px;border-radius:6px}.pv_pcWeb:hover{color:var(--dsw-alias-label-secondary)}.pv_lv{flex:none;margin-left:auto;font-size:12px;line-height:18px;padding:1px 10px;border-radius:999px;white-space:nowrap;color:var(--dsw-alias-state-business-primary,#5b8cff);border:1px solid var(--dsw-alias-state-business-primary,#5b8cff)}.pv_pickItem,.pv_iconBtn,.pv_action,.pv_tab,.pv_addBtn,.pv_fclear,.pv_delYes,.pv_delNo,.mp_chip,.pv_pcLink{transition:background-color .16s ease,color .16s ease}.pv_iconBtn:focus-visible,.pv_action:focus-visible,.pv_tab:focus-visible,.pv_pickItem:focus-visible,.pv_addBtn:focus-visible,.pv_mFilter:focus-visible,input.pv_field:focus-visible,select.pv_field:focus-visible,select.pv_msEff:focus-visible,a.pv_pcLink:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#3b5bdb);outline-offset:1px}.pv_pcBody{border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));padding:10px 18px 14px;display:flex;flex-direction:column;gap:4px}.pv_line .plan_tag{margin-left:0}.pv_line .pv_push{margin-left:auto}.pv_row>span:first-child{width:72px;flex:none}.pv_hint{font-size:12px;line-height:16px;color:var(--dsw-alias-label-tertiary)}.pv_field{display:inline-flex;align-items:center;min-width:240px;max-width:100%;padding:6px 12px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary)}.pv_mBox{border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:12px;padding:0 14px;display:flex;flex-direction:column}.pv_mRight{margin-left:auto;display:inline-flex;align-items:center;gap:8px}.pv_iconBtn{border:0;background:0 0;cursor:pointer;font:inherit;font-size:15px;padding:3px 6px;border-radius:6px;color:var(--dsw-alias-label-tertiary)}.pv_iconBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.pv_delOn{color:#e03131;font-size:12px;width:auto;padding:2px 8px}.pv_modelEditor{display:flex;flex-direction:column;gap:6px;padding:8px 10px;margin-top:6px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.02))}.pv_edHead{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dsw-alias-label-secondary)}.pv_edMode{margin-left:auto;font-size:11px;padding:1px 6px;border-radius:6px;background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.pv_edItem{display:flex;flex-direction:column;gap:4px}.pv_edItemOff{opacity:.5}.pv_edRow{display:flex;align-items:center;gap:6px;font-size:12px}.pv_edId{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv_edTag{font-size:11px;padding:1px 6px;border-radius:6px;background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06));color:var(--dsw-alias-label-secondary)}.pv_edCaret{margin-left:auto;border:0;background:0 0;cursor:pointer;font:inherit;font-size:11px;padding:1px 6px;border-radius:6px;color:var(--dsw-alias-label-tertiary)}.pv_edCaret:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.pv_edFields{display:flex;flex-direction:column;gap:4px;padding:6px 0 2px 22px}.pv_edField{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dsw-alias-label-secondary)}.pv_edField > .pv_field{flex:1;min-width:0}.pv_edAdd{display:flex;align-items:center;gap:6px}.pv_edActs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.pv_delPanel{display:flex;flex-direction:column;gap:6px;padding:10px 12px;margin-top:2px;border:1px solid rgba(224,49,49,.35);border-radius:10px;background:rgba(224,49,49,.05)}.pv_delPanelTitle{font-size:13px;font-weight:500;color:#e03131}.pv_delPanelBody{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}.pv_delPanelActs{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.pv_delPanel .pv_delYes{border:1px solid rgba(224,49,49,.5);background:rgba(224,49,49,.1);font-weight:500}.pv_delPanel .pv_delNo{border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12))}.pv_delYes{border:0;background:0 0;cursor:pointer;font:inherit;font-size:12px;color:#e03131;padding:3px 9px;border-radius:6px}.pv_delYes:hover{background:rgba(224,49,49,.12)}.pv_delNo{border:0;background:0 0;cursor:pointer;font:inherit;font-size:12px;color:var(--dsw-alias-label-secondary);padding:3px 9px;border-radius:6px}.pv_delNo:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}@keyframes pvRot{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.pv_spin{display:inline-block;animation:pvRot 1s linear infinite}.pv_toast{position:fixed;bottom:24px;right:24px;z-index:500;padding:10px 18px;border-radius:12px;font-size:13px;line-height:20px;max-width:min(420px,80vw);background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18))}.pv_toastOk{color:#2f9e44}.pv_toastFail{color:#e03131}.pv_fresh{font-size:12px;line-height:18px;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}.pv_addBtn{width:100%;padding:13px;border:1px dashed var(--dsw-alias-border-l2,rgba(0,0,0,.2));border-radius:14px;background:0 0;cursor:pointer;font:inherit;font-size:14px;color:var(--dsw-alias-label-secondary)}.pv_addBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.03))}input.pv_field{cursor:text}select.pv_field{cursor:pointer}input.pv_ro{background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.05));color:var(--dsw-alias-label-tertiary);cursor:default}input.pv_key{background:var(--dsw-alias-bg-layer-1,#fff);border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}.pv_actRow{display:flex;gap:10px;align-items:center;padding:8px 0 4px}.pv_pick{flex:1;min-width:0;position:relative}.pv_pickBtn{width:100%;cursor:pointer;justify-content:space-between;gap:8px}.pv_pickMenu{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:250;padding:6px;display:flex;flex-direction:column;gap:4px;border-radius:10px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18))}.pv_pickList{max-height:240px;overflow:auto;display:flex;flex-direction:column}.pv_pickItem{display:flex;align-items:center;gap:6px;padding:8px 12px;border:0;background:0 0;cursor:pointer;font:inherit;font-size:13.5px;color:var(--dsw-alias-label-primary);text-align:left;border-radius:8px}.pv_pickItem:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.04))}.pv_pickItem:disabled{opacity:.5;cursor:default}.pv_pickEmpty{padding:12px;font-size:13px;color:var(--dsw-alias-label-tertiary);text-align:center}.pv_msRow{display:flex;align-items:center;gap:8px}.pv_msMain{flex:1;min-width:0;display:flex;align-items:center;gap:8px;text-align:left}select.pv_msEff{flex:none;font:inherit;font-size:12px;padding:3px 8px;cursor:pointer;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:6px;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-secondary)}.pv_tabs{display:flex;gap:2px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));margin-bottom:14px}.pv_tab{font:inherit;font-size:14px;padding:8px 14px;border:0;background:0 0;cursor:pointer;color:var(--dsw-alias-label-secondary);border-bottom:2px solid transparent;margin-bottom:-1px}.pv_tab:hover{color:var(--dsw-alias-label-primary)}.pv_tabOn{color:var(--dsw-alias-label-primary);border-bottom-color:var(--dsw-alias-brand-primary,#3b5bdb);font-weight:600}.pv_pcLead{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}.pv_pcLeadRow{display:flex;align-items:center;gap:8px}.pv_pcLink{font-size:13px;line-height:1.5;color:var(--dsw-alias-label-tertiary);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv_pcLink:hover{color:var(--dsw-alias-label-secondary);text-decoration:underline}.pv_mRow{position:relative;display:flex;align-items:center;gap:8px;padding:3px 0}.pv_mId{flex:none;width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);font-family:ui-monospace,Menlo,Consolas,monospace}.pv_mName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv_mHeadRow{display:flex;align-items:center;gap:8px;padding:5px 0 4px;font-size:12px;color:var(--dsw-alias-label-tertiary);border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}.pv_mCaps{flex:none;width:100px;display:inline-flex;justify-content:flex-end;align-items:center;gap:6px}.pv_mCtx{flex:none;width:56px;text-align:right;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}.pv_capIcons{display:inline-flex;gap:6px;font-size:12px;line-height:16px}.pv_capMini{font-size:11px;line-height:16px;padding:0 7px;border-radius:999px;white-space:nowrap}.pv_mHead{display:flex;align-items:center;gap:6px;flex:1;min-width:0;font:inherit;font-size:13px;font-weight:600;line-height:18px;padding:0;border:0;background:0 0;cursor:pointer;color:var(--dsw-alias-label-primary);text-align:left}.pv_mHead:hover{color:var(--dsw-alias-label-secondary)}.pv_mTop{display:flex;align-items:center;gap:8px;height:38px;padding:0}.pv_mCaretCol{flex:none;width:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--dsw-alias-label-tertiary)}.pv_mCaretCol:hover{color:var(--dsw-alias-label-secondary)}.pv_mList{border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));margin-top:0;padding-top:6px;display:flex;flex-direction:column}.pv_mFilter{flex:none;width:240px;box-sizing:border-box;padding:5px 24px 5px 12px;font:inherit;font-size:13px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:8px;outline:0;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-primary)}.pv_mFilter:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}.pv_fbox{position:relative;display:inline-flex;align-items:center;flex:none}.pv_fclear{position:absolute;right:2px;top:50%;transform:translateY(-50%);border:0;background:0 0;cursor:pointer;font:inherit;font-size:14px;line-height:1;padding:2px 6px;color:var(--dsw-alias-label-tertiary);border-radius:6px}.pv_fclear:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.pv_tip{display:none;position:absolute;left:0;bottom:calc(100% + 6px);z-index:300;width:270px;padding:12px 14px;border-radius:12px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18));flex-direction:column;gap:6px}.pv_mRow:hover .pv_tip{display:flex}.pv_tipTitle{font-size:13px;font-weight:600;line-height:18px}.pv_tipRow{display:flex;gap:10px;font-size:12px;line-height:18px}.pv_tipLabel{flex:none;width:60px;color:var(--dsw-alias-label-tertiary)}.pv_tipDim{font-size:11px;color:var(--dsw-alias-label-tertiary)}.pv_tipCaps{display:flex;gap:6px;flex-wrap:wrap}.pv_cap{font-size:11px;padding:1px 8px;border-radius:999px}.pv_capVision{color:#2f9e44;background:rgba(47,158,68,.12)}.pv_capVideo{color:#7c3aed;background:rgba(124,58,237,.12)}.pv_capReason{color:#b8860b;background:rgba(217,162,0,.15)}.pv_capDeclared{color:#0b7285;background:rgba(11,114,133,.12)}.pv_meOpen{flex:none;margin-left:0;height:26px;padding:0 10px;font-size:12px}.pv_me{display:flex;flex-direction:column;gap:8px;padding:10px 0 4px;border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12))}.pv_meHead{display:flex;align-items:center;gap:10px}.pv_meTitle{font-size:13px;font-weight:600;line-height:18px}.pv_meList{display:flex;flex-direction:column;max-height:320px;overflow:auto;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:10px}.pv_meRow{display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:12px;line-height:18px;border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.06))}.pv_meRow:last-child{border-bottom:0}.pv_meRowOff{opacity:.45}.pv_meCheck{flex:none;margin:0;cursor:pointer}.pv_meIdBox{flex:none;display:inline-flex;align-items:center;gap:6px;width:220px;min-width:0}.pv_meIdBox .pv_mId{max-width:150px}.pv_meName{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary)}.pv_meNum{flex:none;width:96px;box-sizing:border-box;padding:3px 8px;font:inherit;font-size:12px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:7px;outline:0;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-primary)}.pv_meNum:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}.pv_meCap{flex:none;display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:var(--dsw-alias-label-tertiary);user-select:none}.pv_meCap input{margin:0;cursor:pointer}.pv_meAdd{display:flex;align-items:center;gap:8px}.pv_meActs{display:flex;align-items:center;gap:8px}.pv_mask{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.42);padding:24px}.pv_modal{width:min(520px,100%);box-sizing:border-box;display:flex;flex-direction:column;gap:10px;padding:18px 20px;border-radius:14px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-elevation-prominent,0 18px 48px rgba(0,0,0,.28))}.pv_modalTitle{font-size:14px;font-weight:600;line-height:20px}.pv_modalRow{display:flex;gap:12px;font-size:12px;line-height:19px}.pv_modalLabel{flex:none;width:80px;color:var(--dsw-alias-label-tertiary)}.pv_modalValue{flex:1 1 auto;min-width:0;word-break:break-word}.pv_modalWarn{font-size:12px;line-height:18px;padding:8px 10px;border-radius:8px;color:#a33;background:rgba(217,83,79,.12)}.pv_modalActs{display:flex;justify-content:flex-end;gap:10px;margin-top:2px}.pv_dangerBtn{color:#fff !important;background:#d9534f !important;border-color:#d9534f !important}.pv_dangerBtn:disabled{opacity:.6;cursor:default}";
+		var css = ".plan_root{position:relative;display:inline-flex;align-items:center}.plan_dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-label-tertiary)}.plan_dot_ok{background:#22a06b}.plan_dot_warn{background:#d9a300}.plan_dot_bad{background:#d9534f}.plan_tag{margin-left:auto;font-size:12px;color:var(--dsw-alias-label-tertiary);font-weight:400}.plan_warnText{color:#b8860b}.plan_badText{color:#d9534f}.plan_note{margin-top:3px;font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);word-break:break-word}.mp_search{box-sizing:border-box;width:100%;padding:6px 10px;margin-bottom:4px;font:inherit;font-size:12px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:8px;outline:0}.mp_search:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}.mp_chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}.mp_chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;font:inherit;font-size:12.5px;line-height:18px;color:var(--dsw-alias-label-secondary);background:0 0;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:999px;cursor:pointer}.mp_chip[data-on=\"1\"]{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.05));border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}.mp_modelName{font-weight:500}.mp_empty{padding:14px 10px;text-align:center;font-size:12px;color:var(--dsw-alias-label-tertiary)}.ms_trigger{display:flex;align-items:center;gap:4px;min-width:0;max-width:min(560px,60vw);max-width:min(560px,60cqw);height:28px;padding:0 4px 0 8px;border:0;border-radius:24px;background:transparent;outline:0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:20px;font-weight:500;cursor:pointer;white-space:nowrap}.ms_trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.ms_trigger:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.ms_tLabel{min-width:0;overflow:hidden;text-overflow:ellipsis}.ms_tProvider{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;flex-shrink:999}.ms_tModel{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;flex-shrink:1}.ms_tSlash{flex:0 0 auto}.ms_tEffort{flex:0 0 auto;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary))}.ms_tQuota{flex:0 0 auto;display:inline-flex;align-items:center;gap:3px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary))}@container (max-width:760px){.ms_tProvider,.ms_tSlash{display:none}}@container (max-width:620px){.ms_tQuotaText{display:none}}.ms_chev{flex:0 0 auto;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary));transition:transform .12s ease}.ms_chevOpen{transform:rotate(180deg)}.ms_menu{position:absolute;bottom:calc(100% + 6px);right:0;z-index:1100;display:flex;flex-direction:column;width:max-content;min-width:min(240px,calc(100vw - 32px));max-width:min(420px,calc(100vw - 32px));max-height:min(360px,calc(100vh - 96px));overflow:hidden;padding:4px;border:0;border-radius:20px;background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18));color:var(--dsw-alias-label-primary)}.ms_cell{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:auto;min-width:100%;height:40px;padding:0 10px;border:0;border-radius:10px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:22px;cursor:pointer;text-align:left}.ms_cell:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.ms_cellLabel{flex:0 0 auto;white-space:nowrap}.ms_cellValue{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:var(--dsw-alias-label-tertiary)}.ms_cellChev{flex:0 0 auto;color:var(--dsw-alias-label-tertiary)}.ms_scroll{min-height:0;overflow-y:auto;display:flex;flex-direction:column}.ms_group{margin-top:4px}.ms_groupTitle{position:sticky;top:0;z-index:1;padding:5px 8px 3px;background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;font-weight:500}.ms_option{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:auto;min-width:100%;min-height:38px;padding:6px 8px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;font-size:14px;line-height:20px;text-align:left;cursor:pointer}.ms_option:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.ms_option:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.ms_name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}.ms_capsCol{flex:none;width:92px;display:flex;justify-content:flex-end;align-items:center;gap:4px}.ms_ctxCol{flex:none;width:48px;text-align:right;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}.ms_check{flex:0 0 18px;display:grid;place-items:center;color:var(--dsw-alias-label-primary)}.ms_status{padding:10px;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}.pv_section{display:flex;flex-direction:column;gap:12px;max-width:640px}.pv_card{padding:14px 16px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:12px;background:var(--dsw-alias-bg-layer-1,#fff)}.pv_title{font-size:13px;font-weight:600;line-height:18px;margin-bottom:8px}.pv_line{display:flex;align-items:center;gap:10px;font-size:13px;line-height:22px;padding:3px 0;color:var(--dsw-alias-label-secondary)}.pv_action{margin-left:auto;font:inherit;font-size:12px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.05));border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:6px;padding:4px 12px;cursor:pointer}.pv_action:disabled{opacity:.5;cursor:default}.pv_stack{display:flex;flex-direction:column;gap:14px;max-width:600px}.pv_pc{list-style:none;border:.5px solid var(--dsw-alias-border-l4,rgba(0,0,0,.15));border-radius:16px;background:var(--dsw-alias-bg-layer-3,#fff);transition:border-color .16s,background .16s;display:flex;flex-direction:column}.pv_pc:hover{border-color:var(--dsw-alias-label-dimmed,rgba(0,0,0,.3))}.pv_pcOpen{background:var(--dsw-alias-bg-layer-2,#f4f5f6);border-color:var(--dsw-alias-label-dimmed,rgba(0,0,0,.3))}.pv_pcTop{display:flex;align-items:stretch}.pv_pcMain{flex:1;min-width:0;display:flex;flex-direction:column}.pv_pcCaretCol{flex:none;width:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--dsw-alias-label-tertiary)}.pv_pcCaretCol:hover{color:var(--dsw-alias-label-secondary)}.pv_pcHead{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border:0;background:0 0;cursor:pointer;font:inherit;color:inherit;text-align:left;border-radius:12px}.pv_pcHead:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#3b5bdb);outline-offset:-2px}.pv_pcName{font-size:15px;font-weight:600;line-height:1.4;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv_pcChips{flex:none;display:flex;align-items:center;gap:10px;font-size:13px;white-space:nowrap}.pv_chipItem{display:inline-flex;align-items:baseline;gap:2px}.pv_chipLabel{color:var(--dsw-alias-label-secondary)}.pv_chipSep{flex:none;width:1px;height:12px;margin:0 4px;background:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}.pv_chipReset{color:var(--dsw-alias-label-tertiary);font-size:12px}.pv_pcCaret{flex:none;display:block;color:var(--dsw-alias-label-tertiary);transition:transform .16s}.pv_pcCaretOpen{transform:rotate(180deg)}.pv_pcMeta{display:flex;align-items:center;gap:10px;padding:2px 16px 14px;font-size:13px;flex-wrap:wrap}.pv_metaActs{margin-left:auto;display:inline-flex;align-items:center;gap:4px}.pv_pcWeb{display:inline-flex;align-items:center;color:var(--dsw-alias-label-tertiary);text-decoration:none;font-size:14px;line-height:20px;padding:0 2px;border-radius:6px}.pv_pcWeb:hover{color:var(--dsw-alias-label-secondary)}.pv_lv{flex:none;margin-left:auto;font-size:12px;line-height:18px;padding:1px 10px;border-radius:999px;white-space:nowrap;color:var(--dsw-alias-state-business-primary,#5b8cff);border:1px solid var(--dsw-alias-state-business-primary,#5b8cff)}.pv_pickItem,.pv_iconBtn,.pv_action,.pv_tab,.pv_addBtn,.pv_fclear,.pv_delYes,.pv_delNo,.mp_chip,.pv_pcLink{transition:background-color .16s ease,color .16s ease}.pv_iconBtn:focus-visible,.pv_action:focus-visible,.pv_tab:focus-visible,.pv_pickItem:focus-visible,.pv_addBtn:focus-visible,.pv_mFilter:focus-visible,input.pv_field:focus-visible,select.pv_field:focus-visible,select.pv_msEff:focus-visible,a.pv_pcLink:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#3b5bdb);outline-offset:1px}.pv_pcBody{border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));padding:10px 18px 14px;display:flex;flex-direction:column;gap:4px}.pv_line .plan_tag{margin-left:0}.pv_line .pv_push{margin-left:auto}.pv_row>span:first-child{width:72px;flex:none}.pv_hint{font-size:12px;line-height:16px;color:var(--dsw-alias-label-tertiary)}.pv_field{display:inline-flex;align-items:center;min-width:240px;max-width:100%;padding:6px 12px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary)}.pv_mBox{border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:12px;padding:0 14px;display:flex;flex-direction:column}.pv_mRight{margin-left:auto;display:inline-flex;align-items:center;gap:8px}.pv_iconBtn{border:0;background:0 0;cursor:pointer;font:inherit;font-size:15px;padding:3px 6px;border-radius:6px;color:var(--dsw-alias-label-tertiary)}.pv_iconBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.pv_delOn{color:#e03131;font-size:12px;width:auto;padding:2px 8px}.pv_modelEditor{display:flex;flex-direction:column;gap:6px;padding:8px 10px;margin-top:6px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.02))}.pv_edHead{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dsw-alias-label-secondary)}.pv_edMode{margin-left:auto;font-size:11px;padding:1px 6px;border-radius:6px;background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.pv_edItem{display:flex;flex-direction:column;gap:4px}.pv_edItemOff{opacity:.5}.pv_edRow{display:flex;align-items:center;gap:6px;font-size:12px}.pv_edId{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv_edTag{font-size:11px;padding:1px 6px;border-radius:6px;background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06));color:var(--dsw-alias-label-secondary)}.pv_edCaret{margin-left:auto;border:0;background:0 0;cursor:pointer;font:inherit;font-size:11px;padding:1px 6px;border-radius:6px;color:var(--dsw-alias-label-tertiary)}.pv_edCaret:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.pv_edFields{display:flex;flex-direction:column;gap:4px;padding:6px 0 2px 22px}.pv_edField{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dsw-alias-label-secondary)}.pv_edField > .pv_field{flex:1;min-width:0}.pv_edAdd{display:flex;align-items:center;gap:6px}.pv_edActs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.pv_delPanel{display:flex;flex-direction:column;gap:6px;padding:10px 12px;margin-top:2px;border:1px solid rgba(224,49,49,.35);border-radius:10px;background:rgba(224,49,49,.05)}.pv_delPanelTitle{font-size:13px;font-weight:500;color:#e03131}.pv_delPanelBody{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}.pv_delPanelActs{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.pv_delPanel .pv_delYes{border:1px solid rgba(224,49,49,.5);background:rgba(224,49,49,.1);font-weight:500}.pv_delPanel .pv_delNo{border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12))}.pv_delYes{border:0;background:0 0;cursor:pointer;font:inherit;font-size:12px;color:#e03131;padding:3px 9px;border-radius:6px}.pv_delYes:hover{background:rgba(224,49,49,.12)}.pv_delNo{border:0;background:0 0;cursor:pointer;font:inherit;font-size:12px;color:var(--dsw-alias-label-secondary);padding:3px 9px;border-radius:6px}.pv_delNo:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}@keyframes pvRot{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.pv_spin{display:inline-block;animation:pvRot 1s linear infinite}.pv_toast{position:fixed;bottom:24px;right:24px;z-index:500;padding:10px 18px;border-radius:12px;font-size:13px;line-height:20px;max-width:min(420px,80vw);background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18))}.pv_toastOk{color:#2f9e44}.pv_toastFail{color:#e03131}.pv_fresh{font-size:12px;line-height:18px;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}.pv_addBtn{width:100%;padding:13px;border:1px dashed var(--dsw-alias-border-l2,rgba(0,0,0,.2));border-radius:14px;background:0 0;cursor:pointer;font:inherit;font-size:14px;color:var(--dsw-alias-label-secondary)}.pv_addBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.03))}input.pv_field{cursor:text}select.pv_field{cursor:pointer}input.pv_ro{background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.05));color:var(--dsw-alias-label-tertiary);cursor:default}input.pv_key{background:var(--dsw-alias-bg-layer-1,#fff);border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}.pv_actRow{display:flex;gap:10px;align-items:center;padding:8px 0 4px}.pv_pick{flex:1;min-width:0;position:relative}.pv_pickBtn{width:100%;cursor:pointer;justify-content:space-between;gap:8px}.pv_pickMenu{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:250;padding:6px;display:flex;flex-direction:column;gap:4px;border-radius:10px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18))}.pv_pickList{max-height:240px;overflow:auto;display:flex;flex-direction:column}.pv_pickItem{display:flex;align-items:center;gap:6px;padding:8px 12px;border:0;background:0 0;cursor:pointer;font:inherit;font-size:13.5px;color:var(--dsw-alias-label-primary);text-align:left;border-radius:8px}.pv_pickItem:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.04))}.pv_pickItem:disabled{opacity:.5;cursor:default}.pv_pickEmpty{padding:12px;font-size:13px;color:var(--dsw-alias-label-tertiary);text-align:center}.pv_msRow{display:flex;align-items:center;gap:8px}.pv_msMain{flex:1;min-width:0;display:flex;align-items:center;gap:8px;text-align:left}select.pv_msEff{flex:none;font:inherit;font-size:12px;padding:3px 8px;cursor:pointer;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:6px;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-secondary)}.pv_tabs{display:flex;gap:2px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));margin-bottom:14px}.pv_tab{font:inherit;font-size:14px;padding:8px 14px;border:0;background:0 0;cursor:pointer;color:var(--dsw-alias-label-secondary);border-bottom:2px solid transparent;margin-bottom:-1px}.pv_tab:hover{color:var(--dsw-alias-label-primary)}.pv_tabOn{color:var(--dsw-alias-label-primary);border-bottom-color:var(--dsw-alias-brand-primary,#3b5bdb);font-weight:600}.pv_pcLead{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}.pv_pcLeadRow{display:flex;align-items:center;gap:8px}.pv_pcLink{font-size:13px;line-height:1.5;color:var(--dsw-alias-label-tertiary);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv_pcLink:hover{color:var(--dsw-alias-label-secondary);text-decoration:underline}.pv_mRow{position:relative;display:flex;align-items:center;gap:8px;padding:3px 0}.pv_mId{flex:none;width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);font-family:ui-monospace,Menlo,Consolas,monospace}.pv_mName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv_mHeadRow{display:flex;align-items:center;gap:8px;padding:5px 0 4px;font-size:12px;color:var(--dsw-alias-label-tertiary);border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}.pv_mCaps{flex:none;width:100px;display:inline-flex;justify-content:flex-end;align-items:center;gap:6px}.pv_mCtx{flex:none;width:56px;text-align:right;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}.pv_capIcons{display:inline-flex;gap:6px;font-size:12px;line-height:16px}.pv_capMini{font-size:11px;line-height:16px;padding:0 7px;border-radius:999px;white-space:nowrap}.pv_mHead{display:flex;align-items:center;gap:6px;flex:1;min-width:0;font:inherit;font-size:13px;font-weight:600;line-height:18px;padding:0;border:0;background:0 0;cursor:pointer;color:var(--dsw-alias-label-primary);text-align:left}.pv_mHead:hover{color:var(--dsw-alias-label-secondary)}.pv_mTop{display:flex;align-items:center;gap:8px;height:38px;padding:0}.pv_mCaretCol{flex:none;width:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--dsw-alias-label-tertiary)}.pv_mCaretCol:hover{color:var(--dsw-alias-label-secondary)}.pv_mList{border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));margin-top:0;padding-top:6px;display:flex;flex-direction:column}.pv_mFilter{flex:none;width:240px;box-sizing:border-box;padding:5px 24px 5px 12px;font:inherit;font-size:13px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:8px;outline:0;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-primary)}.pv_mFilter:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}.pv_fbox{position:relative;display:inline-flex;align-items:center;flex:none}.pv_fclear{position:absolute;right:2px;top:50%;transform:translateY(-50%);border:0;background:0 0;cursor:pointer;font:inherit;font-size:14px;line-height:1;padding:2px 6px;color:var(--dsw-alias-label-tertiary);border-radius:6px}.pv_fclear:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.pv_tip{display:none;position:absolute;left:0;bottom:calc(100% + 6px);z-index:300;width:270px;padding:12px 14px;border-radius:12px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18));flex-direction:column;gap:6px}.pv_mRow:hover .pv_tip{display:flex}.pv_tipTitle{font-size:13px;font-weight:600;line-height:18px}.pv_tipRow{display:flex;gap:10px;font-size:12px;line-height:18px}.pv_tipLabel{flex:none;width:60px;color:var(--dsw-alias-label-tertiary)}.pv_tipDim{font-size:11px;color:var(--dsw-alias-label-tertiary)}.pv_tipCaps{display:flex;gap:6px;flex-wrap:wrap}.pv_cap{font-size:11px;padding:1px 8px;border-radius:999px}.pv_capVision{color:#2f9e44;background:rgba(47,158,68,.12)}.pv_capVideo{color:#7c3aed;background:rgba(124,58,237,.12)}.pv_capReason{color:#b8860b;background:rgba(217,162,0,.15)}.pv_capDeclared{color:#0b7285;background:rgba(11,114,133,.12)}.pv_me{display:flex;flex-direction:column;gap:8px;padding:10px 0 4px;border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12))}.pv_meHead{display:flex;align-items:center;gap:10px}.pv_meTitle{font-size:13px;font-weight:600;line-height:18px}.pv_meList{display:flex;flex-direction:column;max-height:320px;overflow:auto;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:10px}.pv_meHeadRow{display:grid;grid-template-columns:14px minmax(150px,1.5fr) minmax(110px,1fr) 150px 96px 96px 20px;gap:8px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}.pv_meRow{display:grid;grid-template-columns:14px minmax(150px,1.5fr) minmax(110px,1fr) 150px 96px 96px 20px;gap:8px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.06))}.pv_meRow:last-child{border-bottom:0}.pv_meRowOff{opacity:.45}.pv_meCheck{margin:0;cursor:pointer}.pv_meIdBox{display:inline-flex;align-items:flex-start;gap:6px;min-width:0}.pv_meRow .pv_mId{width:auto;max-width:none;overflow:visible;white-space:normal;word-break:break-all;text-align:left}.pv_meName{min-width:0;white-space:normal;overflow:visible;color:var(--dsw-alias-label-secondary)}.pv_meNum{box-sizing:border-box;width:100%;padding:3px 8px;font:inherit;font-size:12px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:7px;outline:0;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-primary)}.pv_meNum:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}.pv_meRow .pv_mCaps{width:auto;justify-content:flex-start;flex-wrap:wrap}.pv_meCap{display:inline-flex;align-items:center;gap:4px;cursor:pointer;user-select:none;font-size:11px;line-height:16px;padding:0 7px;border-radius:999px;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}.pv_meCap input{margin:0;cursor:pointer}.pv_capOff{opacity:.6;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1,rgba(0,0,0,.15))}.pv_meAdd{display:flex;align-items:center;gap:8px}.pv_meActs{display:flex;align-items:center;gap:8px}.pv_mask{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.42);padding:24px}.pv_modal{width:min(520px,100%);box-sizing:border-box;display:flex;flex-direction:column;gap:10px;padding:18px 20px;border-radius:14px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-elevation-prominent,0 18px 48px rgba(0,0,0,.28))}.pv_modalTitle{font-size:14px;font-weight:600;line-height:20px}.pv_modalRow{display:flex;gap:12px;font-size:12px;line-height:19px}.pv_modalLabel{flex:none;width:80px;color:var(--dsw-alias-label-tertiary)}.pv_modalValue{flex:1 1 auto;min-width:0;word-break:break-word}.pv_modalWarn{font-size:12px;line-height:18px;padding:8px 10px;border-radius:8px;color:#a33;background:rgba(217,83,79,.12)}.pv_modalActs{display:flex;justify-content:flex-end;gap:10px;margin-top:2px}.pv_dangerBtn{color:#fff !important;background:#d9534f !important;border-color:#d9534f !important}.pv_dangerBtn:disabled{opacity:.6;cursor:default}";
 		var tagId = "dsh-llm-provider/plan.css";
 		/**
 		* 挂样式：手写 style 标签（带 data-plugin-css 标记，重复调用幂等）。

@@ -315,11 +315,11 @@ var css =
   '.pv_meList{display:flex;flex-direction:column;max-height:320px;overflow:auto;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:10px}' +
   // 编辑器行用网格列布局，与显示清单同一套列语义（勾选 | 模型 ID | 名称 | 能力 | 上下文 | 最大输出 | 移除）
-  '.pv_meHeadRow{display:grid;grid-template-columns:14px minmax(150px,1.5fr) minmax(110px,1fr) 150px 96px 96px 20px;' +
+  '.pv_meHeadRow{display:grid;grid-template-columns:12px minmax(100px,1.3fr) minmax(70px,1fr) 84px 64px 64px 18px;' +
   'gap:8px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;' +
   'color:var(--dsw-alias-label-tertiary);border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}' +
-  '.pv_meRow{display:grid;grid-template-columns:14px minmax(150px,1.5fr) minmax(110px,1fr) 150px 96px 96px 20px;' +
-  'gap:8px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;' +
+  '.pv_meRow{display:grid;grid-template-columns:12px minmax(100px,1.3fr) minmax(70px,1fr) 84px 64px 64px 18px;' +
+  'gap:6px;align-items:center;padding:5px 6px;font-size:12px;line-height:18px;' +
   'border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.06))}' +
   '.pv_meRow:last-child{border-bottom:0}' +
   '.pv_meRowOff{opacity:.45}' +
