@@ -314,26 +314,31 @@ var css =
   '.pv_meTitle{font-size:13px;font-weight:600;line-height:18px}' +
   '.pv_meList{display:flex;flex-direction:column;max-height:320px;overflow:auto;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:10px}' +
-  // 编辑器行用网格列布局，与显示清单同一套列语义（勾选 | 模型 ID | 名称 | 能力 | 上下文 | 最大输出 | 移除）
-  '.pv_meHeadRow{display:grid;grid-template-columns:12px minmax(100px,1.3fr) minmax(70px,1fr) 84px 64px 64px 18px;' +
-  'gap:8px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;' +
+  // 编辑器行用网格列布局（勾选 | 模型 ID | 能力 | 上下文 | 最大输出 | 移除）。
+  // 表头与数据行必须用完全相同的列宽 / gap / 横向 padding——差 1px 都会让固定列错位
+  '.pv_meHeadRow{display:grid;grid-template-columns:12px minmax(140px,1.6fr) 84px 64px 64px 24px;' +
+  'gap:6px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;' +
   'color:var(--dsw-alias-label-tertiary);border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}' +
-  '.pv_meRow{display:grid;grid-template-columns:12px minmax(100px,1.3fr) minmax(70px,1fr) 84px 64px 64px 18px;' +
-  'gap:6px;align-items:center;padding:5px 6px;font-size:12px;line-height:18px;' +
+  '.pv_meRow{display:grid;grid-template-columns:12px minmax(140px,1.6fr) 84px 64px 64px 24px;' +
+  'gap:6px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;' +
   'border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.06))}' +
   '.pv_meRow:last-child{border-bottom:0}' +
   '.pv_meRowOff{opacity:.45}' +
   '.pv_meCheck{margin:0;cursor:pointer}' +
-  // 长 ID / 长名称在列内换行，不再截断（title 兜底完整值）
+  // 长 ID 在列内换行，完整可见（title 兜底）
   '.pv_meIdBox{display:inline-flex;align-items:flex-start;gap:6px;min-width:0}' +
   '.pv_meRow .pv_mId{width:auto;max-width:none;overflow:visible;white-space:normal;word-break:break-all;text-align:left}' +
-  '.pv_meName{min-width:0;white-space:normal;overflow:visible;color:var(--dsw-alias-label-secondary)}' +
   '.pv_meNum{box-sizing:border-box;width:100%;padding:3px 8px;font:inherit;font-size:12px;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:7px;outline:0;' +
   'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-primary)}' +
   '.pv_meNum:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}' +
+  // 上下文 / 最大输出：目录值左对齐落在各自表头正下方（只读展示）
+  '.pv_meRow .pv_mCtx,.pv_meRow .pv_mMax{width:auto;text-align:left;font-size:12px;line-height:18px;' +
+  'color:var(--dsw-alias-label-tertiary);overflow:visible;white-space:normal}' +
   // 能力列：视觉/视频是可点的徽章开关，推理是只读徽章；行内左对齐、可换行
   '.pv_meRow .pv_mCaps{width:auto;justify-content:flex-start;flex-wrap:wrap}' +
+  // ✕ 列 24px：收窄按钮内边距，保证整个可点区域落在列内不被裁掉
+  '.pv_meRow .pv_iconBtn{padding:2px 4px;line-height:16px}' +
   '.pv_meCap{display:inline-flex;align-items:center;gap:4px;cursor:pointer;user-select:none;' +
   'font-size:11px;line-height:16px;padding:0 7px;border-radius:999px;white-space:nowrap;' +
   'color:var(--dsw-alias-label-tertiary)}' +

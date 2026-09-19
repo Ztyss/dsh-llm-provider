@@ -232,6 +232,16 @@ try {
   await cdp.waitFor('.pv_meRow')
   const editorProbe = await cdp.eval(`(function () {
     var rows = Array.from(document.querySelectorAll('.pv_meRow'))
+    var checkedIds = rows.filter(function (el) { return el.querySelector('.pv_meCheck').checked })
+      .map(function (el) { return (el.querySelector('.pv_mId') || {}).textContent })
+    function aligned() {
+      var head = document.querySelector('.pv_meHeadRow')
+      if (head === null || rows.length === 0 || head.children.length !== rows[0].children.length) return false
+      for (var i = 0; i < head.children.length; i += 1) {
+        if (Math.abs(head.children[i].getBoundingClientRect().left - rows[0].children[i].getBoundingClientRect().left) > 1.5) return false
+      }
+      return true
+    }
     return {
       rows: rows.length,
       ids: rows.map(function (el) { return (el.querySelector('.pv_mId') || {}).textContent }),
@@ -247,24 +257,46 @@ try {
         var configured = el.querySelector('.pv_meCheck').checked || el.querySelector('.pv_capDeclared') !== null
         return (el.querySelector('.pv_iconBtn') !== null) === configured
       }),
+      // 名称列删除：无 .pv_meName，表头 6 列
+      noNameCol: document.querySelector('.pv_meName') === null && document.querySelectorAll('.pv_meHeadRow > span').length === 6,
+      // 只预勾 settings.yaml 声明过的模型（夹具里 opencode-go 只声明 deepseek-flash）
+      declaredOnly: JSON.stringify(checkedIds) === '["deepseek-flash"]',
+      // 目录已知模型的上下文/最大输出两列都有值
+      ctxMaxShown: rows.length > 0 && rows.every(function (el) {
+        var known = el.querySelector('.pv_capDeclared') === null
+        return known
+          ? (el.querySelector('.pv_mCtx') || {}).textContent !== '' && (el.querySelector('.pv_mMax') || {}).textContent !== ''
+          : el.querySelector('.pv_mMax') === null
+      }),
+      // 表头与数据行逐列对齐（每列左缘偏差 ≤1.5px）
+      colAligned: aligned(),
     }
   })()`)
   console.log('  清单探针:', JSON.stringify(editorProbe))
-  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.knownRowsReadOnly !== true || editorProbe.wrapId !== true || editorProbe.noFilter !== true || editorProbe.delBtnOnConfiguredOnly !== true) {
+  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.knownRowsReadOnly !== true || editorProbe.wrapId !== true || editorProbe.noFilter !== true || editorProbe.delBtnOnConfiguredOnly !== true || editorProbe.noNameCol !== true || editorProbe.declaredOnly !== true || editorProbe.ctxMaxShown !== true || editorProbe.colAligned !== true) {
     throw new Error('模型清单结构没满足：' + JSON.stringify(editorProbe))
   }
   shots.push(await cdp.shot('02-model-list-editor'))
 
-  // 2b) 取消勾选一个模型后保存，看落到 /provider/set-models 的载荷
+  // 2b) 勾上一个未配置的目录模型再保存：声明条目原样保留 + 已知模型只写 {id}（两步分开点，
+  //     同一 eval 里连点会命中重渲染前的旧闭包——真实 UI 的两次点击在不同任务里）
   await cdp.eval(`
     var boxes = document.querySelectorAll('.pv_meRow .pv_meCheck');
     if (boxes.length > 1) boxes[1].click();
+  `)
+  await sleep(300)
+  await cdp.eval(`
     var n = Array.from(document.querySelectorAll('.pv_meActs button')).find(function (b) { return b.textContent.indexOf('保存清单') !== -1 });
     if (n) n.click();
   `)
   await sleep(600)
   const payload = await cdp.eval('window.__lastSetModels ?? null')
   console.log('  set-models 载荷:', JSON.stringify(payload))
+  const payloadOk = payload !== null && payload.providerId === 'opencode-go' && JSON.stringify(payload.models) === JSON.stringify([
+    { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', contextWindow: 1000000, maxTokens: 384000, input: ['text', 'image'], reasoningEfforts: { low: 'low', high: 'high', max: 'max' } },
+    { id: 'kimi-k3' },
+  ])
+  if (payloadOk !== true) throw new Error('勾选保存载荷不对（声明原样 + 已知只写 id）：' + JSON.stringify(payload))
   shots.push(await cdp.shot('03-model-list-saved-toast'))
 
   // 3) 删除确认弹层（issue #3）

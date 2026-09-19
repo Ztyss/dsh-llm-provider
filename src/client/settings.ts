@@ -794,9 +794,10 @@ function AddProviderPanel(props: AddProviderPanelProps) {
 }
 
 /**
- * 逐模型编辑器的一行：列与显示清单对齐（勾选 | 模型 ID | 名称 | 能力 | 上下文 | 最大输出 | 移除）。
- * 现有条目（目录收录 / 已声明）只读展示——清单只做新增与移除；自定义条目才有输入框和能力开关。
- * 长 ID / 长名称在列内自动换行，不再截断（title 仍兜底完整值）。
+ * 逐模型编辑器的一行：列序固定（勾选 | 模型 ID | 能力 | 上下文 | 最大输出 | 移除），
+ * 与表头共用同一套网格列宽，逐列严格对齐。不设名称列——模型 ID 本身就是唯一标识，
+ * 完整换行展示（title 兜底）。现有条目（目录收录 / 已声明）只读展示——清单只做
+ * 新增与移除；自定义条目才有输入框和能力开关。
  */
 function modelEditRow(
   row: ModelEditRow,
@@ -859,10 +860,9 @@ function modelEditRow(
         ? null
         : react.createElement('span', { className: 'pv_capMini pv_capDeclared', title: '生效 pi-ai 目录里没有这个 ID——上下文窗口与最大输出必须自己填' }, '自定义'),
     ),
-    react.createElement('span', { className: 'pv_meName', title: row.name }, row.name),
     react.createElement('span', { className: 'pv_mCaps' }, caps),
     known
-      ? react.createElement('span', { className: 'pv_mCtx', style: { textAlign: 'right' }, title: '目录里的上下文窗口（只读）' }, formatContext(row.knownContextWindow) ?? '')
+      ? react.createElement('span', { className: 'pv_mCtx', title: '目录里的上下文窗口（只读）' }, formatContext(row.knownContextWindow) ?? '')
       : react.createElement('input', {
           className: 'pv_meNum',
           type: 'text',
@@ -873,7 +873,7 @@ function modelEditRow(
           onChange: function (event: FieldEvent) { patch(row.id, { contextWindow: event.target.value }) },
         }),
     known
-      ? react.createElement('span')
+      ? react.createElement('span', { className: 'pv_mMax', title: '目录里的最大输出（只读）' }, formatContext(row.knownMaxTokens) ?? '')
       : react.createElement('input', {
           className: 'pv_meNum',
           type: 'text',
@@ -914,8 +914,9 @@ function buildEditRows(
     rows.push({
       id: id,
       name: name,
-      // 没配过 models = 目录全量服务，编辑器里全部默认勾上；配过就只勾清单里的
-      enabled: declared.length === 0 ? true : declared.some(function (item) { return item.id === id }),
+      // 勾选 = 写进 settings.yaml 的 models：只预勾声明过的条目；
+      // 没配 models（跟随目录）时一个都不预勾——勾上并保存才建立自定义清单
+      enabled: declared.some(function (item) { return item.id === id }),
       contextWindow: entry !== undefined && entry.contextWindow !== undefined ? String(entry.contextWindow) : '',
       maxTokens: entry !== undefined && entry.maxTokens !== undefined ? String(entry.maxTokens) : '',
       vision: detail !== undefined ? detail.vision === true : declaredInput.indexOf('image') !== -1,
@@ -1085,13 +1086,12 @@ function ModelListEditor(props: {
   var enabledCount = 0
   for (var e = 0; e < rows.length; e += 1) if (rows[e].enabled === true) enabledCount += 1
 
-  // 列头与显示清单同一套语义（模型 ID / 名称 / 能力 / 上下文 / 最大输出），列宽由网格统一定
+  // 列头（模型 ID / 能力 / 上下文 / 最大输出）与数据行共用同一套网格列宽，逐列严格对齐
   var colHead = react.createElement(
     'div',
     { className: 'pv_meHeadRow', key: 'colhead' },
     react.createElement('span', { key: 'h-check' }),
     react.createElement('span', { key: 'h-id', style: { fontFamily: 'inherit' } }, t('prov.modelId')),
-    react.createElement('span', { key: 'h-name' }, t('prov.name')),
     react.createElement('span', { key: 'h-caps' }, t('prov.caps')),
     react.createElement('span', { key: 'h-ctx' }, t('prov.ctx')),
     react.createElement('span', { key: 'h-max' }, t('cap.maxTokens')),
@@ -1106,7 +1106,7 @@ function ModelListEditor(props: {
       { className: 'pv_hint' },
       declaredCount > 0
         ? '当前只服务清单里的 ' + String(declaredCount) + ' 个模型。'
-        : '当前跟随 pi-ai 目录（' + String(rows.length) + ' 个全部可用）。勾选即草稿，点「保存清单」才写进 settings.yaml 的 llm-pi-ai.providers.' + account.id + '.models。',
+        : '当前跟随 pi-ai 目录（' + String(rows.length) + ' 个可用）。',
     ),
     react.createElement('div', { className: 'pv_meList' }, [colHead].concat(rows_)),
     react.createElement(
@@ -2007,7 +2007,7 @@ export function ProviderSettingsSection() {
           if (modelsOpen) {
             if (account.deletable === true) {
               // 可编辑路由（settings 里的 llm-pi-ai 路由）：清单框本身就是勾选清单，
-              // 与独立的「配置模型」按钮解耦——展开即见、勾选即草稿、保存才写盘。
+              // 与独立的「配置模型」按钮解耦——展开即见；勾选 = 写进 models 的草稿，保存才落盘。
               // 现有条目只读展示（不改字段）；新增自定义 ID 才填上下文/最大输出。
               mBoxRows.push(react.createElement(ModelListEditor, {
                 key: 'm-edit',
