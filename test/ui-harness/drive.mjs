@@ -102,6 +102,13 @@ try {
   await cdp.ready
   await cdp.send('Page.enable')
   await cdp.send('Runtime.enable')
+  const consoleLogs = []
+  cdp.socket.addEventListener('message', function (event) {
+    var m = JSON.parse(String(event.data))
+    if (m.method === 'Runtime.consoleAPICalled') {
+      consoleLogs.push(m.params.args.map(function (a) { return a.value !== undefined ? String(a.value) : (a.description || a.type) }).join(' '))
+    }
+  })
 
   const url = 'file:///' + join(here, 'harness.html').replace(/\\/g, '/')
   await cdp.send('Page.navigate', { url })
@@ -140,6 +147,86 @@ try {
   await sleep(300)
   await cdp.eval(`window.scrollTo(0, 0)`)
   shots.push(await cdp.shot('01-provider-card-30d-chip'))
+  // 1b) Provider 卡就地编辑：无改动无编辑痕迹；有草稿浮出操作区；只写改动过的字段；校验拦截；取消回落
+  await cdp.waitFor('.pv_row input.pv_key')
+  const edit0 = await cdp.eval(`(function () {
+    var el = document.querySelector('.pv_row input[placeholder="opencode-go"]')
+    return {
+      initial: el ? el.value : null,
+      actsGone: document.querySelector('.pv_editActs') === null,
+      noPencil: Array.from(document.querySelectorAll('.pv_metaActs button')).every(function (b) { return b.textContent !== '✎' }),
+    }
+  })()`)
+  console.log('  就地编辑·初始:', JSON.stringify(edit0))
+  if (edit0.initial !== '' || edit0.actsGone !== true || edit0.noPencil !== true) throw new Error('就地编辑初始态不对：' + JSON.stringify(edit0))
+
+  // 只改显示名 → 操作区浮出（保存修改可点 + 取消 + 清空语义提示）
+  await cdp.eval(`
+    var el = document.querySelector('.pv_row input[placeholder="opencode-go"]')
+    el.value = '我的网关'
+    el.dispatchEvent(new Event('change', { bubbles: true }))
+  `)
+  await sleep(300)
+  const edit1 = await cdp.eval(`(function () {
+    var box = document.querySelector('.pv_editActs')
+    if (box === null) return null
+    return {
+      buttons: Array.from(box.querySelectorAll('button')).map(function (b) { return b.textContent + (b.disabled ? '(disabled)' : '') }),
+      hint: (box.querySelector('.plan_note') || {}).textContent || '',
+    }
+  })()`)
+  console.log('  就地编辑·草稿:', JSON.stringify(edit1))
+  if (edit1 === null || JSON.stringify(edit1.buttons) !== '["保存修改","取消"]' || edit1.hint.indexOf('清空') === -1) {
+    throw new Error('草稿态操作区不对：' + JSON.stringify(edit1))
+  }
+  shots.push(await cdp.shot('01b-provider-edit-dirty'))
+
+  // 保存 → settings/mutate 只发一条 displayName 的 set（此前 undefined 字段会被误判 badApi 静默拦截）
+  await cdp.eval(`
+    var b = Array.from(document.querySelectorAll('.pv_editActs button')).find(function (x) { return x.textContent === '保存修改' })
+    b.click()
+  `)
+  await sleep(500)
+  const mut1 = await cdp.eval('window.__lastMutate ?? null')
+  console.log('  settings/mutate 载荷:', JSON.stringify(mut1))
+  const mut1Ok = mut1 !== null && mut1.ns === 'llm-pi-ai' && JSON.stringify(mut1.ops) === JSON.stringify([
+    { op: 'set', path: ['providers', 'opencode-go', 'displayName'], value: '我的网关' },
+  ])
+  if (mut1Ok !== true) throw new Error('mutate 载荷不是「只写改动过的字段」：' + JSON.stringify(mut1))
+  await sleep(300)
+  if (await cdp.eval(`document.querySelector('.pv_editActs') !== null`)) throw new Error('保存成功后草稿没被丢弃（操作区还在）')
+
+  // 校验：非法端点被拦下，不发 mutate
+  await cdp.eval(`
+    var el = document.querySelector('.pv_row input[placeholder="留空回到官方默认端点"]')
+    el.value = 'ftp://bad.example'
+    el.dispatchEvent(new Event('change', { bubbles: true }))
+  `)
+  await sleep(300)
+  await cdp.eval(`
+    var b = Array.from(document.querySelectorAll('.pv_editActs button')).find(function (x) { return x.textContent === '保存修改' })
+    b.click()
+  `)
+  await sleep(400)
+  const mutCount = await cdp.eval('(window.__mutateCalls || []).length')
+  if (mutCount !== 1) throw new Error('非法端点竟然发起了 mutate（次数 ' + mutCount + '）')
+  console.log('  非法端点被校验拦下，mutate 次数仍为 1')
+
+  // 取消：草稿丢弃，字段回落
+  await cdp.eval(`
+    var b = Array.from(document.querySelectorAll('.pv_editActs button')).find(function (x) { return x.textContent === '取消' })
+    b.click()
+  `)
+  await sleep(300)
+  const edit2 = await cdp.eval(`(function () {
+    return {
+      actsGone: document.querySelector('.pv_editActs') === null,
+      urlValue: document.querySelector('.pv_row input[placeholder="留空回到官方默认端点"]').value,
+    }
+  })()`)
+  console.log('  就地编辑·取消:', JSON.stringify(edit2))
+  if (edit2.actsGone !== true || edit2.urlValue !== '') throw new Error('取消后没回落：' + JSON.stringify(edit2))
+
 
   // 2) 模型清单（勾选式，与「配置模型」按钮解耦：展开即见）
   await cdp.waitFor('.pv_meRow')

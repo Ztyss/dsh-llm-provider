@@ -129,6 +129,11 @@ for (const [name, fn] of Object.entries({ providerEditForm, providerEditSaveOps,
   check('凭据名带小写被拦下', validateProviderEdit({ ...good, apiKeyEnv: 'a_key' }) === 'edit.badKeyEnv')
   check('凭据名带连字符被拦下', validateProviderEdit({ ...good, apiKeyEnv: 'A-KEY' }) === 'edit.badKeyEnv')
   check('凭据名留空算合法', validateProviderEdit({ ...good, apiKeyEnv: '' }) === undefined)
+  // 就地编辑的草稿按字段惰性创建：缺省（undefined）字段一律按「没填」处理——
+  // 曾经因 form.api === undefined 被误判 badApi，只改一个字段的保存被静默拦截（就地编辑回归）
+  check('partial 草稿（缺省字段）算合法', validateProviderEdit({ displayName: '我的网关' }) === undefined)
+  check('partial 草稿 + 非法端点仍拦截', validateProviderEdit({ baseURL: 'ftp://bad' }) === 'edit.badBaseUrl')
+  check('partial 草稿 + 非法凭据名仍拦截', validateProviderEdit({ apiKeyEnv: 'bad' }) === 'edit.badKeyEnv')
 }
 
 // ---- 6. dirty 判定 ----

@@ -1666,9 +1666,10 @@ export function ProviderSettingsSection() {
   /** 改一个编辑字段（草稿留在本地，按「保存修改」才写盘）。 */
   function setEditField(id: string, field: keyof ProviderEditForm, value: string) {
     setEditForms(function (prev: AnyRecord) {
-      var current = (prev[id] !== undefined ? prev[id] : {}) as unknown as Record<string, string>
+      // 草稿从 route 快照补全四字段再改（不从 {} 起步）——partial 草稿会让校验与保存读到 undefined
+      var base = (prev[id] !== undefined ? prev[id] : providerEditForm(routesById[id] !== undefined ? routesById[id] : {})) as unknown as Record<string, string>
       var next: AnyRecord = {}
-      for (var key in current) next[key] = current[key]
+      for (var key in base) next[key] = base[key]
       ;(next as Record<string, string>)[field] = value
       return withKey(prev, id, next as unknown as ProviderEditForm)
     })

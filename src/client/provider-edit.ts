@@ -92,9 +92,13 @@ export function providerEditSaveOps(routeId: string, form: ProviderEditForm, ori
  * @param form - 表单当前值。
  */
 export function validateProviderEdit(form: ProviderEditForm): string | undefined {
-  if (form.api !== '' && PROVIDER_API_OPTIONS.indexOf(form.api) === -1) return 'edit.badApi'
-  if (form.baseURL !== '' && !/^https?:\/\//i.test(form.baseURL)) return 'edit.badBaseUrl'
-  if (form.apiKeyEnv !== '' && !/^[A-Z0-9_]+$/.test(form.apiKeyEnv)) return 'edit.badKeyEnv'
+  // 字段可能缺省（草稿按字段惰性创建）：undefined 一律按「没填」处理，不能误判成非法值
+  const api = String(form.api ?? '')
+  const baseURL = String(form.baseURL ?? '')
+  const apiKeyEnv = String(form.apiKeyEnv ?? '')
+  if (api !== '' && PROVIDER_API_OPTIONS.indexOf(api) === -1) return 'edit.badApi'
+  if (baseURL !== '' && !/^https?:\/\//i.test(baseURL)) return 'edit.badBaseUrl'
+  if (apiKeyEnv !== '' && !/^[A-Z0-9_]+$/.test(apiKeyEnv)) return 'edit.badKeyEnv'
   return undefined
 }
 
