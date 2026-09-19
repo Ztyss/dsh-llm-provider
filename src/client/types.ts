@@ -83,6 +83,8 @@ export interface ModelEditRow {
   /** 目录里那份的原值：用于（a）输入框的 placeholder（b）判断用户是否改过能力。 */
   knownContextWindow: number | undefined
   knownMaxTokens: number | undefined
+  /** 目录元数据里的思维链标记（只读展示，编辑器不改它）。 */
+  knownReasoning: boolean
   originVision: boolean
   originVideo: boolean
   /** 本来就在路由声明里的原始条目（保存时以它为底，保住 reasoningEfforts/compat 等字段）。 */

@@ -309,28 +309,36 @@ var css =
   // ---- 本地版新增：能力来源标记（issue #5）----
   '.pv_capDeclared{color:#0b7285;background:rgba(11,114,133,.12)}' +
   // ---- 本地版新增：逐模型清单编辑器（issue #1）----
-  '.pv_meOpen{flex:none;margin-left:0;height:26px;padding:0 10px;font-size:12px}' +
   '.pv_me{display:flex;flex-direction:column;gap:8px;padding:10px 0 4px;border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12))}' +
   '.pv_meHead{display:flex;align-items:center;gap:10px}' +
   '.pv_meTitle{font-size:13px;font-weight:600;line-height:18px}' +
   '.pv_meList{display:flex;flex-direction:column;max-height:320px;overflow:auto;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:10px}' +
-  '.pv_meRow{display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:12px;line-height:18px;' +
+  // 编辑器行用网格列布局，与显示清单同一套列语义（勾选 | 模型 ID | 名称 | 能力 | 上下文 | 最大输出 | 移除）
+  '.pv_meHeadRow{display:grid;grid-template-columns:14px minmax(150px,1.5fr) minmax(110px,1fr) 150px 96px 96px 20px;' +
+  'gap:8px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;' +
+  'color:var(--dsw-alias-label-tertiary);border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}' +
+  '.pv_meRow{display:grid;grid-template-columns:14px minmax(150px,1.5fr) minmax(110px,1fr) 150px 96px 96px 20px;' +
+  'gap:8px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;' +
   'border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.06))}' +
   '.pv_meRow:last-child{border-bottom:0}' +
   '.pv_meRowOff{opacity:.45}' +
-  '.pv_meCheck{flex:none;margin:0;cursor:pointer}' +
-  '.pv_meIdBox{flex:none;display:inline-flex;align-items:center;gap:6px;width:220px;min-width:0}' +
-  '.pv_meIdBox .pv_mId{max-width:150px}' +
-  '.pv_meName{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
-  'color:var(--dsw-alias-label-secondary)}' +
-  '.pv_meNum{flex:none;width:96px;box-sizing:border-box;padding:3px 8px;font:inherit;font-size:12px;' +
+  '.pv_meCheck{margin:0;cursor:pointer}' +
+  // 长 ID / 长名称在列内换行，不再截断（title 兜底完整值）
+  '.pv_meIdBox{display:inline-flex;align-items:flex-start;gap:6px;min-width:0}' +
+  '.pv_meRow .pv_mId{width:auto;max-width:none;overflow:visible;white-space:normal;word-break:break-all;text-align:left}' +
+  '.pv_meName{min-width:0;white-space:normal;overflow:visible;color:var(--dsw-alias-label-secondary)}' +
+  '.pv_meNum{box-sizing:border-box;width:100%;padding:3px 8px;font:inherit;font-size:12px;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:7px;outline:0;' +
   'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-primary)}' +
   '.pv_meNum:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}' +
-  '.pv_meCap{flex:none;display:inline-flex;align-items:center;gap:4px;cursor:pointer;' +
-  'color:var(--dsw-alias-label-tertiary);user-select:none}' +
+  // 能力列：视觉/视频是可点的徽章开关，推理是只读徽章；行内左对齐、可换行
+  '.pv_meRow .pv_mCaps{width:auto;justify-content:flex-start;flex-wrap:wrap}' +
+  '.pv_meCap{display:inline-flex;align-items:center;gap:4px;cursor:pointer;user-select:none;' +
+  'font-size:11px;line-height:16px;padding:0 7px;border-radius:999px;white-space:nowrap;' +
+  'color:var(--dsw-alias-label-tertiary)}' +
   '.pv_meCap input{margin:0;cursor:pointer}' +
+  '.pv_capOff{opacity:.6;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1,rgba(0,0,0,.15))}' +
   '.pv_meAdd{display:flex;align-items:center;gap:8px}' +
   '.pv_meActs{display:flex;align-items:center;gap:8px}' +
   // ---- 本地版新增：删除确认弹层（issue #3）----

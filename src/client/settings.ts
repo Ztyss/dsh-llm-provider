@@ -793,12 +793,54 @@ function AddProviderPanel(props: AddProviderPanelProps) {
   )
 }
 
-/** 逐模型编辑器的一行（勾选 + 可编辑字段 + 移除）。 */
+/**
+ * 逐模型编辑器的一行：列与显示清单对齐（勾选 | 模型 ID | 名称 | 能力 | 上下文 | 最大输出 | 移除）。
+ * 现有条目（目录收录 / 已声明）只读展示——清单只做新增与移除；自定义条目才有输入框和能力开关。
+ * 长 ID / 长名称在列内自动换行，不再截断（title 仍兜底完整值）。
+ */
 function modelEditRow(
   row: ModelEditRow,
   patch: (id: string, next: AnyRecord) => void,
   remove: (id: string) => void,
 ) {
+  var known = row.known === true
+  // 能力列：现有条目给只读徽章（与显示清单同款）；自定义条目给可点的开关（写 input 模态）
+  var caps = known
+    ? [
+        row.vision === true ? react.createElement('span', { key: 'v', className: 'pv_capMini pv_capVision', title: '目录元数据：支持图片输入' }, '视觉') : null,
+        row.video === true ? react.createElement('span', { key: 'd', className: 'pv_capMini pv_capVideo', title: '目录元数据：支持视频输入' }, '视频') : null,
+        row.knownReasoning === true ? react.createElement('span', { key: 'r', className: 'pv_capMini pv_capReason', title: '目录元数据：支持思维链' }, '推理') : null,
+      ]
+    : [
+        react.createElement(
+          'label',
+          {
+            key: 'vision',
+            className: 'pv_meCap' + (row.vision ? ' pv_capVision' : ' pv_capOff'),
+            title: '声明支持图片输入（写进模型的 input 模态）',
+          },
+          react.createElement('input', {
+            type: 'checkbox',
+            checked: row.vision,
+            onChange: function (event: FieldEvent) { patch(row.id, { vision: event.target.checked === true }) },
+          }),
+          '视觉',
+        ),
+        react.createElement(
+          'label',
+          {
+            key: 'video',
+            className: 'pv_meCap' + (row.video ? ' pv_capVideo' : ' pv_capOff'),
+            title: '声明支持视频输入（写进模型的 input 模态）',
+          },
+          react.createElement('input', {
+            type: 'checkbox',
+            checked: row.video,
+            onChange: function (event: FieldEvent) { patch(row.id, { video: event.target.checked === true }) },
+          }),
+          '视频',
+        ),
+      ]
   return react.createElement(
     'div',
     { className: 'pv_meRow' + (row.enabled ? '' : ' pv_meRowOff'), key: row.id },
@@ -813,53 +855,38 @@ function modelEditRow(
       'span',
       { className: 'pv_meIdBox' },
       react.createElement('span', { className: 'pv_mId', title: row.id }, row.id),
-      row.known
+      known
         ? null
         : react.createElement('span', { className: 'pv_capMini pv_capDeclared', title: '生效 pi-ai 目录里没有这个 ID——上下文窗口与最大输出必须自己填' }, '自定义'),
     ),
     react.createElement('span', { className: 'pv_meName', title: row.name }, row.name),
-    react.createElement('input', {
-      className: 'pv_meNum',
-      type: 'text',
-      inputMode: 'numeric',
-      placeholder: row.knownContextWindow === undefined ? '上下文' : String(row.knownContextWindow),
-      title: '上下文窗口（留空 = 跟着 pi-ai 目录）',
-      value: row.contextWindow,
-      onChange: function (event: FieldEvent) { patch(row.id, { contextWindow: event.target.value }) },
-    }),
-    react.createElement('input', {
-      className: 'pv_meNum',
-      type: 'text',
-      inputMode: 'numeric',
-      placeholder: row.knownMaxTokens === undefined ? '最大输出' : String(row.knownMaxTokens),
-      title: '最大输出 token（留空 = 跟着 pi-ai 目录）',
-      value: row.maxTokens,
-      onChange: function (event: FieldEvent) { patch(row.id, { maxTokens: event.target.value }) },
-    }),
-    react.createElement(
-      'label',
-      { className: 'pv_meCap', title: '声明支持图片输入（写进模型的 input 模态）' },
-      react.createElement('input', {
-        type: 'checkbox',
-        checked: row.vision,
-        onChange: function (event: FieldEvent) { patch(row.id, { vision: event.target.checked === true }) },
-      }),
-      '视觉',
-    ),
-    react.createElement(
-      'label',
-      { className: 'pv_meCap', title: '声明支持视频输入（写进模型的 input 模态）' },
-      react.createElement('input', {
-        type: 'checkbox',
-        checked: row.video,
-        onChange: function (event: FieldEvent) { patch(row.id, { video: event.target.checked === true }) },
-      }),
-      '视频',
-    ),
+    react.createElement('span', { className: 'pv_mCaps' }, caps),
+    known
+      ? react.createElement('span', { className: 'pv_mCtx', style: { textAlign: 'right' }, title: '目录里的上下文窗口（只读）' }, formatContext(row.knownContextWindow) ?? '')
+      : react.createElement('input', {
+          className: 'pv_meNum',
+          type: 'text',
+          inputMode: 'numeric',
+          placeholder: '上下文',
+          title: '上下文窗口（自定义模型必填）',
+          value: row.contextWindow,
+          onChange: function (event: FieldEvent) { patch(row.id, { contextWindow: event.target.value }) },
+        }),
+    known
+      ? react.createElement('span')
+      : react.createElement('input', {
+          className: 'pv_meNum',
+          type: 'text',
+          inputMode: 'numeric',
+          placeholder: '最大输出',
+          title: '最大输出 token（自定义模型必填）',
+          value: row.maxTokens,
+          onChange: function (event: FieldEvent) { patch(row.id, { maxTokens: event.target.value }) },
+        }),
     react.createElement('button', {
       type: 'button',
       className: 'pv_iconBtn',
-      title: '把这一行从清单里去掉（保存后生效）',
+      title: known ? '取消勾选 = 保存后不再服务这个模型' : '把这行自定义条目从清单里去掉（保存后生效）',
       onClick: function () { remove(row.id) },
     }, '✕'),
   )
@@ -890,6 +917,7 @@ function buildEditRows(
       known: detail !== undefined,
       knownContextWindow: detail === undefined ? undefined : detail.contextWindow,
       knownMaxTokens: detail === undefined ? undefined : detail.maxTokens,
+      knownReasoning: detail !== undefined && detail.reasoning === true,
       originVision: detail !== undefined ? detail.vision === true : declaredInput.indexOf('image') !== -1,
       originVideo: detail !== undefined ? detail.video === true : declaredInput.indexOf('video') !== -1,
       declared: entry,
@@ -932,6 +960,7 @@ function ModelListEditor(props: {
   account: PlanAccount
   catalog: CatalogModel[]
   details: Record<string, ModelDetail> | undefined | null
+  filterText: string
   onSaved: (message: string) => void
   onClose: () => void
 }) {
@@ -981,6 +1010,7 @@ function ModelListEditor(props: {
         known: detail !== undefined,
         knownContextWindow: detail === undefined ? undefined : detail.contextWindow,
         knownMaxTokens: detail === undefined ? undefined : detail.maxTokens,
+        knownReasoning: detail !== undefined && detail.reasoning === true,
         originVision: detail !== undefined && detail.vision === true,
         originVideo: detail !== undefined && detail.video === true,
         declared: undefined,
@@ -990,43 +1020,40 @@ function ModelListEditor(props: {
     setError(null)
   }
 
-  /** 当前编辑结果 → settings 的 models 数组；形状不合法时返回 undefined 并写好错误提示。 */
+  /**
+   * 当前编辑结果 → settings 的 models 数组；形状不合法时返回 undefined 并写好错误提示。
+   *
+   * 清单只做「新增 / 移除」，不改现有条目的字段：
+   *   现有条目（路由声明过的 / 目录收录的）——原样保留：声明过的整条带回去，目录收录的只写 {id}；
+   *   自定义条目（目录里没有）——上下文 / 最大输出必填，能力开关写进 input 模态。
+   */
   function payload(): DeclaredModel[] | undefined {
     var out: DeclaredModel[] = []
     for (var i = 0; i < rows.length; i += 1) {
       var row = rows[i]
       if (row.enabled !== true) continue
-      var entry: DeclaredModel = row.declared === undefined ? { id: row.id } : { ...row.declared, id: row.id }
-      var name = row.name.trim()
-      if (name !== '' && name !== row.id) entry.name = name
+      if (row.declared !== undefined) {
+        out.push({ ...row.declared, id: row.id })
+        continue
+      }
+      if (row.known === true) {
+        out.push({ id: row.id })
+        continue
+      }
       var ctx = row.contextWindow.trim()
-      if (ctx !== '') {
-        var ctxNum = Number(ctx)
-        if (!isFinite(ctxNum) || Math.floor(ctxNum) !== ctxNum || ctxNum <= 0) { setError('「' + row.id + '」的上下文窗口要填正整数'); return undefined }
-        entry.contextWindow = ctxNum
-      } else if (entry.contextWindow === undefined && row.known !== true) {
-        setError('pi-ai 目录里没有「' + row.id + '」，上下文窗口与最大输出都要填（官方适配器会拒绝缺字段的声明）')
-        return undefined
-      }
+      if (ctx === '') { setError('自定义模型「' + row.id + '」要填上下文窗口'); return undefined }
+      var ctxNum = Number(ctx)
+      if (!isFinite(ctxNum) || Math.floor(ctxNum) !== ctxNum || ctxNum <= 0) { setError('「' + row.id + '」的上下文窗口要填正整数'); return undefined }
       var max = row.maxTokens.trim()
-      if (max !== '') {
-        var maxNum = Number(max)
-        if (!isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) { setError('「' + row.id + '」的最大输出要填正整数'); return undefined }
-        entry.maxTokens = maxNum
-      } else if (entry.maxTokens === undefined && row.known !== true) {
-        setError('pi-ai 目录里没有「' + row.id + '」，上下文窗口与最大输出都要填')
-        return undefined
-      }
-      // 能力只有「改过」或「目录没收录」时才写 input，避免把跟着目录走的模型钉死
-      if (row.vision !== row.originVision || row.video !== row.originVideo || entry.input !== undefined || row.known !== true) {
-        var input = ['text']
-        if (row.vision === true) input.push('image')
-        if (row.video === true) input.push('video')
-        entry.input = input
-      }
-      out.push(entry)
+      if (max === '') { setError('自定义模型「' + row.id + '」要填最大输出'); return undefined }
+      var maxNum = Number(max)
+      if (!isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) { setError('「' + row.id + '」的最大输出要填正整数'); return undefined }
+      var input = ['text']
+      if (row.vision === true) input.push('image')
+      if (row.video === true) input.push('video')
+      out.push({ id: row.id, contextWindow: ctxNum, maxTokens: maxNum, input: input })
     }
-    if (out.length === 0) { setError('至少留一个模型；要让这家回到「目录全量」请点「跟随目录」'); return undefined }
+    if (out.length === 0) { setError('至少留一个模型；要让这家回到「目录全量」请点「跟随目录（还原）」'); return undefined }
     return out
   }
 
@@ -1048,32 +1075,41 @@ function ModelListEditor(props: {
       .then(function () { setBusy(false) })
   }
 
+  // 过滤器照常作用于清单（与外层「模型（N）」头部共用同一条过滤词）
+  var needleLocal = props.filterText.trim().toLowerCase()
   var rows_ = []
-  for (var r = 0; r < rows.length; r += 1) rows_.push(modelEditRow(rows[r], patch, remove))
+  for (var r = 0; r < rows.length; r += 1) {
+    if (needleLocal === '' || fuzzyMatch(props.filterText, rows[r].id + ' ' + rows[r].name)) {
+      rows_.push(modelEditRow(rows[r], patch, remove))
+    }
+  }
   var enabledCount = 0
   for (var e = 0; e < rows.length; e += 1) if (rows[e].enabled === true) enabledCount += 1
+
+  // 列头与显示清单同一套语义（模型 ID / 名称 / 能力 / 上下文 / 最大输出），列宽由网格统一定
+  var colHead = react.createElement(
+    'div',
+    { className: 'pv_meHeadRow', key: 'colhead' },
+    react.createElement('span', { key: 'h-check' }),
+    react.createElement('span', { key: 'h-id', style: { fontFamily: 'inherit' } }, t('prov.modelId')),
+    react.createElement('span', { key: 'h-name' }, t('prov.name')),
+    react.createElement('span', { key: 'h-caps' }, t('prov.caps')),
+    react.createElement('span', { key: 'h-ctx' }, t('prov.ctx')),
+    react.createElement('span', { key: 'h-max' }, t('cap.maxTokens')),
+    react.createElement('span', { key: 'h-del' }),
+  )
 
   return react.createElement(
     'div',
     { className: 'pv_me' },
     react.createElement(
       'div',
-      { className: 'pv_meHead' },
-      react.createElement('span', { className: 'pv_meTitle' }, '逐模型清单'),
-      react.createElement(
-        'span',
-        { className: 'pv_hint' },
-        declaredCount > 0
-          ? '当前只服务清单里的 ' + String(declaredCount) + ' 个模型'
-          : '当前跟随 pi-ai 目录（' + String(rows.length) + ' 个模型全部可用）',
-      ),
-    ),
-    react.createElement(
-      'div',
       { className: 'pv_hint' },
-      '保存后写进 settings.yaml 的 llm-pi-ai.providers.' + account.id + '.models：没勾的模型不会出现在模型选择器里。目录里没有的自定义 ID 必须把「上下文」和「最大输出」填全。',
+      declaredCount > 0
+        ? '当前只服务清单里的 ' + String(declaredCount) + ' 个模型。'
+        : '当前跟随 pi-ai 目录（' + String(rows.length) + ' 个全部可用）。勾选即草稿，点「保存清单」才写进 settings.yaml 的 llm-pi-ai.providers.' + account.id + '.models。',
     ),
-    react.createElement('div', { className: 'pv_meList' }, rows_),
+    react.createElement('div', { className: 'pv_meList' }, [colHead].concat(rows_)),
     react.createElement(
       'div',
       { className: 'pv_meAdd' },
@@ -1105,17 +1141,11 @@ function ModelListEditor(props: {
       react.createElement('button', {
         type: 'button',
         className: 'pv_action',
-        disabled: busy,
-        title: '删掉这条路由的 models 键：回到「pi-ai 目录收录什么就服务什么」',
-        onClick: function () { submit(null, '✓ ' + shortName(account) + ' 已回到目录全量') },
-      }, '跟随目录（清空清单）'),
-      react.createElement('button', {
-        type: 'button',
-        className: 'pv_action',
         style: { marginLeft: 'auto' },
         disabled: busy,
-        onClick: props.onClose,
-      }, '取消'),
+        title: '还原：删掉这条路由的 models 键，回到「pi-ai 目录收录什么就服务什么」',
+        onClick: function () { submit(null, '✓ ' + shortName(account) + ' 已回到目录全量') },
+      }, '跟随目录（还原）'),
     ),
     error === null ? null : react.createElement('div', { className: 'plan_note plan_badText' }, error),
   )
@@ -1258,10 +1288,6 @@ export function ProviderSettingsSection() {
   var delErrorState = react.useState(null)
   var delError = delErrorState[0] as string | null
   var setDelError = delErrorState[1] as (next: string | null) => void
-  // 逐模型清单编辑器正在编辑哪一家（issue #1）
-  var editModelsState = react.useState(null)
-  var editModelsFor = editModelsState[0] as string | null
-  var setEditModelsFor = editModelsState[1] as (next: string | null) => void
   var refreshingState = react.useState({})
   var setRefreshing = refreshingState[1]
   // 卡片里"补密钥"的输入草稿与保存中标记（都按 provider id 存）
@@ -1973,28 +1999,17 @@ export function ProviderSettingsSection() {
           var mTopChildren = [
             react.createElement(
               'button',
-              { type: 'button', className: 'pv_mHead', key: 'm-head', onClick: function () { toggle(account.id + ':models', false) } },
+              {
+                type: 'button',
+                className: 'pv_mHead',
+                key: 'm-head',
+                onClick: function () { toggle(account.id + ':models', false) },
+              },
               react.createElement('span', null, needle === ''
                 ? tf('prov.models', { count: models.length })
                 : tf('prov.modelsFiltered', { shown: filtered.length, total: models.length })),
             ),
           ]
-          // 逐模型清单入口（本地版 issue #1）：只有 settings 里的 llm-pi-ai 路由能改
-          if (account.deletable === true) {
-            mTopChildren.push(
-              react.createElement('button', {
-                type: 'button',
-                className: 'pv_action pv_meOpen',
-                key: 'm-config',
-                title: '编辑这条路由服务的模型清单（写 settings.yaml 的 llm-pi-ai.providers.' + account.id + '.models）',
-                onClick: function () {
-                  toggle(account.id + ':models', false)
-                  setEditModelsFor(editModelsFor === account.id ? null : account.id)
-                  setOpenMap(function (prev: AnyRecord) { return withKey(prev, account.id, true) })
-                },
-              }, editModelsFor === account.id ? '收起清单' : '配置模型'),
-            )
-          }
           if (modelsOpen) {
             mTopChildren.push(
               react.createElement(
@@ -2037,20 +2052,26 @@ export function ProviderSettingsSection() {
             ),
           )
           mBoxRows.push(react.createElement('div', { className: 'pv_mTop', key: 'm-top' }, mTopChildren))
-          if (modelsOpen || editModelsFor === account.id) {
-            if (editModelsFor === account.id) {
-              // 逐模型清单编辑器（本地版 issue #1）：就地替换列表视图
+          if (modelsOpen) {
+            if (account.deletable === true) {
+              // 可编辑路由（settings 里的 llm-pi-ai 路由）：清单框本身就是勾选清单，
+              // 与独立的「配置模型」按钮解耦——展开即见、勾选即草稿、保存才写盘。
+              // 现有条目只读展示（不改字段）；新增自定义 ID 才填上下文/最大输出。
               mBoxRows.push(react.createElement(ModelListEditor, {
                 key: 'm-edit',
                 account: account,
                 catalog: models,
                 details: detailsById,
+                filterText: filterText,
                 onSaved: function (message: string) {
                   showToast(message, true)
                   // 清单变了：重拉余额/路由元信息 + 模型目录 + 预设
                   onProviderAdded()
                 },
-                onClose: function () { setEditModelsFor(null) },
+                onClose: function () {
+                  // 保存/收起后折叠清单框：下次展开按新数据重建草稿
+                  setOpenMap(function (prev: AnyRecord) { return withKey(prev, account.id + ':models', false) })
+                },
               }))
             } else {
             var mListRows = []

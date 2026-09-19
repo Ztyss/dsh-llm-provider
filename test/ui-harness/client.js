@@ -111,7 +111,6 @@ window.__ModuleLoader__.load({
 				"prov.adding": "添加中…",
 				"prov.needTestFirst": "先通过测试才能添加",
 				"prov.cancel": "取消",
-				"edit.tip": "编辑这个供应商的配置（显示名 / 协议 / 端点 / 凭据名）",
 				"edit.displayName": "显示名",
 				"edit.api": "协议",
 				"edit.apiDefault": "（默认）",
@@ -280,7 +279,6 @@ window.__ModuleLoader__.load({
 				"prov.adding": "Adding…",
 				"prov.needTestFirst": "Pass the test first to add",
 				"prov.cancel": "Cancel",
-				"edit.tip": "Edit this provider (display name / protocol / endpoint / credential name)",
 				"edit.displayName": "Display name",
 				"edit.api": "Protocol",
 				"edit.apiDefault": "(default)",
@@ -3020,15 +3018,9 @@ window.__ModuleLoader__.load({
 			var savingKeyState = react.default.useState({});
 			var savingKey = savingKeyState[0];
 			var setSavingKey = savingKeyState[1];
-			var editOpenState = react.default.useState({});
-			var editOpen = editOpenState[0];
-			var setEditOpen = editOpenState[1];
 			var editFormsState = react.default.useState({});
 			var editForms = editFormsState[0];
 			var setEditForms = editFormsState[1];
-			var editOriginState = react.default.useState({});
-			var editOrigin = editOriginState[0];
-			var setEditOrigin = editOriginState[1];
 			var editBusyState = react.default.useState({});
 			var editBusy = editBusyState[0];
 			var setEditBusy = editBusyState[1];
@@ -3249,28 +3241,7 @@ window.__ModuleLoader__.load({
 					else setNote("已是最新（" + String(result.latest) + "）");
 				});
 			}
-			/**
-			* 展开/收起某张卡的编辑表单。
-			*
-			* 打开时**从 route 快照取初值**（`routesById[id]`，宿主下发的那份 YAML 解析结果），
-			* 而不是从只读展示字段拼——展示字段经过格式化（短名、掩码），拿它当编辑初值会把
-			* 展示形态写回配置。快照缺失时退回展示值，至少不比现在更差。
-			*/
-			function toggleEditMode(account, on) {
-				if (on) {
-					var form = providerEditForm(routesById[account.id] !== void 0 ? routesById[account.id] : account);
-					setEditForms(function(prev) {
-						return withKey(prev, account.id, form);
-					});
-					setEditOrigin(function(prev) {
-						return withKey(prev, account.id, form);
-					});
-				}
-				setEditOpen(function(prev) {
-					return withKey(prev, account.id, on);
-				});
-			}
-			/** 改一个编辑字段（表单值留在本地，按「保存」才写盘）。 */
+			/** 改一个编辑字段（草稿留在本地，按「保存修改」才写盘）。 */
 			function setEditField(id, field, value) {
 				setEditForms(function(prev) {
 					var current = prev[id] !== void 0 ? prev[id] : {};
@@ -3289,18 +3260,15 @@ window.__ModuleLoader__.load({
 			*/
 			function saveProviderEdit(account) {
 				var form = editForms[account.id] !== void 0 ? editForms[account.id] : {};
-				var original = editOrigin[account.id] !== void 0 ? editOrigin[account.id] : {};
+				var origin = providerEditForm(routesById[account.id] !== void 0 ? routesById[account.id] : account);
 				var bad = validateProviderEdit(form);
 				if (bad !== void 0) {
 					setNote(t(bad));
 					return;
 				}
-				var ops = providerEditSaveOps(account.id, form, original);
+				var ops = providerEditSaveOps(account.id, form, origin);
 				if (ops.length === 0) {
 					setNote(t("edit.noChange"));
-					setEditOpen(function(prev) {
-						return withKey(prev, account.id, false);
-					});
 					return;
 				}
 				setEditBusy(function(prev) {
@@ -3311,8 +3279,10 @@ window.__ModuleLoader__.load({
 					ops
 				}).then(function() {
 					setNote(tf("edit.saved", { id: account.id }));
-					setEditOpen(function(prev) {
-						return withKey(prev, account.id, false);
+					setEditForms(function(prev) {
+						var next = {};
+						for (var key in prev) if (key !== account.id) next[key] = prev[key];
+						return next;
 					});
 					return postJson("/provider/refresh").catch(function() {});
 				}).then(function() {
@@ -3384,6 +3354,22 @@ window.__ModuleLoader__.load({
 						className: "pv_line pv_row",
 						key: "id"
 					}, react.default.createElement("span", null, t("prov.routeId")), react.default.createElement("span", { className: "pv_field" }, String(account.id))));
+					var editOrigin = providerEditForm(routesById[account.id] !== void 0 ? routesById[account.id] : account);
+					var editForm = editForms[account.id] !== void 0 ? editForms[account.id] : editOrigin;
+					var editDirty = isProviderEditDirty(editForm, editOrigin);
+					var busyEdit = editBusy[account.id] === true;
+					bodyRows.push(react.default.createElement("div", {
+						className: "pv_line pv_row",
+						key: "name"
+					}, react.default.createElement("span", null, t("edit.displayName")), react.default.createElement("input", {
+						className: "pv_field pv_key",
+						type: "text",
+						value: editForm.displayName,
+						placeholder: account.id,
+						onChange: function(event) {
+							setEditField(account.id, "displayName", event.target.value);
+						}
+					})));
 					var keyless = account.authConfigured === false && typeof account.apiKeyEnv === "string" && account.apiKeyEnv !== "";
 					bodyRows.push(react.default.createElement("div", {
 						className: "pv_line pv_row",
@@ -3422,18 +3408,70 @@ window.__ModuleLoader__.load({
 							saveKey(account);
 						}
 					}, savingKey[account.id] === true ? t("prov.saving") : t("prov.save"))) : react.default.createElement("span", { className: "pv_field" }, account.keyHint !== void 0 ? account.keyHint : t("prov.credential"))));
-					if (account.baseUrl !== void 0) bodyRows.push(react.default.createElement("div", {
+					bodyRows.push(react.default.createElement("div", {
 						className: "pv_line pv_row",
 						key: "url"
-					}, react.default.createElement("span", null, t("prov.apiBase")), react.default.createElement("span", { className: "pv_field" }, String(account.baseUrl))));
-					if (account.api !== void 0) bodyRows.push(react.default.createElement("div", {
+					}, react.default.createElement("span", null, t("prov.apiBase")), react.default.createElement("input", {
+						className: "pv_field pv_key",
+						type: "text",
+						value: editForm.baseURL,
+						placeholder: t("edit.baseUrlPlaceholder"),
+						onChange: function(event) {
+							setEditField(account.id, "baseURL", event.target.value);
+						}
+					})));
+					bodyRows.push(react.default.createElement("div", {
 						className: "pv_line pv_row",
 						key: "api"
-					}, react.default.createElement("span", null, t("prov.protocol")), react.default.createElement("span", { className: "pv_field" }, String(account.api))));
-					if (account.apiKeyEnv !== void 0) bodyRows.push(react.default.createElement("div", {
+					}, react.default.createElement("span", null, t("prov.protocol")), react.default.createElement("select", {
+						className: "pv_field pv_key",
+						value: editForm.api,
+						onChange: function(event) {
+							setEditField(account.id, "api", event.target.value);
+						}
+					}, react.default.createElement("option", { value: "" }, t("edit.apiDefault")), PROVIDER_API_OPTIONS.map(function(option) {
+						return react.default.createElement("option", {
+							value: option,
+							key: option
+						}, option);
+					}))));
+					bodyRows.push(react.default.createElement("div", {
 						className: "pv_line pv_row",
 						key: "ref"
-					}, react.default.createElement("span", null, ""), react.default.createElement("span", { className: "pv_hint" }, tf("prov.credStoredAs", { ref: account.apiKeyEnv }))));
+					}, react.default.createElement("span", null, t("edit.keyEnv")), react.default.createElement("input", {
+						className: "pv_field pv_key",
+						type: "text",
+						value: editForm.apiKeyEnv,
+						placeholder: account.id.toUpperCase() + "_API_KEY",
+						onChange: function(event) {
+							setEditField(account.id, "apiKeyEnv", event.target.value);
+						}
+					})));
+					if (editDirty || busyEdit) bodyRows.push(react.default.createElement("div", {
+						className: "pv_editActs",
+						key: "edit-acts"
+					}, react.default.createElement("div", {
+						className: "plan_note",
+						key: "hint"
+					}, t("edit.emptyHint")), react.default.createElement("button", {
+						type: "button",
+						className: "pv_action",
+						disabled: busyEdit || !editDirty,
+						onClick: function() {
+							saveProviderEdit(account);
+						}
+					}, busyEdit ? t("edit.saving") : t("edit.save")), react.default.createElement("button", {
+						type: "button",
+						className: "pv_action",
+						disabled: busyEdit,
+						onClick: function() {
+							setEditForms(function(prev) {
+								var next = {};
+								for (var key in prev) if (key !== account.id) next[key] = prev[key];
+								return next;
+							});
+						}
+					}, t("prov.cancel"))));
 					var models = modelsByProvider[account.id];
 					if (models !== void 0 && models.length === 0) {
 						var fromDetails = [];
@@ -3566,84 +3604,6 @@ window.__ModuleLoader__.load({
 						className: "plan_note plan_badText",
 						key: "warn"
 					}, account.credentialWarning));
-					if (editOpen[account.id] === true) {
-						var form = editForms[account.id] !== void 0 ? editForms[account.id] : providerEditForm(account);
-						var dirty = isProviderEditDirty(form, editOrigin[account.id] !== void 0 ? editOrigin[account.id] : form);
-						var busyEdit = editBusy[account.id] === true;
-						var fieldRow = function(labelKey, inputEl, key) {
-							return react.default.createElement("div", {
-								className: "pv_field",
-								key
-							}, react.default.createElement("span", { className: "pv_flabel" }, t(labelKey)), inputEl);
-						};
-						var editRows = [
-							fieldRow("edit.displayName", react.default.createElement("input", {
-								className: "pv_key",
-								type: "text",
-								value: form.displayName,
-								placeholder: account.id,
-								onChange: function(event) {
-									setEditField(account.id, "displayName", event.target.value);
-								}
-							}), "displayName"),
-							fieldRow("edit.api", react.default.createElement("select", {
-								className: "pv_field pv_key",
-								value: form.api,
-								onChange: function(event) {
-									setEditField(account.id, "api", event.target.value);
-								}
-							}, react.default.createElement("option", { value: "" }, t("edit.apiDefault")), PROVIDER_API_OPTIONS.map(function(option) {
-								return react.default.createElement("option", {
-									value: option,
-									key: option
-								}, option);
-							})), "api"),
-							fieldRow("edit.baseUrl", react.default.createElement("input", {
-								className: "pv_key",
-								type: "text",
-								value: form.baseURL,
-								placeholder: t("edit.baseUrlPlaceholder"),
-								onChange: function(event) {
-									setEditField(account.id, "baseURL", event.target.value);
-								}
-							}), "baseURL"),
-							fieldRow("edit.keyEnv", react.default.createElement("input", {
-								className: "pv_key",
-								type: "text",
-								value: form.apiKeyEnv,
-								placeholder: account.id.toUpperCase() + "_API_KEY",
-								onChange: function(event) {
-									setEditField(account.id, "apiKeyEnv", event.target.value);
-								}
-							}), "apiKeyEnv"),
-							react.default.createElement("div", {
-								className: "plan_note",
-								key: "hint"
-							}, t("edit.emptyHint")),
-							react.default.createElement("div", {
-								className: "pv_editActs",
-								key: "acts"
-							}, react.default.createElement("button", {
-								type: "button",
-								className: "pv_action",
-								disabled: busyEdit || !dirty,
-								onClick: function() {
-									saveProviderEdit(account);
-								}
-							}, busyEdit ? t("edit.saving") : t("edit.save")), react.default.createElement("button", {
-								type: "button",
-								className: "pv_action",
-								disabled: busyEdit,
-								onClick: function() {
-									toggleEditMode(account, false);
-								}
-							}, t("prov.cancel")))
-						];
-						bodyRows.push(react.default.createElement("div", {
-							className: "pv_editPanel",
-							key: "edit"
-						}, editRows));
-					}
 				}
 				var linkUrl = typeof account.websiteUrl === "string" && account.websiteUrl !== "" ? account.websiteUrl : typeof account.baseUrl === "string" && account.baseUrl !== "" ? account.baseUrl : void 0;
 				cards.push(react.default.createElement("div", {
@@ -3683,15 +3643,7 @@ window.__ModuleLoader__.load({
 					onClick: function() {
 						refreshAccount(account);
 					}
-				}, "↻"), react.default.createElement("button", {
-					type: "button",
-					className: "pv_iconBtn" + (editOpen[account.id] === true ? " pv_editOn" : ""),
-					disabled: editOpen[account.id] === true,
-					title: t("edit.tip"),
-					onClick: function() {
-						toggleEditMode(account, editOpen[account.id] !== true);
-					}
-				}, "✎"), account.deletable === true ? react.default.createElement("button", {
+				}, "↻"), account.deletable === true ? react.default.createElement("button", {
 					type: "button",
 					className: "pv_iconBtn",
 					title: "删除这个 provider（会先弹出确认，列清要删的配置与密钥）",

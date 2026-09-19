@@ -141,14 +141,26 @@ try {
   await cdp.eval(`window.scrollTo(0, 0)`)
   shots.push(await cdp.shot('01-provider-card-30d-chip'))
 
-  // 2) 逐模型清单编辑器（issue #1）
-  const hasConfig = await cdp.waitFor('.pv_meOpen')
-  if (!hasConfig) throw new Error('「配置模型」按钮没渲染出来')
-  await cdp.eval(`document.querySelector('.pv_meOpen').click()`)
+  // 2) 模型清单（勾选式，与「配置模型」按钮解耦：展开即见）
   await cdp.waitFor('.pv_meRow')
-  await sleep(300)
-  const rowIds = await cdp.eval(`Array.from(document.querySelectorAll('.pv_meRow .pv_mId')).map(function (el) { return el.textContent })`)
-  console.log('  编辑器行:', JSON.stringify(rowIds))
+  const editorProbe = await cdp.eval(`(function () {
+    var rows = Array.from(document.querySelectorAll('.pv_meRow'))
+    return {
+      rows: rows.length,
+      ids: rows.map(function (el) { return (el.querySelector('.pv_mId') || {}).textContent }),
+      colhead: document.querySelector('.pv_meHeadRow') !== null,
+      noConfigBtn: document.querySelector('.pv_meOpen') === null,
+      knownRowsReadOnly: Array.from(rows).every(function (el) {
+        var custom = el.querySelector('.pv_capDeclared') !== null
+        return custom ? el.querySelector('.pv_meNum') !== null : el.querySelector('.pv_meNum') === null
+      }),
+      wrapId: rows.length > 0 && getComputedStyle(rows[0].querySelector('.pv_mId')).whiteSpace === 'normal',
+    }
+  })()`)
+  console.log('  清单探针:', JSON.stringify(editorProbe))
+  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.knownRowsReadOnly !== true || editorProbe.wrapId !== true) {
+    throw new Error('模型清单结构没满足：' + JSON.stringify(editorProbe))
+  }
   shots.push(await cdp.shot('02-model-list-editor'))
 
   // 2b) 取消勾选一个模型后保存，看落到 /provider/set-models 的载荷
