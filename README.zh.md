@@ -1,275 +1,286 @@
 # @dsh-one/dsh-llm-provider
 
-**中文说明** · [English](https://github.com/imchangchang/dsh-llm-provider/blob/main/README.md)
+一个 [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh)（DeepSeek Harness）插件。
+它替换 dsh 插件树里的四个条目——pi-ai 适配器（`llm-pi-ai`）、原生 DeepSeek 适配器
+（`llm-deepseek`）、模型选择器（`ui-model-selection`）与官方 Models 设置页
+（`ui-settings-models`），并在其上加了额度查询与供应商管理。
 
-给 [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh)（DeepSeek Harness）用的插件。它替换 dsh 插件树里的四个条目：pi-ai 适配器（`llm-pi-ai`）、DeepSeek 原生适配器（`llm-deepseek`）、模型选择器（`ui-model-selection`）、官方 Models 设置页（`ui-settings-models`），并在这之上加了额度查询与供应商管理。
+**中文** · [English](README.md)
 
-四条能力：
+## 这个仓库从哪来
 
-1. **pi-ai 版本跟上游走**。dsh 在打包时固定它的 LLM SDK [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai)，本插件跑自己维护的那份，上游出了新模型不用等 dsh 发版。
-2. **额度查询**。按供应商查余额与用量窗口，数据同时给供应商卡片和模型选择器上的余量指示。
-3. **模型选择器**。层级与官方一致（模型 / 推理等级），另加供应商过滤、余量指示、能力徽章和模型详情卡。
-4. **供应商设置页**。添加、删除、测试、单卡刷新；写的是官方同一套设置段与凭据存储。
+| | |
+|---|---|
+| 上游 | [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider) |
+| 本 fork | [Ztyss/dsh-llm-provider](https://github.com/Ztyss/dsh-llm-provider)（私有） |
+| 基线提交 | 上游 `1eb017f`（v0.1.0-rc.2） |
+| remote | `origin` → 本 fork · `upstream` → 原仓库 |
 
-## 目录
+上游 `0.2.0` 在那个仓库里没有源码（只有 `main`），所以这里所有源码级改动都基于
+`1eb017f`。只存在于 `0.2.0` 的功能（OAuth、github-copilot）不在范围内。
 
-- [使用](#使用)：[安装](#安装) · [第一次使用](#第一次使用) · [配置](#配置) · [测试实例](#测试实例) · [命令行跑测](#命令行跑测)
-- [实现](#实现)：[pi-ai 桥接](#pi-ai-桥接) · [候选来源](#候选来源) · [兼容性检查](#兼容性检查) · [模型选择器](#模型选择器) · [供应商设置页](#供应商设置页) · [额度适配器](#额度适配器) · [路由发现](#路由发现) · [凭据检查](#凭据检查) · [HTTP 接口](#http-接口) · [构建](#构建)
-- [边界](#边界)
-- [对模型请求的影响](#对模型请求的影响)
-- [已知缺口](#已知缺口)
-- [源码布局](#源码布局)
+## 本地的定制
+
+1. **pi-ai 只读。** 插件只用 dsh 自带的那一份，绝不自己下载；所有下载/更新入口都已
+   关闭，安装副本的递归删除写路径也已移除（见 [pi-ai 桥接](#pi-ai-桥接)）。
+2. **卡片级供应商编辑。** 每张供应商卡片有编辑模式（✎），可就地改显示名、协议、端点与
+   凭据名。只写改动过的字段；清空某个字段是**移除该键**，而不是写入空值。
+3. **浏览器端双语（中/英）**，走 dsh 自己的 locale 机制。
+4. **issue #1–#8 的修复**（见 [已修 issue](#已修-issue)）。
+5. **面向 fork 的打包**：构建产物（`lib/`）入库，使本仓库能用一条
+   `dsh plugin add` 安装；测试实例可与真实 profile 并行运行。
 
 ## 使用
 
 ### 安装
 
-从 npm 装：
-
 ```sh
-dsh plugin --profile web add @dsh-one/dsh-llm-provider
-dsh web     # 插件树变了，必须重启
+# 一条命令。本 fork 是私有仓库，所以 git 需要凭据（gh auth login 即可）。
+dsh plugin --profile web add github:Ztyss/dsh-llm-provider
+dsh web     # 需要重启：插件树在进程启动时组装
 ```
 
-包名后加 `@<版本>` 就是装指定版本。
-
-改本仓库代码时，把 checkout 链接进 profile：
+`dsh plugin add` 既转发给 pnpm，**又**会同步 `dsh.profile.bundles`。两半都关键——
+只装依赖不会让插件被加载。校验：
 
 ```sh
-scripts/install-deps.sh   # 装开发依赖
-npm run build             # lib/ 是构建产物，不入库
-# 链接 ~/.dsh/profiles/<profile>/node_modules/@dsh-one/dsh-llm-provider -> 本仓库路径
-# 并在 profile 的 package.json dependencies 里写 "@dsh-one/dsh-llm-provider": "link:<路径>"
-cd vendor && npm install  # 可选：在 checkout 里固定一份 pi-ai
-dsh web                   # 插件树变了，必须重启
+dsh --profile web --dump-config | grep -A2 'id: dsh-llm-provider'
 ```
 
-发布出去的包里没有 `vendor/` 和它的 lockfile，那份固定 pi-ai 只在 checkout 里有。装不装都行：没安装的来源会被跳过，落到 dsh 自带那份 pi-ai。目录不在意味着「没装」，不是「不兼容」，界面上不会出现「跳过 X：兼容性检查没通过」这种提示。
+要在源码上工作时，把 checkout 链进 profile：
+
+```sh
+npm run build             # 生成 lib/
+# 把 ~/.dsh/profiles/<profile>/node_modules/@dsh-one/dsh-llm-provider 链到本 checkout
+# 并在 profile 的 package.json 里写 "@dsh-one/dsh-llm-provider": "link:<路径>"
+```
 
 ### 第一次使用
 
-插件在自己 config 里声明了一条 DeepSeek 路由（`llm-pi-ai.providers.deepseek`，凭据名 `DEEPSEEK_API_KEY`），因为内置的 `llm-deepseek` 条目被禁用了。所以刚装完就有一张没配密钥的 DeepSeek 卡片：
+插件在自己的 config 里声明了一条 DeepSeek 路由（`llm-pi-ai.providers.deepseek`，凭据名
+`DEEPSEEK_API_KEY`），因为内置的 `llm-deepseek` 已被禁用。所以新装出来会看到一张没有
+密钥的 DeepSeek 卡片：
 
-- 在 设置 →「模型服务」→「服务商」里展开这张卡片。没存过凭据时「API 密钥」那行就是输入框，保存后立刻实查一次额度。
-- 加别的供应商：「＋ 添加供应商」→ 选预设 → 填密钥与端点 → 测试通过后保存。
-- 之后卡片上就有余额，模型选择器的触发器上是同一个快照。
+- 在 设置 →「模型服务」→「服务商」里展开卡片。没存凭据时，「API 密钥」那一行是输入框；
+  存下去会立刻跑一次额度查询。
+- 其它供应商：「＋ 添加供应商」→ 选预设 → 填密钥与端点 → 测试通过 → 保存。
+- 改已有供应商：点卡片上的 ✎。
 
-密钥存在 dsh 自己的凭据服务里，键名是路由的 `apiKeyEnv`，与官方那套读的是同一份，插件不需要自己的配置文件。
+密钥通过 dsh 自己的凭据服务存在路由的 `apiKeyEnv` 下，与官方那一套读的是同一份凭据。
+不涉及插件配置文件。
 
 ### 配置
 
-供应商从 `settings.yaml` 的 `llm-pi-ai.providers` 发现。这一节里没有路由时额度面板是空的——按上面那步在设置页加一条。key 由 dsh 的凭据服务按每条路由的 `apiKeyEnv` 解析。
+供应商来自 `settings.yaml` 的 `llm-pi-ai.providers`；那里没有路由时额度面板为空。密钥由
+dsh 的凭据服务按各路由的 `apiKeyEnv` 解析。
 
-pi-ai 更新有两个触发路径：插件启动时后台查一次（6 小时节流，`DSH_PROVIDER_UPDATE=off` 可关），以及设置页上的「检查更新」按钮（`POST /provider/update`）。
-
-两条路径都一样，**两道检查都过才会替换**：tarball 完整性（registry 的 `dist.integrity`）和兼容性检查。过了才标记为待重启，已经在跑的版本不会重复下载。pi-ai 换了版本要重启 dsh 才生效——桥接在进程启动时装载。
+**pi-ai 更新已关闭。** 插件跟随 dsh 自带的 pi-ai，从不下载：没有后台检查，也没有更新
+按钮。`/provider/update` 仍会响应，但只回一句"已停用"。要换 pi-ai，请升级 dsh 本身。
 
 ### 测试实例
 
 ```sh
-scripts/test-profile.sh        # 起 plan-test profile（3081 端口）并打开浏览器
+scripts/test-profile.sh        # 启动 plan-test profile（端口 3081）并打开浏览器
 scripts/test-profile.sh stop   # 停掉
 ```
 
-测试实例用独立 profile，可以并行：`PORT=3082 PROFILE=plan-test-foo LOG=/tmp/dsh-plan-foo.log scripts/test-profile.sh`。启动时带 `DSH_PROVIDER_TEST=1`，浏览器端据此在标题后加 ` · 测试`、给 favicon 盖「测」字角标。脚本生成的 profile 还会 link 本机另一条插件 `dsh-sidekick`（`$DSH_HOME/workspaces/dsh-mobile/plugin`）；机器上没有这份 checkout 时，先改脚本里那两行。
+它用独立 profile，所以能与真实实例并行：
+`PORT=3082 PROFILE=plan-test-foo LOG=/tmp/dsh-plan-foo.log scripts/test-profile.sh`。
+它设置 `DSH_PROVIDER_TEST=1`，浏览器端据此在标题后加 ` · 测试`、给 favicon 盖「测」。
+在没有那个 checkout 的机器上，请改掉脚本里额外链接的插件。
 
-### 命令行跑测
+### 命令行检查
 
 ```sh
-node lib/adapters/run.js all            # 跑全部额度适配器（key 从环境变量或 ~/.dsh/.credentials.yaml 找）
+node lib/adapters/run.js all            # 跑所有额度适配器（密钥取环境变量或 ~/.dsh/.credentials.yaml）
 node lib/adapters/run.js kimi-coding --key sk-xx
 
-npm test                                # 构建 + 七个离线测试；自测与合入跑的就是这条
+npm test                                # 构建 + 12 个离线测试
 npm run typecheck                       # tsc --noEmit（npm test 不含它）
 ```
-
-七个测试分别盯：路由发现、凭据检查、patch 层、pi-ai 兼容性检查、供应商预设清单、vendor 状态合并、浏览器端接线。开发流程（主线不写代码、全部走 worktree）见 `AGENTS.md`。
 
 ## 实现
 
 ### pi-ai 桥接
 
-dsh 的模型目录来自它打包时那份 pi-ai。桥接让它跑在插件自己维护的版本上：
+dsh 的模型目录来自它构建时所用的 pi-ai 版本。本 fork **不**自己维护一份：只读使用
+dsh 自带的那份。
 
-- 把已装的 `dsh-llm-pi-ai` bundle 拷到 `vendor/llm-bridge/`，旁边放一条软链指向 `vendor/pi-ai/<版本>/`。Node 按 bare specifier 从这里解析，拷贝副本就接到了新版 pi-ai。
-- pi-ai 的模型目录与 wire 协议实现（`api/*.lazy`、`providers/all`）都是懒加载，全部来自新版；dsh 那份 bundle 只提供稳定的转换层。
-- 官方 `llm-pi-ai` 条目（插件树里的一行）由 `cordis.patch.yml` 禁用，插件接管它的设置段、模型发现与目录。
+- 使用前 `src/pi-ai-source.ts` 校验 `package.json`、`dist/index.js` 以及官方 bundle
+  真正 import 的四条子路径（`providers/all.js`、`api/anthropic-messages.lazy.js`、
+  `api/openai-completions.lazy.js`、`api/openai-responses.lazy.js`）。只判
+  `package.json` 不够：2026-09-18 的事故形态正是目录与 manifest 都在、`dist/` 被清空，
+  而 Node 报出的是与真实原因无关的 `Cannot find package '...pi-ai\index.js'`。
+- 桥接副本在 `vendor/llm-bridge/`，旁边一条链指向宿主那份包；bundle 的懒加载
+  （`api/*.lazy`、`providers/all`）于是解析到那里。
+- 官方 `llm-pi-ai` 条目由 `cordis.patch.yml` 禁用，插件接手它的 settings 段、模型发现
+  与目录。
 
-用哪份 pi-ai 在**加载之前由[兼容性检查](#兼容性检查)决定**。回滚不用改软链：删掉下载的那份，下次启动自动落到下一个来源。
+**四个官方条目是「有条件禁用」的**，这正是让"pi-ai 坏掉"不至于拖垮整个宿主的关键：
 
-### 候选来源
+```yaml
+- id: llm-pi-ai
+  disabled: !!js (()=>{try{…}catch{return false}})()
+```
 
-`loadBridge()` 按优先级列出候选，逐个检查，取第一个通过的：
-
-| 来源 | 目录 | 何时用到 |
-|---|---|---|
-| 已下载 | `vendor/pi-ai/<版本>/`（新的在前） | updater 下好并通过检查之后 |
-| 兜底依赖（界面上的叫法） | `vendor/node_modules/@earendil-works/pi-ai` | 可选，装了就用（`cd vendor && npm install`） |
-| dsh 自带 | 沿官方 bundle 的 `node_modules` 链找到的那份（不写死路径） | 前两个都没装，或检查不通过 |
-
-没安装的来源直接跳过。只有**存在但检查不通过**时才列进「被跳过」并给出原因。dsh 自带那份的版本随 dsh 发布走，不一定比上游旧。
-
-**同一版本时优先用 dsh 自带那份**：下载副本排在前面是有道理的（它可能是更新的版本），但版本相同时让副本赢没有收益——白占一份重复目录，而且切换生效要等重启，而用宿主那份本来就在跑。所以版本相等时把宿主那条提到前面，桌面端「pi-ai 桥接」标签里能看出最终用的是哪一档。
-
-后两个来源的目录都不写死。官方 bundle 按这个顺序沿解析链找：profile 的 `node_modules`、dsh 安装树（含嵌在 dsh 包里的 `node_modules`）、最后是本插件。pi-ai 从找到的那份 bundle 位置继续沿解析链找。所以 dsh 换布局（bundle 放进自己的安装目录、依赖提升到别处）不会让某个来源凭空消失。
-
-### 磁盘开销（`vendor/` 不是缓存，别手删）
-
-插件自己的代码约 220 KB，但 `vendor/` 会装运行副本，**量级差三个数量级**：
-
-| 路径 | 典型大小 | 内容 |
-|---|---|---|
-| `vendor/pi-ai/<版本>/` | 约 80 MB | 下载下来的 pi-ai 整包 + 依赖闭包（保留最新一份，换版时自动回收更旧的） |
-| `vendor/llm-bridge/` | 约 1 MB | 真正在跑的那份桥接副本 |
-
-两个曾经的大头已经不在插件目录里了：npm 安装缓存改用系统临时目录、装完即删（原来留在 `vendor/.npm-cache`，实测占过 178 MB）；旧版本 pi-ai 只留最新一份（原来每升一版堆一份）。
-
-**`vendor/` 不是缓存，别手动删。** 删掉 `vendor/pi-ai` 不会「省空间、下次自动重下」那么无害：里面那份可能是当前生效的 pi-ai，你的模型列表、详情卡与显示名都挂在它上面；解压带依赖闭包约 80 MB，重下要时间。要省空间用「pi-ai 桥接」标签里的清理动作，或直接删 `vendor/pi-ai/<某个旧版本>`（比保留数更旧的才会被自动回收）。
-
-`vendor/package.json` 锁住兜底依赖的版本，与下载目录互不覆盖：更新只往 `vendor/pi-ai/<新版本>/` 写。两个都放在 `vendor/` 下，是因为桥接副本在 `vendor/llm-bridge/`，向上解析先撞到 `vendor/node_modules`，选中这一来源时不用挂软链。
-
-### 兼容性检查
-
-从桥接副本源码里抠出它对 pi-ai 的 import 需求（子路径 + 具名导出），照着生成一份探针文件，放进插件自己的临时目录、配一条指向候选的软链，再 require 它。解析规则与拷贝完全一致，但模块 URL 不同，所以一个候选失败不影响下一个，也不污染真正的拷贝。
-
-需求解析覆盖具名导入与 re-export、动态 `import()`、副作用与 namespace 导入、`export *`。**必须先检查再加载**：Node 对加载失败的 ESM 会留下半初始化记录，同一个文件再 require 只会报 `not yet fully loaded`，所以「先加载、失败再退回」这条路走不通。
-
-检查不通过的候选列在 `/provider/status` 的 `bridge.rejected` 里。需求压根解析不出来时检查跑不了，被选中的那份按「目录存在」放行，此时报 `probeUnverified: true`。updater 侧一样，只有检查通过才替换。
+表达式由 `src/patch-condition.ts` 生成，`scripts/sync-patch-condition.mjs` 同步进 patch
+文件，`npm test` 校验两者没有漂移。它从 dsh 入口解析 pi-ai：完好时禁用官方条目、由桥接
+接手；缺失或残缺时**保留**官方条目，宿主照常启动。改这个表达式有两条硬约束（都实测过）：
+求值作用域里**没有 `require`**；表达式抛错会让整棵插件树加载失败，所以必须自带
+`try/catch`。
 
 ### 模型选择器
 
-接管输入框（composer）上的 `conversation.input.model` 座位（插件挂载点）与 `/model` 命令（官方 `ui-model-selection` 条目由 `cordis.patch.yml` 禁用）：
+接手 composer 的 `conversation.input.model` 座位与 `/model` 命令（官方
+`ui-model-selection` 条目被禁用——两套状态机会互相打架）：
 
-- 交互与官方一致：触发器胶囊（`<供应商id>/<模型id>` · 推理等级）→ 根面板「模型 / 推理等级」两行 → 模型面板 → 推理等级面板。选了模型或等级就关菜单。
-- 取数与官方同路：目录走 `session/modelCatalog`，切换走 `session/selectModel`，余量走 `/plan/status`；官方 `modelDirectories` 客户端服务在就用它，不在就用自己的 RPC。
-- 当前选择优先取会话里记着的那次，没有就用目录默认。默认等级只认目录声明的 `defaultEffort`，目录没声明就显示官方的 `Default` 文案。
-- 插件接管前记下的会话可能写着官方那条 `deepseek-official` 路由（现在已不存在）。这种选择会折到现路由（`deepseek`）上显示与取余量，座位还会把会话里记的那次改写一次——宿主在记录里的 provider 没有适配器时直接拒绝发送。改写只在目标路由与模型都在目录里时才做。
-- 额外做的：供应商过滤 chips（带余量指示点）、跨供应商搜索（子串/缩写/编辑距离）、能力徽章、上下文标注、模型详情卡。
-- 触发器上的余量指示与供应商卡片读同一个快照，显示最紧的那个窗口的百分比；卡片上每个窗口分别列。
-- 空间不够时先隐藏供应商段，最后才截断模型名；推理等级和余量不收缩。composer 行宽 ≤760px 时隐藏供应商段，≤620px 时余量只留指示点。胶囊宽度上限 `min(560px, 60cqw)`，全名始终挂在 `title` 上。
+- 交互与官方一致：触发胶囊 → 模型面板 → 推理等级面板。
+- 数据路径相同：目录来自 `session/modelCatalog`，切换走 `session/selectModel`，额度来自
+  `/plan/status`。本插件之前记录的会话可能写着官方 `deepseek-official` 路由，那条选择会
+  被映射到当前路由（一次性）。
+- 额外能力：带额度点的供应商筛选、跨供应商搜索、能力徽章、上下文标签、模型详情卡。
+  额度指示取最紧的那一档；卡片里逐档分列。
 
 ### 供应商设置页
 
-设置页新增「模型服务」标签（官方 `ui-settings-models` 条目已禁用），两个二级标签：「服务商」、「pi-ai 桥接」。
+加了一个「模型服务」标签，下分「服务商」与「pi-ai 桥接」两个二级标签。
 
-- 卡片照官方 PluginCard：状态点 + 名称 + 官网链接，一行余量摘要（`5h: 84% ◷ 3h7m ｜ 7d: 30% ◷ 3d20h`），右侧是刷新时间、单卡刷新、删除。展开体展示路由配置（路由 ID、掩码密钥、API 地址、协议、凭据名）和该供应商的模型列表（带过滤与详情卡）。
-- 添加供应商：选预设 → 填密钥与端点 → 实连测试通过才能写入。写的是 `settings/mutate` 的 `llm-pi-ai.providers` 段与 `credentials/set`，与官方同一套存储。
-- 补密钥：路由在、凭据没值时，卡片展开体里那一行就是输入框（官方 Models 页已禁用，这是唯一入口）。存完立刻实查一次额度。这种供应商在添加列表里标「缺密钥」而不是「已配置」，不会被禁选堵住。
-- 删除：清路由 + 清凭据。内置原生路由不允许在这里删。
-- 「pi-ai 桥接」标签：当前版本与来源、被跳过的候选及原因、上游版本与检查更新按钮。
+- 卡片沿用官方 PluginCard：状态点、名称、一行额度摘要、刷新时间，右侧是逐卡刷新与删除。
+  展开后是路由配置与该供应商的模型清单（带过滤）。
+- 添加：选预设 → 填密钥与端点 → **测试通过才写入**。写入走 `settings/mutate` 到
+  `llm-pi-ai.providers`，以及 `credentials/set` 到凭据库——与官方页同一份存储。
+- 逐模型清单编辑器写 `llm-pi-ai.providers.<id>.models`。
+- **所有写入都是逐字段的**（`['providers', id, field]`）。路径正好落在 route 对象本身的
+  `set`，在宿主的 `applyPathOp` 里是整段替换，会静默吃掉手写的 `models` / `compat`
+  （issue #1）。
+- 删除会清掉路由与凭据；内置原生路由不能在这里删。
 
 ### 额度适配器
 
-一家一个文件（`src/adapters/`），`registry.ts` 注册一行，契约在 `shared.ts`；`node lib/adapters/run.js` 可单独跑。除 qwen 外都用各家的 API key 走免费 GET，都不依赖浏览器登录态。
+每个供应商一个文件，放在 `src/adapters/` 下；`registry.ts` 里一行注册，契约在
+`shared.ts`；`node lib/adapters/run.js` 可独立运行。除 qwen 外都用供应商自己的 API key
+打一个免费的 GET 端点，都不需要浏览器会话。
 
-| 适配器 | 数据来源 |
+| 适配器 | 数据源 |
 |---|---|
 | deepseek | `api.deepseek.com/user/balance` |
 | kimi-coding | `api.kimi.com/coding/v1/usages` |
-| moonshot | `api.moonshot.cn/v1/users/me/balance`（按配置的 baseURL 走 `.cn` 或 `.ai`） |
+| moonshot | `api.moonshot.cn/v1/users/me/balance`（`.cn` 或 `.ai`，跟随配置的 baseURL） |
 | glm | `open.bigmodel.cn/api/monitor/usage/quota/limit` |
-| minimax | `api.minimaxi.com/v1/api/openplatform/coding_plan/remains`（国际站是 `.io`） |
+| minimax | `api.minimaxi.com/v1/api/openplatform/coding_plan/remains` |
 | opencode-go | `opencode.ai/zen/go/v1/usage` |
-| zenmux | 配置的 `baseURL` 本身（响应里是 `quota_5_hour` / `quota_7_day`） |
+| zenmux | 配置的 `baseURL` 本身（响应里的 `quota_5_hour` / `quota_7_day`） |
 | openrouter | `openrouter.ai/api/v1/credits` |
-| qwen | 无公开接口：不发请求，卡片给「看控制台」跳转链接 |
+| qwen | 无公开端点：不发请求，卡片给一个「看控制台」链接 |
 
-数值与展示口径对齐 CC Switch（[farion1231/cc-switch](https://github.com/farion1231/cc-switch)，给编码 CLI 切换供应商配置的桌面工具）：它显示哪些字段就显示哪些，不额外加工。套餐等级字段在下发到浏览器前丢弃；Kimi 充值包余额不显示，因为数值与 CC Switch 不一致，看着也不可靠。
-
-### 路由发现
-
-额度面板和预设清单列哪些供应商，由两处合并决定：
-
-1. `settings.yaml` 的 `llm-pi-ai.providers`——用户配置的 pi-ai 路由。
-2. `ctx.llm.listConfigurableProviders()` 里的原生适配器路由（`deepseek-official` 这类）：它们不写设置段也带默认 `apiKeyEnv`，而这个默认值在服务上读不到，所以 `routes.ts` 用一张 `NATIVE_ROUTE_DEFAULTS` 表对上。
-
-显示名优先用路由自己的 `displayName`，没有就取 pi-ai 注册表里 `*Provider()` 工厂给的名字（`pi-ai-names.ts`，带缓存），再没有就按 id 拼一个。pi-ai 目录外只保留一个入口：Custom Gateway。模型 ID 与路由 ID 一律显示原值，与设置里的键对得上。
-
-### 凭据检查
-
-宿主在解析各家 key 时顺手比对，两个供应商用同一把 key 就在界面上报警。dsh 自己不做这个检查，而配置界面拿不到 key 值，所以这个错误在别处只表现为「某个供应商一直查询失败」。key 只在宿主进程内参与比对，不出进程。
+数字与呈现方式对齐 CC Switch
+（[farion1231/cc-switch](https://github.com/farion1231/cc-switch)）：它显示哪些字段，这里
+就显示哪些。
 
 ### HTTP 接口
 
-| 路由 | 作用 |
+| 路由 | 用途 |
 |---|---|
-| `GET /plan/status` | 各供应商额度快照（60 秒缓存，`?refresh=1` 绕过） |
-| `GET /provider/status` | 桥接状态、路由表、更新状态、测试实例标记 |
-| `POST /provider/update` | 手动触发一次上游检查与更新 |
-| `GET /provider/models` | pi-ai 模型全量元数据（60 秒缓存；详情卡与能力徽章用） |
-| `GET /provider/presets` | 可添加的供应商预设清单（含已配置标记） |
-| `POST /provider/refresh` | 单卡刷新额度（实查并更新全局快照） |
-| `POST /provider/remove` | 删除供应商（清路由 + 清凭据） |
-| `POST /provider/test` | 用已存的 key 查一次某家的额度（只读，不动全局快照） |
+| `GET /plan/status` | 每个供应商的额度快照（60 秒缓存，`?refresh=1` 绕过） |
+| `GET /provider/status` | 桥接状态、路由表、测试实例标记 |
+| `GET /provider/models` | 完整 pi-ai 模型元数据（60 秒缓存；详情卡与徽章用） |
+| `GET /provider/presets` | 可添加的供应商预设（带 configured 标记） |
+| `POST /provider/refresh` | 刷新某张卡的额度 |
+| `POST /provider/remove` | 删除供应商（路由与凭据） |
+| `POST /provider/test` | 用已存密钥查询某个供应商的额度（只读） |
+| `POST /provider/update` | **已停用**——只回一句"下载已关闭" |
 
-添加供应商的表单不调 `/provider/test`，走的是官方 `llm/discoverModels` 的草稿探测。
-
-这些是自建路由，不是官方的 Typert Remote：那套生成器只认单体仓库布局（`<root>/packages/` 下的包、`@Remote` 的来源必须在已注册的包里），单包插件走不通。代价是没有类型安全的调用点，靠离线测试兜住。
+这些是普通路由而不是官方 Typert Remote：那个生成器只认 monorepo 布局，不适合单包插件。
+代价是没有类型安全的调用点，所以用离线测试覆盖这些路由。
 
 ### 构建
 
 ```sh
-npm run build      # tsdown：宿主端 src/*.ts -> lib/*.js（unbundle）；浏览器端 src/client/index.ts -> lib/client.js（单文件 CJS + window.__ModuleLoader__ 外壳）
-npm run watch      # 改代码自动重建
+npm run build      # tsdown：宿主 src/*.ts → lib/*.js（unbundle）；浏览器端 → lib/client.js
+npm run watch      # 改动即重建
 npm run typecheck  # tsc --noEmit
 ```
 
-宿主端 1:1 转译，产物路径与 package.json 的 exports 对应。浏览器端把 `src/client/` 下的模块内联成一个文件，那三行加载器外壳由构建的 banner/footer/intro 加上，源码里不写。
+宿主端逐文件转译；浏览器端把 `src/client/` 全部内联进一个 CJS 文件，外面套
+`window.__ModuleLoader__` 外壳（那三行由构建的 banner/footer/intro 加，不在源码里）。
+宿主端构建是 **unbundle**：只有 `tsdown.config.ts` 的 `entry` 里列出的文件会被编译，
+所以新增宿主模块必须加进 `entry`。
 
-插件跑的就是 `lib/`——改了源码没构建，跑的还是旧代码。
+**本 fork 把 `lib/` 入库**，这样 `dsh plugin add github:…` 装出来就是可加载的包。改完
+源码要 `npm run build`，并把 `lib/` 与 `src/` 一起提交。这里**刻意没有 `prepare`
+脚本**：pnpm 从 git 安装时会在临时目录里跑它，那里没有 `tsdown`，会让整个安装失败。
 
-装依赖走 `scripts/install-deps.sh`，不要直接 `npm install`：`node_modules/@deepseek-ai` 是指向宿主 profile 的软链，npm 会顺链去 reify 里面两百个包并失败。脚本的做法是装前挪开、装完放回。
+依赖用 `scripts/install-deps.sh` 装，而不是直接 `npm install`：`node_modules/@deepseek-ai`
+是一条指向宿主 profile 的链，npm 会顺着它进去、试图重排两百个包然后失败。
 
 ## 边界
 
-- **不写宿主配置**。dsh 安装目录、`settings.yaml`、凭据一律只读。写只发生在两处：插件自己的 `vendor/`（下载 pi-ai、放桥接副本、写状态文件，其中一部分在加载期就写），以及用户在界面上的显式操作（添加/删除供应商）。启动期不写任何宿主配置。
-- **不改第三方包文件**。pi-ai 一个字节都不改，哪怕它的模型数据是静态快照、落后于上游——打补丁会让装下来的东西与 registry 的完整性校验对不上，不可复现。
-- **不改官方插件文件**。接管一律通过在 `cordis.patch.yml` 里禁用官方条目（`llm-pi-ai`、`llm-deepseek`、`ui-model-selection`、`ui-settings-models`），官方其余行为保持原样。本插件自己的模型座位带 `priority: -10`，那是同一座位上遮蔽占用者的机制。
-- **key 值不出宿主进程**。浏览器端只拿结论与元信息（前 3 + 后 4 的掩码）。
-- **不依赖浏览器登录态**。只支持 API key 类供应商。
-- **webserver 没有鉴权层**（dsh 的设计如此，默认只绑 loopback）。自建路由不做额外校验的前提是「仅本机可达」：把宿主暴露到 `0.0.0.0`，`/plan/status` 会泄露余额与凭据名。
+- **不写宿主配置。** dsh 安装目录、`settings.yaml`、凭据一律只读。写只发生在插件自己的
+  `vendor/` 与用户在界面上的显式操作。
+- **不下载 pi-ai，也不改它。** 一个字节都不打补丁，哪怕它的模型数据是滞后于上游的静态
+  快照——打补丁会破坏 registry 完整性校验。
+- **不改官方插件。** 接管方式是禁用 `cordis.patch.yml` 里的官方条目，其余官方内容一律不动。
+- **密钥值不离开宿主进程。** 浏览器端只拿到掩码（前 3 后 4 位）与元数据。
+- **不支持浏览器会话类供应商。** 只支持 API key 型。
+- **web 服务没有鉴权**（dsh 的设计，默认只绑回环）。这些路由假设只从回环访问：把宿主暴露到
+  `0.0.0.0` 等于通过 `/plan/status` 暴露余额与凭据名。
 
 ## 对模型请求的影响
 
-插件不改 system prompt、工具 schema 和消息内容。它决定哪些模型可用、各自走哪条 wire 协议，以及推理等级怎么落到请求参数上；后两件由 pi-ai 按模型实现，不在这里。
+插件不改系统提示词、不改工具 schema、不改消息内容。它决定哪些模型可用、每个模型用哪套
+线协议、以及推理等级设置如何映射到请求参数；后两者由 pi-ai 的线协议代码按模型实现，不在
+这里。
 
-- 没选等级时（界面显示 `Default`）请求里不带 `reasoning_effort`。是否发 thinking 开关、发什么值，看 pi-ai 对这个模型的实现。
-- 选了等级就由 pi-ai 按该供应商映射：有的发 `reasoning_effort` 字段，有的发 `budget_tokens`（按思考预算计费的那类），有的发自适应思考。
+- 没选推理等级时（界面显示 `Default`）不发 `reasoning_effort`。
+- 选了等级时由 pi-ai 针对该供应商映射——有的用 `reasoning_effort` 字段，按预算计费思考的
+  供应商用 `budget_tokens`，还有的用自适应思考。
 
-额度查询是独立的免费 HTTP 请求，不给模型请求加 token。换 pi-ai 版本会同时换掉模型目录与用量口径。切模型或切供应商会改变请求前缀，KV cache 命中随之从零开始；同模型内切等级只改 thinking 相关参数。插件不改写会话内容，自己的缓存只有上面列的 60 秒额度与模型元数据快照。
+额度查询是另外的免费 HTTP 调用，不增加 token。切换模型或供应商会改变请求前缀，所以 KV
+缓存命中从零开始；同一模型内切换等级只改思考参数。
 
 ## 已知缺口
 
-官方那些条目有、本插件没有的：
+- **「当前模型不可路由」置灰。** 官方 `ui-model-selection` 会在当前模型无法路由时把
+  composer 置灰；该条目禁用后，当前供应商没配好时输入框照样能用。
+- **官方引导流程。** Models 页带的 DeepSeek 引导没有替代。
+- **没有逐供应商的启用/禁用开关**——只有删除。
+- 约二十条宿主端日志仍是中文（进程日志，不是浏览器 UI）。
 
-- **逐模型清单编辑**。`ModelListEditor` / `DeepSeekModelsEditor` / `CustomProviderCard` 没有替代：改逐模型参数只能手改 `settings.yaml` 的 `llm-pi-ai.providers.<id>`。
-- **「当前模型不可路由」置灰**。官方 `ui-model-selection` 会在当前模型无法路由时把 composer 置灰；该条目被禁用后，当前供应商没配好时输入框照样能用。
-- **官方引导流程**。Models 页带的 DeepSeek 引导没有替代。
+尚未实现：侧边栏入口与全局额度徽章；会话内的实时用量与失败归因（额度是从端点轮询的，
+回答的是"账号还剩多少"，不是"这次请求花了多少、为什么失败"）。
 
-以后可能补的：
+不在范围：需要浏览器会话的供应商（Claude、Codex、Gemini、Grok、Copilot 的 OAuth）；
+fork 官方插件源码或采用 monorepo 布局。
 
-- 侧边栏入口与 `shell.overlay` 全局额度徽标。
-- 会话内的实时用量与失败归因（读 `llm/stream`、`session/event` 的用量，`llm/retry` 的配额/限流失败码）。额度数据来自轮询端点，回答的是「账户还剩多少」，不是「这次花了多少、为什么失败」。
+## 已修 issue
 
-不做的：
+| # | 问题 | 修法 |
+|---|---|---|
+| #1 | 缺逐模型编辑；添加供应商会抹掉手写配置 | 清单编辑器、逐字段写入、卡片级编辑 |
+| #2 | 根因在 #8 一并修复 | — |
+| #3 | 删除确认与 ✕ 同位置（双击即删） | 确认区移到卡片底部 |
+| #4 | 插件目录 260 MB 而代码只有 220 KB | 现在完全没有下载副本 |
+| #5 | 自定义模型永远没有「视觉」徽章 | 从路由声明的 `input` 取能力 |
+| #6 | 删 `vendor/pi-ai` 后宿主起不来、诊断空白 | 只读策略 + 逐候选诊断 |
+| #7 | `/model` 命令点不动 | 缺官方契约必填的 `available(session)` |
+| #8 | 三档窗口头部只画一条分割线 | 按档位分组；「每月」不再显示成 7d |
 
-- 需要浏览器登录态的供应商（Claude / Codex / Gemini / Grok / Copilot 的 OAuth）。Kimi 控制台接口要网页登录态的 JWT，同样不接。
-- 不 fork 官方插件源码，也不背单体仓库布局（Typert Remote 因此用不了）。
+## 源码结构
 
-## 源码布局
-
-| 路径 | 作用 |
+| 路径 | 用途 |
 |---|---|
-| `src/index.ts` | 宿主入口：挂桥接、注册 HTTP 路由 |
-| `src/bridge.ts` | 桥接装载：拷 bundle、按检查挑 pi-ai、管理软链 |
-| `src/updater.ts` | 上游更新器：查 registry、校验 tarball、装依赖、标待重启 |
+| `src/index.ts` | 宿主入口：装桥接、注册 HTTP 路由 |
+| `src/bridge.ts` | 桥接装载：拷 bundle、用检查挑 pi-ai、管链接 |
+| `src/pi-ai-source.ts` | pi-ai 完整性检查与恢复提示 |
+| `src/patch-condition.ts` | 生成禁用那四个条目的 `!!js` 守卫 |
+| `src/updater.ts` | 已停用的下载入口（保留为空操作以响应 `/provider/update`） |
 | `src/routes.ts` | 路由发现、官网链接、显示名兜底 |
-| `src/provider-presets.ts` | 添加供应商的预设清单（pi-ai 目录动态生成 + Custom Gateway） |
-| `src/model-details.ts` | 模型详情：读生效 pi-ai 包的 providers 数据文件 |
-| `src/pi-ai-names.ts` | 读 pi-ai 注册表里的名字（显示名的来源之一） |
-| `src/credential-check.ts` | 凭据检查 |
-| `src/adapters/*.ts` | 额度适配器（一家一个文件 + 注册表 + CLI 跑测器） |
-| `src/client/*.ts` | 浏览器端：`index`（入口/座位注册）· `model-seat` · `settings` · `command` · `data` · `format` · `styles` · `i18n` · `icons` · `diag` · `types` |
-| `cordis.patch.yml` | bundle patch 层：禁用官方条目、插入本插件、声明 DeepSeek 路由 |
-| `test/*.mjs` | 七个离线测试（不进 dsh、不起服务） |
-| `scripts/*.sh` | worktree 开发流程、测试实例、装依赖 |
+| `src/provider-presets.ts` | 添加供应商用的预设清单 |
+| `src/model-details.ts` | 从生效的 pi-ai 包里读模型详情 |
+| `src/pi-ai-names.ts` | 从 pi-ai registry 读显示名 |
+| `src/credential-check.ts` | 两个供应商共用一把 key 时告警 |
+| `src/adapters/*.ts` | 额度适配器（每供应商一个文件，另有注册表与 CLI 运行器） |
+| `src/client/*.ts` | 浏览器端：`index` · `model-seat` · `settings` · `provider-edit` · `model-editor` · `command` · `data` · `format` · `i18n` · `styles` |
+| `cordis.patch.yml` | patch 层：条件禁用、插入本插件、声明 DeepSeek 路由 |
+| `test/*.mjs` | 12 个离线测试（不需要 dsh、不需要服务） |
+| `scripts/*.sh` | worktree 工作流、测试实例、装依赖 |
