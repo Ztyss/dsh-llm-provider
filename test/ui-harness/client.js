@@ -28,6 +28,404 @@ window.__ModuleLoader__.load({
 		//#endregion
 		let react = require("react");
 		react = __toESM(react, 1);
+		//#region src/client/i18n.ts
+		/**
+		* i18n：本地字典兜底 + 可变翻译函数 + 插值辅助。
+		*
+		* `t` 是可变导出（live binding）：apply 里经 {@link setT} 换成官方 locale 的 bind
+		* 结果，其余模块 `import { t }` 读到的一直是当前那份。
+		*
+		* 因此**组件里不要把 `t(...)` 的结果存成模块级常量**——那等于把语言钉在模块求值那一刻，
+		* 切语言不会跟着变。要现取：在渲染路径上调用 `t()` / `tf()`。
+		*/
+		/** 字典分组前缀（`nav` / `tabProviders` / `addProvider` 三个是与 apply 同期的老 key，保持短名）。 */
+		var LOCAL_DICT = {
+			zh: {
+				nav: "模型服务",
+				tabProviders: "服务商",
+				addProvider: "＋ 添加供应商",
+				"bridge.tab": "pi-ai 桥接",
+				"bridge.version": "当前 pi-ai 版本",
+				"bridge.srcDependency": "兜底依赖",
+				"bridge.srcDsh": "dsh 自带",
+				"bridge.srcVendored": "已下载",
+				"bridge.hintDependency": "插件 vendor/ 下手动安装的兜底版本（可选档；没装就会落到 dsh 自带那份）",
+				"bridge.hintDsh": "dsh 自己装的那份 pi-ai，版本随 dsh 发布走（不一定比上游旧）",
+				"bridge.hintVendored": "按需下载并验证过的版本，放在 vendor/pi-ai/<版本>/；换版本需重启 dsh",
+				"bridge.srcParen": "{version}（{source}）",
+				"bridge.reason": "看原因",
+				"bridge.probeUnverified": "当前这份 pi-ai 没做过兼容性体检",
+				"bridge.probeUnverifiedTip": "解析不出桥接副本的 import 需求（上游改了打包格式），按目录存在放行。建议关注 pi-ai 发版说明",
+				"bridge.skip": "跳过 {version}：兼容性检查没通过",
+				"bridge.pending": "已下载 {version}，验证通过（完整性 + 兼容性），重启 dsh 后生效",
+				"bridge.rejected": "{version} 验证没通过，已跳过（不会切过去）",
+				"bridge.upstreamUnchecked": "上游 未检查",
+				"bridge.upstreamVersion": "上游 {version}",
+				"bridge.upstreamCheckedAt": "（检查于 {when}）",
+				"bridge.checking": "检查中 ...",
+				"bridge.check": "检查更新",
+				"bridge.downloadOff": "pi-ai 只使用 DSH 自带那一份，插件的下载/更新入口已关闭",
+				"bridge.hostOnly": "pi-ai：只用 DSH 自带那份（已关闭下载）",
+				"bridge.upstreamPaused": "上游 自动检查已停用（vendor/ 不落地第二份 pi-ai）",
+				"bridge.pausedTitle": "本地版已停用 pi-ai 自动下载：vendor/ 不会落地第二份 pi-ai（要跟上游就用 DSH_PROVIDER_UPDATE=on 启动 dsh）",
+				"bridge.pausedBtn": "自动下载已停用",
+				"cap.vision": "视觉",
+				"cap.reasoning": "推理",
+				"cap.video": "视频",
+				"cap.unknown": "能力未知",
+				"cap.cw": "上下文窗口",
+				"cap.maxTokens": "最大输出",
+				"cap.chain": "思维链",
+				"cap.unknownShort": "未知",
+				"cap.auto": "自动",
+				"cap.declared": "声明",
+				"cap.declaredTip": "pi-ai 目录里没有这个模型，能力按你在路由里声明的 input 显示",
+				"cap.sourceDeclared": "能力来自这条路由的声明（pi-ai 目录没收录这个模型 ID）",
+				"cap.off": "关闭",
+				"cap.noMeta": "该模型没有本地元数据",
+				"prov.presetMissingKey": "缺密钥",
+				"prov.presetConfigured": "已配置",
+				"prov.provider": "供应商",
+				"prov.routeId": "路由 ID",
+				"prov.apiKey": "API 密钥",
+				"prov.apiBase": "API 地址",
+				"prov.protocol": "协议",
+				"prov.modelId": "模型 ID",
+				"prov.name": "名称",
+				"prov.caps": "能力",
+				"prov.ctx": "上下文",
+				"prov.selectPlaceholder": "选择供应商…",
+				"prov.filter": "过滤供应商",
+				"prov.noMatch": "没有匹配的供应商",
+				"prov.routeIdHintCustom": "给这个网关起个名字（kebab-case）",
+				"prov.routeIdHintFixed": "由所选供应商决定",
+				"prov.keyLink": "获取密钥 ↗",
+				"prov.credStoredAs": "密钥存为 {ref}",
+				"prov.testOk": "✓ 连通，发现 {count} 个模型",
+				"prov.testOkNames": "✓ 连通，发现 {count} 个模型：{names}",
+				"prov.testOkMore": "{names} …",
+				"prov.addManualHint": "路由 ID / API 地址 / API 密钥都要填",
+				"prov.testing": "正在用这把密钥实连供应商探测模型…",
+				"prov.added": "已添加 {id}",
+				"prov.updated": "已更新 {id}（原有 models / compat 等手写配置保留）",
+				"prov.addFailed": "添加失败：{reason}（配置可能已写入、仅密钥未存，检查后可重试）",
+				"prov.test": "测试",
+				"prov.testingShort": "测试中…",
+				"prov.addToList": "添加到列表",
+				"prov.adding": "添加中…",
+				"prov.needTestFirst": "先通过测试才能添加",
+				"prov.cancel": "取消",
+				"edit.tip": "编辑这个供应商的配置（显示名 / 协议 / 端点 / 凭据名）",
+				"edit.displayName": "显示名",
+				"edit.api": "协议",
+				"edit.apiDefault": "（默认）",
+				"edit.baseUrl": "端点",
+				"edit.baseUrlPlaceholder": "留空回到官方默认端点",
+				"edit.keyEnv": "凭据名",
+				"edit.emptyHint": "清空某项 = 移除该配置键（不是写入空值）；留空端点即回到官方默认。",
+				"edit.save": "保存修改",
+				"edit.saving": "保存中…",
+				"edit.saved": "已更新 {id}（只写入改过的字段，手写的 models / compat 原样保留）",
+				"edit.noChange": "没有改动，无需保存",
+				"edit.badApi": "协议只能是 openai-completions 或 anthropic-messages",
+				"edit.badBaseUrl": "端点必须以 http:// 或 https:// 开头",
+				"edit.badKeyEnv": "凭据名只能包含大写字母、数字与下划线",
+				"prov.save": "保存",
+				"prov.saving": "保存中…",
+				"prov.saveKeyTip": "存进 {ref} 并立刻实测一次余量",
+				"prov.credential": "已配置",
+				"prov.modelsLoading": "模型目录加载中…",
+				"prov.noModels": "目录里没有这个 provider 的模型",
+				"prov.models": "模型（{count}）",
+				"prov.modelsFiltered": "模型（{shown}/{total}）",
+				"prov.clear": "清除",
+				"prov.collapse": "收起",
+				"prov.expand": "展开",
+				"prov.lastRefresh": "上次刷新 {time}",
+				"prov.refreshing": "刷新中…",
+				"prov.refreshQuota": "刷新余量",
+				"prov.refreshQuotaAt": "刷新余量（上次 {time}）",
+				"prov.openSite": "打开官网 {url}",
+				"prov.removeTip": "删除这个 provider",
+				"prov.none": "暂无 provider 额度数据",
+				"del.title": "删除 provider「{id}」？",
+				"del.bodyWithRef": "将删除整条路由配置与其凭据 {ref}。手写的 models / compat / retryPolicy 会一起消失，且不可恢复。",
+				"del.body": "将删除整条路由配置与它的凭据。手写的 models / compat / retryPolicy 会一起消失，且不可恢复。",
+				"del.copied": "✓ 配置已复制到剪贴板，可直接贴回 settings.yaml",
+				"del.clipboardBlocked": "这个环境不允许写剪贴板，请手动抄写：{text}",
+				"del.copyFailed": "复制失败：{reason}",
+				"del.confirm": "删除此 provider",
+				"del.export": "导出配置",
+				"del.exportBtn": "导出配置（YAML）",
+				"del.exported": "配置已导出到剪贴板（YAML，不含密钥）",
+				"del.exportFailed": "导出失败：{reason}",
+				"del.exportNoClipboard": "这个环境不允许写剪贴板，无法导出",
+				"toast.refreshSummaryPct": "（余 {percent}%）",
+				"toast.refreshSummaryBalance": "（{value}）",
+				"toast.refreshed": "{name} 余量已刷新",
+				"toast.refreshFailed": "{name} 刷新失败：{reason}",
+				"toast.noCredentialRef": "{name} 这条路由没有凭据名，无法存密钥",
+				"toast.emptyKey": "{name} 先填密钥",
+				"toast.keySaved": "{name} 密钥已保存，{summary}",
+				"toast.keySavedNoQuota": "密钥已保存，但余量没查通：{reason}",
+				"toast.keySaveFailed": "密钥保存失败：{reason}",
+				"toast.checkingUpstream": "正在检查上游 ...",
+				"toast.updateFailed": "更新失败：{reason}",
+				"toast.removeFailed": "删除失败：{reason}",
+				"toast.updated": "已下载 {version}，验证通过（完整性 + 兼容性），重启 dsh 后生效",
+				"toast.skipped": "{version} 验证没通过，已跳过（不会切过去）",
+				"toast.upToDate": "已是最新（{version}）",
+				"yaml.header": "# dsh-llm-provider 删除前导出的 route 配置（贴回 settings.yaml 的 llm-pi-ai.providers 下）",
+				"yaml.credNote": "  # 凭据值不导出（浏览器端只拿得到掩码）——删除后请重新填回这个凭据名",
+				"err.unknown": "未知错误",
+				"data.hostUnavailable": "宿主端状态不可用",
+				"data.callFailed": "调用失败",
+				"data.catalogFailed": "模型目录加载失败",
+				"data.switchFailed": "切换失败",
+				"cmd.label": "切换模型",
+				"cmd.description": "按 provider 过滤 / 搜索模型 / 显示余额",
+				"cmd.badRow": "无法解析这个模型行",
+				"cmd.noSession": "当前没有会话，无法切换模型",
+				"quota.generic": "额度",
+				"quota.remaining": "余 {percent}%",
+				"quota.windows": "{count} 个窗口",
+				"quota.notConfigured": "未配置 key",
+				"quota.queryFailed": "查询失败",
+				"quota.queryFailedWith": "查询失败：{reason}",
+				"quota.seeConsole": "看控制台",
+				"quota.noAdapter": "无适配器",
+				"quota.noData": "无数据",
+				"quota.headlineRemaining": "{label}余量 {percent}%",
+				"win.fallback": "窗口",
+				"win.resettingSoon": "即将重置",
+				"win.justNow": "刚刚",
+				"m.loading": "加载中…",
+				"m.select": "选择模型",
+				"m.model": "模型",
+				"m.cantPickEffort": "当前模型不在模型目录里，只能显示会话已定的档位",
+				"m.effort": "推理等级",
+				"m.pickModelFirst": "选择模型后可用",
+				"m.all": "全部 {count}",
+				"m.search": "搜索模型或 provider",
+				"m.none": "没有可选模型",
+				"m.noMatch": "没有匹配「{query}」的模型",
+				"m.rejected": "宿主拒绝了这次切换",
+				"test.titleSuffix": " · 测试",
+				"test.faviconBadge": "测"
+			},
+			en: {
+				nav: "Provider",
+				tabProviders: "Provider",
+				addProvider: "＋ Add Provider",
+				"bridge.tab": "pi-ai bridge",
+				"bridge.version": "Current pi-ai version",
+				"bridge.srcDependency": "vendored fallback",
+				"bridge.srcDsh": "bundled with dsh",
+				"bridge.srcVendored": "downloaded",
+				"bridge.hintDependency": "Fallback version installed manually under the plugin vendor/ directory (optional tier; without it the copy bundled with dsh is used)",
+				"bridge.hintDsh": "The pi-ai copy dsh installs for itself; its version follows dsh releases (not necessarily older than upstream)",
+				"bridge.hintVendored": "A version downloaded and verified on demand, kept in vendor/pi-ai/<version>/; switching versions needs a dsh restart",
+				"bridge.srcParen": "{version} ({source})",
+				"bridge.reason": "Why",
+				"bridge.probeUnverified": "This pi-ai copy never passed the compatibility probe",
+				"bridge.probeUnverifiedTip": "Could not resolve the bridge copy's import requirements (upstream changed its bundle format), so it was accepted based on the directory existing. Watch the pi-ai release notes",
+				"bridge.skip": "Skipped {version}: compatibility check failed",
+				"bridge.pending": "Downloaded {version}, verified (integrity + compatibility); takes effect after a dsh restart",
+				"bridge.rejected": "{version} failed verification and was skipped (it will not be switched to)",
+				"bridge.upstreamUnchecked": "Upstream not checked",
+				"bridge.upstreamVersion": "Upstream {version}",
+				"bridge.upstreamCheckedAt": "(checked {when})",
+				"bridge.checking": "Checking ...",
+				"bridge.check": "Check for updates",
+				"bridge.downloadOff": "pi-ai uses only the copy bundled with DSH; the plugin download/update entry is disabled",
+				"bridge.hostOnly": "pi-ai: DSH-bundled copy only (downloads disabled)",
+				"bridge.upstreamPaused": "Upstream auto-check disabled (no vendored copies)",
+				"bridge.pausedTitle": "pi-ai auto-download is disabled: no second copy lands in vendor/ (set DSH_PROVIDER_UPDATE=on to follow upstream)",
+				"bridge.pausedBtn": "Auto-download off",
+				"cap.vision": "Vision",
+				"cap.reasoning": "Reasoning",
+				"cap.video": "Video",
+				"cap.unknown": "Capabilities unknown",
+				"cap.cw": "Context window",
+				"cap.maxTokens": "Max output",
+				"cap.chain": "Chain of thought",
+				"cap.unknownShort": "Unknown",
+				"cap.auto": "Auto",
+				"cap.declared": "Declared",
+				"cap.declaredTip": "Not in the pi-ai catalog; capabilities shown from your route input declaration",
+				"cap.sourceDeclared": "Capabilities from this route declaration (id not in the pi-ai catalog)",
+				"cap.off": "Off",
+				"cap.noMeta": "No local metadata for this model",
+				"prov.presetMissingKey": "No key",
+				"prov.presetConfigured": "Configured",
+				"prov.provider": "Provider",
+				"prov.routeId": "Route ID",
+				"prov.apiKey": "API key",
+				"prov.apiBase": "API base URL",
+				"prov.protocol": "Protocol",
+				"prov.modelId": "Model ID",
+				"prov.name": "Name",
+				"prov.caps": "Capabilities",
+				"prov.ctx": "Context",
+				"prov.selectPlaceholder": "Select a provider…",
+				"prov.filter": "Filter providers",
+				"prov.noMatch": "No matching provider",
+				"prov.routeIdHintCustom": "Name this gateway (kebab-case)",
+				"prov.routeIdHintFixed": "Determined by the selected provider",
+				"prov.keyLink": "Get a key ↗",
+				"prov.credStoredAs": "Key stored as {ref}",
+				"prov.testOk": "✓ Connected, found {count} models",
+				"prov.testOkNames": "✓ Connected, found {count} models: {names}",
+				"prov.testOkMore": "{names} …",
+				"prov.addManualHint": "Route ID, API base URL and API key are all required",
+				"prov.testing": "Connecting to the provider with this key to probe its models…",
+				"prov.added": "Added {id}",
+				"prov.updated": "Updated {id} (existing hand-written models / compat and other config kept)",
+				"prov.addFailed": "Add failed: {reason} (the config may already be written while only the key is missing; check and retry)",
+				"prov.test": "Test",
+				"prov.testingShort": "Testing…",
+				"prov.addToList": "Add to list",
+				"prov.adding": "Adding…",
+				"prov.needTestFirst": "Pass the test first to add",
+				"prov.cancel": "Cancel",
+				"edit.tip": "Edit this provider (display name / protocol / endpoint / credential name)",
+				"edit.displayName": "Display name",
+				"edit.api": "Protocol",
+				"edit.apiDefault": "(default)",
+				"edit.baseUrl": "Endpoint",
+				"edit.baseUrlPlaceholder": "Leave empty to use the official default endpoint",
+				"edit.keyEnv": "Credential name",
+				"edit.emptyHint": "Clearing a field removes that config key (it does not write an empty value); an empty endpoint falls back to the official default.",
+				"edit.save": "Save changes",
+				"edit.saving": "Saving…",
+				"edit.saved": "Updated {id} (only changed fields are written; hand-written models / compat are preserved)",
+				"edit.noChange": "Nothing changed — no need to save",
+				"edit.badApi": "Protocol must be openai-completions or anthropic-messages",
+				"edit.badBaseUrl": "Endpoint must start with http:// or https://",
+				"edit.badKeyEnv": "Credential name may only contain uppercase letters, digits and underscores",
+				"prov.save": "Save",
+				"prov.saving": "Saving…",
+				"prov.saveKeyTip": "Store into {ref} and probe the quota right away",
+				"prov.credential": "Configured",
+				"prov.modelsLoading": "Loading model catalog…",
+				"prov.noModels": "The catalog has no models for this provider",
+				"prov.models": "Models ({count})",
+				"prov.modelsFiltered": "Models ({shown}/{total})",
+				"prov.clear": "Clear",
+				"prov.collapse": "Collapse",
+				"prov.expand": "Expand",
+				"prov.lastRefresh": "Last refreshed {time}",
+				"prov.refreshing": "Refreshing…",
+				"prov.refreshQuota": "Refresh quota",
+				"prov.refreshQuotaAt": "Refresh quota (last {time})",
+				"prov.openSite": "Open website {url}",
+				"prov.removeTip": "Delete this provider",
+				"prov.none": "No provider quota data yet",
+				"del.title": "Delete provider \"{id}\"?",
+				"del.bodyWithRef": "This deletes the whole route config and its credential {ref}. Hand-written models / compat / retryPolicy disappear with it and cannot be recovered.",
+				"del.body": "This deletes the whole route config and its credential. Hand-written models / compat / retryPolicy disappear with it and cannot be recovered.",
+				"del.copied": "✓ Config copied to the clipboard; paste it straight back into settings.yaml",
+				"del.clipboardBlocked": "This environment does not allow clipboard writes; copy it by hand: {text}",
+				"del.copyFailed": "Copy failed: {reason}",
+				"del.confirm": "Delete this provider",
+				"del.export": "Export config",
+				"del.exportBtn": "Export config (YAML)",
+				"del.exported": "Configuration exported to clipboard (YAML, no secrets)",
+				"del.exportFailed": "Export failed: {reason}",
+				"del.exportNoClipboard": "This environment does not allow clipboard writes; cannot export",
+				"toast.refreshSummaryPct": "({percent}% left)",
+				"toast.refreshSummaryBalance": "({value})",
+				"toast.refreshed": "{name} quota refreshed",
+				"toast.refreshFailed": "{name} refresh failed: {reason}",
+				"toast.noCredentialRef": "{name} has no credential name on this route, so the key cannot be stored",
+				"toast.emptyKey": "{name}: enter a key first",
+				"toast.keySaved": "{name} key saved, {summary}",
+				"toast.keySavedNoQuota": "Key saved, but the quota lookup failed: {reason}",
+				"toast.keySaveFailed": "Saving the key failed: {reason}",
+				"toast.checkingUpstream": "Checking upstream ...",
+				"toast.updateFailed": "Update failed: {reason}",
+				"toast.removeFailed": "Delete failed: {reason}",
+				"toast.updated": "Downloaded {version}, verified (integrity + compatibility); takes effect after a dsh restart",
+				"toast.skipped": "{version} failed verification and was skipped (it will not be switched to)",
+				"toast.upToDate": "Already up to date ({version})",
+				"yaml.header": "# dsh-llm-provider route config exported before deletion (paste back under llm-pi-ai.providers in settings.yaml)",
+				"yaml.credNote": "  # Credential values are not exported (the browser only ever sees a masked hint) — re-enter this credential name after deleting",
+				"err.unknown": "Unknown error",
+				"data.hostUnavailable": "Host-side status unavailable",
+				"data.callFailed": "Call failed",
+				"data.catalogFailed": "Failed to load the model catalog",
+				"data.switchFailed": "Switch failed",
+				"cmd.label": "Switch model",
+				"cmd.description": "Filter by provider / search models / show balance",
+				"cmd.badRow": "Cannot parse this model row",
+				"cmd.noSession": "No active session, cannot switch models",
+				"quota.generic": "Quota",
+				"quota.remaining": "{percent}% left",
+				"quota.windows": "{count} windows",
+				"quota.notConfigured": "key not configured",
+				"quota.queryFailed": "lookup failed",
+				"quota.queryFailedWith": "Lookup failed: {reason}",
+				"quota.seeConsole": "check console",
+				"quota.noAdapter": "no adapter",
+				"quota.noData": "No data",
+				"quota.headlineRemaining": "{label} {percent}% left",
+				"win.fallback": "Window",
+				"win.resettingSoon": "Resetting soon",
+				"win.justNow": "just now",
+				"m.loading": "Loading…",
+				"m.select": "Select model",
+				"m.model": "Model",
+				"m.cantPickEffort": "The current model is not in the catalog, so only the effort already fixed by the session can be shown",
+				"m.effort": "Reasoning effort",
+				"m.pickModelFirst": "Available after picking a model",
+				"m.all": "All {count}",
+				"m.search": "Search models or providers",
+				"m.none": "No models available",
+				"m.noMatch": "No models matching \"{query}\"",
+				"m.rejected": "Host rejected this switch",
+				"test.titleSuffix": " · Test",
+				"test.faviconBadge": "T"
+			}
+		};
+		function localT(key) {
+			var lang = "en";
+			try {
+				if (String(document.documentElement.lang || "").toLowerCase().indexOf("zh") === 0) lang = "zh";
+			} catch (cause) {}
+			var dict = LOCAL_DICT[lang] !== void 0 ? LOCAL_DICT[lang] : LOCAL_DICT.en;
+			return dict[key] !== void 0 ? dict[key] : LOCAL_DICT.en[key] !== void 0 ? LOCAL_DICT.en[key] : key;
+		}
+		/** i18n translate：优先官方 locale（注册+bind）；任何一步失败都回退本地字典。工厂级，组件/label 闭包共享。 */
+		var t = localT;
+		/** 换掉翻译实现（apply 里用官方 locale bind 的结果替换）。 */
+		function setT(next) {
+			t = next;
+		}
+		/** 模板里的占位符：`{name}`，name 是 `[A-Za-z0-9_]`。 */
+		var PLACEHOLDER = /\{([A-Za-z0-9_]+)\}/g;
+		/**
+		* 带插值的翻译：`tf('bridge.skip', { version: '0.86.0' })`。
+		*
+		* 三个刻意的取舍：
+		*  - **模板与插值分开**：`'跳过 ' + v + '：…'` 这种拼句不能整句进字典，否则中英文语序不同就没法翻；
+		*    key 里存 `{version}`，语序由各自的译文决定。
+		*  - **替换走函数**（不是字符串）：参数值里出现 `$&` 时字符串替换会把它当替换模式展开，
+		*    用户填的密钥/路径里带 `$&` 就会静默改字；模板自己的正则元字符同理。
+		*  - 参数值**不**再过一遍 `t()`：值多是域名、URL、版本号、id 这类不该翻的东西，
+		*    调用方自己决定要不要先翻（例：`tf('quota.windows', { count: 3 })` 传裸数字）。
+		* @param key - 字典 key。
+		* @param params - 占位符取值；缺参时该占位符原样留着（一眼看出漏传），`undefined`/`null` 当空串。
+		*/
+		function tf(key, params) {
+			var values = params === void 0 || params === null ? {} : params;
+			return t(key).replace(PLACEHOLDER, function(whole, name) {
+				if (!Object.prototype.hasOwnProperty.call(values, name)) return whole;
+				var value = values[name];
+				if (value === void 0 || value === null) return "";
+				return String(value);
+			});
+		}
+		//#endregion
 		//#region src/client/data.ts
 		/**
 		* 浏览器端数据层：同源 HTTP/RPC、额度快照缓存、目录/投影的读与归一化。
@@ -95,13 +493,26 @@ window.__ModuleLoader__.load({
 		function loadProviderStatus() {
 			return getJson("/provider/status");
 		}
-		/** 桥接状态拿不到时的占位：设置页据此渲染错误行，界面不至于空着。 */
-		var STATUS_UNAVAILABLE = { bridge: {
-			active: false,
-			error: "宿主端状态不可用"
-		} };
-		/** 详情索引键：provider + id（本地版 issue #5：不同家的同名模型不会互相顶掉）。 */
-		function detailKey(provider, id) {
+		/**
+		* 桥接状态拿不到时的占位：设置页据此渲染错误行，界面不至于空着。
+		*
+		* 现取而不是做成模块常量：这是**给用户看的一句文案**，做成常量就把语言钉在模块求值那一刻，
+		* 切语言之后它还是老语言（`t` 是 live binding，但常量不再求值）。
+		*/
+		function statusUnavailable() {
+			return { bridge: {
+				active: false,
+				error: t("data.hostUnavailable")
+			} };
+		}
+		/**
+		* 详情索引的键：`provider/id`。
+		*
+		* 不能用模型 id 单键：pi-ai 目录里跨 provider 重名是常态（实测 claude-opus-5 同时属于
+		* anthropic / cloudflare-ai-gateway / openrouter 等 7 家），单键索引会被后读到的那份盖掉，
+		* 于是另一家的行挂上这家的能力。provider id 是 kebab-case 短标识，不会含 `/`。
+		*/
+		function detailKeyOf(provider, id) {
 			return String(provider) + "/" + String(id);
 		}
 		/**
@@ -116,7 +527,7 @@ window.__ModuleLoader__.load({
 				for (var i = 0; i < payload.models.length; i += 1) {
 					var detail = payload.models[i];
 					if (detail === null || typeof detail !== "object") continue;
-					if (typeof detail.provider === "string" && detail.provider !== "") map[detailKey(detail.provider, detail.id)] = detail;
+					if (typeof detail.provider === "string" && detail.provider !== "") map[detailKeyOf(detail.provider, detail.id)] = detail;
 					var bare = String(detail.id);
 					if (map[bare] === void 0) map[bare] = detail;
 				}
@@ -126,7 +537,7 @@ window.__ModuleLoader__.load({
 		/** 查一条模型详情：先按 provider+id，查不到再退回裸 id。 */
 		function lookupDetail(map, providerId, modelId) {
 			if (map === void 0 || map === null) return void 0;
-			var qualified = map[detailKey(providerId, modelId)];
+			var qualified = map[detailKeyOf(providerId, modelId)];
 			if (qualified !== void 0) return qualified;
 			return map[modelId];
 		}
@@ -197,7 +608,7 @@ window.__ModuleLoader__.load({
 		}
 		/**
 		* 官方远程 RPC 同源调用（/api/<ns>/<method>，client-request 信封，cookie 自动认证）。
-		* @param failMessage 信封里没有 error 对象时的兜底文案（默认「调用失败」）。
+		* @param failMessage 信封里没有 error 对象时的兜底文案（默认走 data.callFailed）。
 		*/
 		function apiCall(method, args, failMessage) {
 			return postJson("/api/" + method, {
@@ -208,7 +619,7 @@ window.__ModuleLoader__.load({
 			}).then(function(envelope) {
 				var result = envelope && envelope.result;
 				if (result && result.ok === true) return result.value;
-				throw new Error(result && result.error ? String(result.error.code) + ": " + String(result.error.message) : failMessage === void 0 ? "调用失败" : failMessage);
+				throw new Error(result && result.error ? String(result.error.code) + ": " + String(result.error.message) : failMessage === void 0 ? t("data.callFailed") : failMessage);
 			});
 		}
 		/**
@@ -217,7 +628,7 @@ window.__ModuleLoader__.load({
 		*   （`current = projected.next ?? catalog.default`）——会话还没选过模型时显示的就是它。
 		*/
 		function loadModelCatalog() {
-			return apiCall("session/modelCatalog", {}, "模型目录加载失败").then(function(value) {
+			return apiCall("session/modelCatalog", {}, t("data.catalogFailed")).then(function(value) {
 				var catalog = value === null || typeof value !== "object" ? {} : value;
 				return {
 					groups: normalizeGroups(catalog.groups),
@@ -247,7 +658,7 @@ window.__ModuleLoader__.load({
 				model
 			};
 			if (typeof reasoningEffort === "string") request.reasoningEffort = reasoningEffort;
-			return apiCall("session/selectModel", { request }, "切换失败").then(function() {
+			return apiCall("session/selectModel", { request }, t("data.switchFailed")).then(function() {
 				return true;
 			});
 		}
@@ -440,7 +851,7 @@ window.__ModuleLoader__.load({
 			var time = new Date(iso).getTime();
 			if (Number.isNaN(time)) return "";
 			var seconds = Math.max(0, Math.round((Date.now() - time) / 1e3));
-			if (seconds < 10) return "刚刚";
+			if (seconds < 10) return t("win.justNow");
 			if (seconds < 60) return "<1min";
 			var minutes = Math.floor(seconds / 60);
 			if (minutes < 60) return String(minutes) + "m";
@@ -482,17 +893,17 @@ window.__ModuleLoader__.load({
 		}
 		/** 徽标上的短字：优先余额，其次最紧窗口的剩余百分比。 */
 		function summaryOf(account) {
-			if (account === void 0 || account === null) return "额度";
-			if (account.authConfigured === false) return shortName(account) + " 未配置 key";
-			if (account.error !== void 0) return shortName(account) + " 查询失败";
-			if (account.kind === "unsupported") return shortName(account) + " 看控制台";
-			if (account.kind === "unknown-provider") return shortName(account) + " 无适配器";
+			if (account === void 0 || account === null) return t("quota.generic");
+			if (account.authConfigured === false) return shortName(account) + " " + t("quota.notConfigured");
+			if (account.error !== void 0) return shortName(account) + " " + t("quota.queryFailed");
+			if (account.kind === "unsupported") return shortName(account) + " " + t("quota.seeConsole");
+			if (account.kind === "unknown-provider") return shortName(account) + " " + t("quota.noAdapter");
 			var balances = Array.isArray(account.balances) ? account.balances : [];
 			if (balances.length > 0) return shortName(account) + " " + balances[0].value;
 			var percent = worstPercent(account);
-			if (typeof percent === "number") return shortName(account) + " 余 " + String(percent) + "%";
+			if (typeof percent === "number") return shortName(account) + " " + tf("quota.remaining", { percent });
 			var windows = Array.isArray(account.windows) ? account.windows : [];
-			if (windows.length > 0) return shortName(account) + " " + String(windows.length) + " 个窗口";
+			if (windows.length > 0) return shortName(account) + " " + tf("quota.windows", { count: windows.length });
 			return shortName(account);
 		}
 		/**
@@ -509,28 +920,28 @@ window.__ModuleLoader__.load({
 		/** 一行里的余额短文案（给模型行/过滤 chip 复用）。 */
 		function quotaTextOf(account) {
 			if (account === void 0 || account === null) return void 0;
-			if (account.authConfigured === false) return "未配置 key";
-			if (account.error !== void 0) return "查询失败";
-			if (account.kind === "unsupported") return "看控制台";
-			if (account.kind === "unknown-provider") return "无适配器";
+			if (account.authConfigured === false) return t("quota.notConfigured");
+			if (account.error !== void 0) return t("quota.queryFailed");
+			if (account.kind === "unsupported") return t("quota.seeConsole");
+			if (account.kind === "unknown-provider") return t("quota.noAdapter");
 			var percent = worstPercent(account);
-			if (typeof percent === "number") return "余 " + String(percent) + "%";
+			if (typeof percent === "number") return tf("quota.remaining", { percent });
 			var balances = Array.isArray(account.balances) ? account.balances : [];
 			if (balances.length > 0) return balances[0].value;
 		}
 		/**
-		* 窗口短名（卡片头部摘要）：5 小时窗口→5h，每周/订阅周期→7d，每月窗口→30d。
+		* 窗口短名（卡片头部摘要与悬停详情共用）：5 小时窗口→5h，每周/订阅周期→7d，每月→30d。
 		*
-		* 本地版修正（issue #2）：原来只认得出 5h 与 7d 两档，且 `每` 这个字把「每月窗口」也吞进 7d，
-		* 于是 OpenCode Go 的月窗口在卡片头部显示成第二个「7d」（截图里 `5h | 7d | 7d`）。
-		* 顺序上必须先判月再判周——「每月窗口」里既有「每」也有「月」。
+		* 判序要紧：裸 `每` 会把「每月窗口」也吞进 7d（那正是 issue #2 的现象：第三档被显示成第二个
+		* 7d），所以「月」必须排在「每」之前判。认不出的窗口名返回截断的原名，不再冒充 7d。
 		*/
 		function shortWindowLabel(name) {
 			var text = String(name ?? "");
-			if (text.indexOf("5 小时") !== -1 || text.indexOf("5小时") !== -1) return "5h";
-			if (text.indexOf("月") !== -1 || text.indexOf("30 天") !== -1 || text.indexOf("30天") !== -1 || text.indexOf("month") !== -1) return "30d";
-			if (text.indexOf("每") !== -1 || text.indexOf("订阅") !== -1 || text.indexOf("周") !== -1 || text.indexOf("week") !== -1) return "7d";
-			return text === "" ? "窗口" : text.slice(0, 4);
+			var lower = text.toLowerCase();
+			if (text.indexOf("5 小时") !== -1 || text.indexOf("5小时") !== -1 || lower.indexOf("5 hour") !== -1) return "5h";
+			if (text.indexOf("月") !== -1 || lower.indexOf("month") !== -1) return "30d";
+			if (text.indexOf("每") !== -1 || text.indexOf("订阅") !== -1 || text.indexOf("周") !== -1 || lower.indexOf("week") !== -1 || lower.indexOf("subscription") !== -1) return "7d";
+			return text === "" ? t("win.fallback") : text.slice(0, 4);
 		}
 		/** 重置倒计时压缩格式（最多两个单位，零尾不显示）：34m / 5h / 5h33m / 3d5h / 4d。 */
 		function resetCountdownText(iso) {
@@ -538,9 +949,9 @@ window.__ModuleLoader__.load({
 			var time = new Date(iso).getTime();
 			if (Number.isNaN(time)) return "";
 			var delta = time - Date.now();
-			if (delta <= 0) return "即将重置";
+			if (delta <= 0) return t("win.resettingSoon");
 			var minutes = Math.round(delta / 6e4);
-			if (minutes < 1) return "即将重置";
+			if (minutes < 1) return t("win.resettingSoon");
 			if (minutes < 60) return String(minutes) + "m";
 			var hours = Math.floor(minutes / 60);
 			var min = minutes % 60;
@@ -552,12 +963,15 @@ window.__ModuleLoader__.load({
 		/** provider chip 悬停详情：各窗口余量 + 重置倒计时，或余额明细。 */
 		function quotaTipOf(account) {
 			if (account === void 0 || account === null) return void 0;
-			if (account.error !== void 0) return "查询失败：" + String(account.error);
+			if (account.error !== void 0) return tf("quota.queryFailedWith", { reason: account.error });
 			var parts = [];
 			var windows = Array.isArray(account.windows) ? account.windows : [];
 			for (var i = 0; i < windows.length; i += 1) {
 				if (typeof windows[i].percentLeft !== "number") continue;
-				var text = shortWindowLabel(windows[i].window) + "余量 " + String(windows[i].percentLeft) + "%";
+				var text = tf("quota.headlineRemaining", {
+					label: shortWindowLabel(windows[i].window),
+					percent: windows[i].percentLeft
+				});
 				if (windows[i].resetAt !== void 0 && windows[i].resetAt !== "") text += " ◷ " + resetCountdownText(windows[i].resetAt);
 				parts.push(text);
 			}
@@ -565,60 +979,69 @@ window.__ModuleLoader__.load({
 			for (var j = 0; j < balances.length; j += 1) parts.push(balances[j].label + " " + balances[j].value);
 			return parts.length > 0 ? parts.join(" ｜ ") : void 0;
 		}
-		/**
-		* 卡片头部摘要：直给最关键信息——coding plan 显示各窗口余量，API 显示余额。
-		*  顺序：5 小时窗 → 每周窗 → 每月窗；**每两组之间**都有分割线（本地版修正：原来只在
-		*  「5 小时组」与其余之间插一条，于是 7d 与 30d 挤在一起看不出是两档窗口）。
-		*/
+		/** 卡片头部摘要：直给最关键信息——coding plan 显示各窗口余量，API 显示余额。
+		*
+		*  按窗口档位分组（5h → 7d → 30d → 认不出的档按出现顺序），**组与组之间**都插分割线：
+		*  旧实现只分「5 小时」与「其余」两桶、只插一条线，于是 7d 与 30d 挤在一起像同一组的两个值
+		*  （issue #8）。空组不画线——只有两档时仍然只有一条线，视觉不变。
+		*
+		*  档位顺序固定，上游返回顺序变化或同一档出现多次时分割线位置不会跳。 */
+		const HEADLINE_BUCKETS = [
+			"5h",
+			"7d",
+			"30d"
+		];
 		function headlineChips(account) {
 			if (account === void 0 || account === null) return [{
-				text: "无数据",
+				text: t("quota.noData"),
 				percent: void 0
 			}];
 			if (account.authConfigured === false) return [{
-				text: "未配置 key",
+				text: t("quota.notConfigured"),
 				percent: 0
 			}];
 			if (account.error !== void 0) return [{
-				text: "查询失败",
+				text: t("quota.queryFailed"),
 				percent: 0
 			}];
 			if (account.kind === "unsupported") return [];
 			if (account.kind === "unknown-provider") return [{
-				text: "无适配器",
+				text: t("quota.noAdapter"),
 				percent: void 0
 			}];
 			var windows = Array.isArray(account.windows) ? account.windows : [];
 			var groups = [];
-			function groupOf(key) {
-				for (var g = 0; g < groups.length; g += 1) if (groups[g].key === key) return groups[g];
-				var created = {
-					key,
-					chips: []
-				};
-				groups.push(created);
-				return created;
+			var known = HEADLINE_BUCKETS.slice();
+			function groupOf(label) {
+				for (var g = 0; g < groups.length; g += 1) if (groups[g].label === label) return groups[g].chips;
+				var fresh = [];
+				groups.push({
+					label,
+					chips: fresh
+				});
+				return fresh;
 			}
 			for (var i = 0; i < windows.length; i += 1) {
 				if (typeof windows[i].percentLeft !== "number") continue;
-				groupOf(shortWindowLabel(windows[i].window)).chips.push({
-					label: shortWindowLabel(windows[i].window),
+				var label = shortWindowLabel(windows[i].window);
+				groupOf(label).push({
+					label,
 					text: String(windows[i].percentLeft) + "%",
 					percent: windows[i].percentLeft,
 					reset: windows[i].resetAt
 				});
 			}
-			var KNOWN_GROUPS = [
-				"5h",
-				"7d",
-				"30d"
-			];
 			var ordered = [];
-			for (var k = 0; k < KNOWN_GROUPS.length; k += 1) for (var g2 = 0; g2 < groups.length; g2 += 1) if (groups[g2].key === KNOWN_GROUPS[k]) ordered.push(groups[g2]);
-			for (var g3 = 0; g3 < groups.length; g3 += 1) if (KNOWN_GROUPS.indexOf(groups[g3].key) === -1) ordered.push(groups[g3]);
+			var index = 0;
+			for (var k = 0; k < known.length; k += 1) for (index = 0; index < groups.length; index += 1) if (groups[index].label === known[k]) {
+				ordered.push(groups[index]);
+				break;
+			}
+			for (index = 0; index < groups.length; index += 1) if (known.indexOf(groups[index].label) === -1) ordered.push(groups[index]);
 			var chips = [];
 			for (var o = 0; o < ordered.length; o += 1) {
-				if (o > 0) chips.push({ sep: true });
+				if (ordered[o].chips.length === 0) continue;
+				if (chips.length > 0) chips.push({ sep: true });
 				for (var c = 0; c < ordered[o].chips.length; c += 1) chips.push(ordered[o].chips[c]);
 			}
 			if (chips.length > 0) return chips;
@@ -701,28 +1124,30 @@ window.__ModuleLoader__.load({
 					return commandUi.register({
 						name: "model",
 						label: function() {
-							return "切换模型";
+							return t("cmd.label");
 						},
 						description: function() {
-							return "按 provider 过滤 / 搜索模型 / 显示余额";
+							return t("cmd.description");
 						},
 						/**
-						* 官方契约**必填**：`CommandUiRuntime.candidates()` 对注册表里每一条贡献都直接调
-						* `contribution.available(session)`——漏了就是 `TypeError: contribution.available is not a
-						* function`，整批 `/` 候选（含 composer 的「＋」按钮）一起挂掉，不是只挂这一条
-						* （上游 issue #7，作者本人实测）。
+						* 官方 ui-commands 的契约里这一项是**必填**：CommandUiRuntime.candidates() 对注册表里
+						* 每一条贡献都直接调 `contribution.available(session)`，不做防御；漏了它那一抛会打挂
+						* **整批** `/` 候选（菜单一组不剩 → 自动关闭），用户看到的就是 composer 左下那枚「＋」
+						* 点了没反应、打 `/` 也不弹（issue #7）。
 						*
-						* 语义照官方 ui-model-selection：子代理会话里不提供切换。**必须永远返回 boolean、永不抛**：
-						* 契约里没有防御，这里抛一次就是整批候选消失，所以连 sessions 服务缺字段都吞掉。
+						* 口径照官方 ui-model-selection 的同名实现：被寻址成子代理的会话不能用模型选择
+						* （那是 agent 自己的事），普通会话放行。sessions 面缺席或没有这个方法时一律放行——
+						* 契约只要求返回布尔，**实现永远不能抛**（宿主对每条贡献都是裸调，一抛整批 `/`
+						* 候选陪葬）：任何异常都吞掉并放行，宁可多显示一条菜单。
 						*/
 						available: function(session) {
 							try {
 								var sessions = scope.sessions;
-								var subagentAddress = sessions === void 0 || sessions === null ? void 0 : sessions.subagentAddress;
-								var sessionId = session === null || session === void 0 ? void 0 : session.sessionId;
-								if (typeof subagentAddress !== "function" || typeof sessionId !== "string") return true;
-								return subagentAddress(sessionId) === void 0;
-							} catch (cause) {
+								if (sessions === void 0 || sessions === null || typeof sessions.subagentAddress !== "function") return true;
+								var sessionId = session !== null && session !== void 0 ? session.sessionId : void 0;
+								if (typeof sessionId !== "string" || sessionId === "") return true;
+								return sessions.subagentAddress(sessionId) === void 0;
+							} catch {
 								return true;
 							}
 						},
@@ -749,9 +1174,9 @@ window.__ModuleLoader__.load({
 								var parts = String(option.id).split("/");
 								var provider = parts.shift();
 								var model = parts.join("/");
-								if (provider === void 0 || provider === "" || model === "") throw new Error("无法解析这个模型行");
+								if (provider === void 0 || provider === "" || model === "") throw new Error(t("cmd.badRow"));
 								var sessionId = session !== null && session !== void 0 ? session.sessionId : void 0;
-								if (typeof sessionId !== "string") throw new Error("当前没有会话，无法切换模型");
+								if (typeof sessionId !== "string") throw new Error(t("cmd.noSession"));
 								return submitSelection(sessionId, provider, model, void 0);
 							}
 						}
@@ -770,41 +1195,6 @@ window.__ModuleLoader__.load({
 				if (bucket === void 0) bucket = holder.__dshLlmProvider = {};
 				bucket[key] = value;
 			} catch (cause) {}
-		}
-		//#endregion
-		//#region src/client/i18n.ts
-		/**
-		* i18n：本地字典兜底 + 可变翻译函数。
-		*
-		* `t` 是可变导出（live binding）：apply 里经 {@link setT} 换成官方 locale 的 bind
-		* 结果，其余模块 `import { t }` 读到的一直是当前那份。
-		*/
-		/** i18n 本地字典：注册失败/服务缺席时的兜底（也用于缺键回退）。语言从 <html lang> 判断。 */
-		var LOCAL_DICT = {
-			zh: {
-				nav: "模型服务",
-				tabProviders: "服务商",
-				addProvider: "＋ 添加供应商"
-			},
-			en: {
-				nav: "Provider",
-				tabProviders: "Provider",
-				addProvider: "＋ Add Provider"
-			}
-		};
-		function localT(key) {
-			var lang = "en";
-			try {
-				if (String(document.documentElement.lang || "").toLowerCase().indexOf("zh") === 0) lang = "zh";
-			} catch (cause) {}
-			var dict = LOCAL_DICT[lang] !== void 0 ? LOCAL_DICT[lang] : LOCAL_DICT.en;
-			return dict[key] !== void 0 ? dict[key] : LOCAL_DICT.en[key] !== void 0 ? LOCAL_DICT.en[key] : key;
-		}
-		/** i18n translate：优先官方 locale（注册+bind）；任何一步失败都回退本地字典。工厂级，组件/label 闭包共享。 */
-		var t = localT;
-		/** 换掉翻译实现（apply 里用官方 locale bind 的结果替换）。 */
-		function setT(next) {
-			t = next;
 		}
 		//#endregion
 		//#region src/client/icons.ts
@@ -1088,7 +1478,7 @@ window.__ModuleLoader__.load({
 				if (busy) return Promise.resolve(false);
 				setBusy(true);
 				return (typeof props.select === "function" ? props.select(selectionRequest) : submitSelection(sessionId, selectionRequest.provider, selectionRequest.model, selectionRequest.reasoningEffort)).then(function(ok) {
-					if (ok === false) throw new Error("宿主拒绝了这次切换");
+					if (ok === false) throw new Error(t("m.rejected"));
 					setError(null);
 					setLastSel(selectionRequest);
 					setOpen(false);
@@ -1126,7 +1516,7 @@ window.__ModuleLoader__.load({
 				if (effort !== void 0) req.reasoningEffort = effort;
 				submit(req);
 			}
-			var modelLabel = (selection === void 0 || selection === null) && directorySnapshot !== void 0 && directorySnapshot.status === "loading" ? "加载中…" : selection === void 0 || selection === null ? "选择模型" : String(selection.provider) + "/" + String(selection.model);
+			var modelLabel = (selection === void 0 || selection === null) && directorySnapshot !== void 0 && directorySnapshot.status === "loading" ? t("m.loading") : selection === void 0 || selection === null ? t("m.select") : String(selection.provider) + "/" + String(selection.model);
 			var triggerText = effortText === void 0 ? modelLabel : modelLabel + " · " + effortText;
 			var currentAccount = selection === void 0 || selection === null ? void 0 : accounts[selection.provider];
 			var currentQuotaText = quotaShortOf(currentAccount);
@@ -1176,7 +1566,7 @@ window.__ModuleLoader__.load({
 				onClick: function() {
 					setPane("model");
 				}
-			}, react.default.createElement("span", { className: "ms_cellLabel" }, "模型"), react.default.createElement("span", { className: "ms_cellValue" }, modelLabel), react.default.createElement("span", { className: "ms_cellChev" }, chevronRightSvg()));
+			}, react.default.createElement("span", { className: "ms_cellLabel" }, t("m.model")), react.default.createElement("span", { className: "ms_cellValue" }, modelLabel), react.default.createElement("span", { className: "ms_cellChev" }, chevronRightSvg()));
 			var canPickEffort = reasoning !== void 0 && effortText !== void 0;
 			var effortCell = react.default.createElement("button", {
 				type: "button",
@@ -1186,11 +1576,11 @@ window.__ModuleLoader__.load({
 					cursor: "default",
 					opacity: .55
 				},
-				title: reasoning === void 0 && effortText !== void 0 ? "当前模型不在模型目录里，只能显示会话已定的档位" : void 0,
+				title: reasoning === void 0 && effortText !== void 0 ? t("m.cantPickEffort") : void 0,
 				onClick: canPickEffort ? function() {
 					setPane("effort");
 				} : void 0
-			}, react.default.createElement("span", { className: "ms_cellLabel" }, "推理等级"), react.default.createElement("span", { className: "ms_cellValue" }, effortText === void 0 ? "选择模型后可用" : effortText), react.default.createElement("span", { className: "ms_cellChev" }, chevronRightSvg()));
+			}, react.default.createElement("span", { className: "ms_cellLabel" }, t("m.effort")), react.default.createElement("span", { className: "ms_cellValue" }, effortText === void 0 ? t("m.pickModelFirst") : effortText), react.default.createElement("span", { className: "ms_cellChev" }, chevronRightSvg()));
 			var needle = query.trim().toLowerCase();
 			var modelPane = null;
 			if (pane === "model") {
@@ -1202,7 +1592,7 @@ window.__ModuleLoader__.load({
 					onClick: function() {
 						setProviderFilter(null);
 					}
-				}, "全部 " + String(groups.length))];
+				}, tf("m.all", { count: groups.length }))];
 				for (var ck = 0; ck < groups.length; ck += 1) (function(g) {
 					var acc = accounts[g.id];
 					var quotaText = quotaShortOf(acc);
@@ -1230,11 +1620,11 @@ window.__ModuleLoader__.load({
 							if (detail.vision === true) caps.push(react.default.createElement("span", {
 								key: "v",
 								className: "pv_capMini pv_capVision"
-							}, "视觉"));
+							}, t("cap.vision")));
 							if (detail.reasoning === true) caps.push(react.default.createElement("span", {
 								key: "r",
 								className: "pv_capMini pv_capReason"
-							}, "推理"));
+							}, t("cap.reasoning")));
 						}
 						var ctx = formatContext(detail !== void 0 && detail.contextWindow !== void 0 ? detail.contextWindow : model.contextWindow);
 						sectionRows.push(react.default.createElement("button", {
@@ -1262,12 +1652,12 @@ window.__ModuleLoader__.load({
 					ref: searchRef,
 					className: "mp_search",
 					type: "text",
-					placeholder: "搜索模型或 provider",
+					placeholder: t("m.search"),
 					value: query,
 					onChange: function(event) {
 						setQuery(event.target.value);
 					}
-				}), groups.length > 1 ? react.default.createElement("div", { className: "mp_chips" }, chips) : null, directoryError !== void 0 && directoryError !== null && typeof directoryError === "string" ? react.default.createElement("div", { className: "ms_status" }, String(directoryError)) : null, react.default.createElement("div", { className: "ms_scroll" }, groupSections, groupSections.length === 0 ? react.default.createElement("div", { className: "ms_status" }, needle === "" ? "没有可选模型" : "没有匹配「" + query + "」的模型") : null));
+				}), groups.length > 1 ? react.default.createElement("div", { className: "mp_chips" }, chips) : null, directoryError !== void 0 && directoryError !== null && typeof directoryError === "string" ? react.default.createElement("div", { className: "ms_status" }, String(directoryError)) : null, react.default.createElement("div", { className: "ms_scroll" }, groupSections, groupSections.length === 0 ? react.default.createElement("div", { className: "ms_status" }, needle === "" ? t("m.none") : tf("m.noMatch", { query })) : null));
 			}
 			var effortPane = null;
 			if (pane === "effort" && reasoning !== void 0) {
@@ -1306,6 +1696,263 @@ window.__ModuleLoader__.load({
 			}, trigger, menu);
 		}
 		//#endregion
+		//#region src/client/model-editor.ts
+		/**
+		* 把一条目录/配置里的模型读成编辑器的一行。
+		* @param id - 模型 id。
+		* @param name - 显示名（缺省用 id）。
+		* @param detail - `/provider/models` 给的详情（可能有窗口/输出/能力）。
+		* @param known - 这条是不是已经作为配置声明过。
+		*/
+		function rowOf(id, name, detail, declared) {
+			var fromCatalog = detail !== void 0;
+			var fromDeclared = declared !== void 0;
+			var contextWindow = detail?.contextWindow !== void 0 ? detail.contextWindow : declared !== void 0 ? readNumber(declared["contextWindow"]) : void 0;
+			var maxTokens = detail?.maxTokens !== void 0 ? detail.maxTokens : declared !== void 0 ? readNumber(declared["maxTokens"]) : void 0;
+			var declaredInput = declared !== void 0 && Array.isArray(declared["input"]) ? declared["input"] : void 0;
+			return {
+				id,
+				name: name !== void 0 && name !== "" ? name : declared !== void 0 && typeof declared["name"] === "string" ? declared["name"] : id,
+				served: true,
+				contextWindow: contextWindow === void 0 ? "" : String(contextWindow),
+				maxTokens: maxTokens === void 0 ? "" : String(maxTokens),
+				input: declaredInput !== void 0 ? declaredInput.filter((x) => typeof x === "string") : detail?.vision === true ? ["text", "image"] : void 0,
+				source: fromCatalog && fromDeclared ? "both" : fromDeclared ? "declared" : "catalog",
+				customized: false
+			};
+		}
+		function readNumber(value) {
+			return typeof value === "number" && Number.isFinite(value) ? value : void 0;
+		}
+		/**
+		* 建编辑器状态：目录里的模型 + 已配置清单里的模型，合成一份可勾选的清单。
+		*
+		* 「已配置清单」优先于目录——`models` 非空时官方就是拿它当全部（目录不再参与），
+		* 所以那里面的条目即使目录里没有（自定义 id）也必须出现在编辑器里，否则用户会以为它丢了。
+		* @param routeId - 目标 provider 路由 id。
+		* @param catalog - 目录里这个 provider 的模型（`session/modelCatalog` 的骨架）。
+		* @param details - 该 provider 的模型详情（按 id 索引）。
+		* @param configured - `settings.yaml` 里这条 route 已声明的 models 数组。
+		*/
+		function buildModelEditor(routeId, catalog, details, configured) {
+			var rows = [];
+			var seen = /* @__PURE__ */ new Set();
+			var declared = /* @__PURE__ */ new Map();
+			var configuredList = Array.isArray(configured) ? configured : [];
+			for (var i = 0; i < configuredList.length; i += 1) {
+				var entry = configuredList[i];
+				if (entry === null || typeof entry !== "object") continue;
+				var record = entry;
+				var declaredId = typeof record["id"] === "string" ? record["id"] : void 0;
+				if (declaredId === void 0 || declaredId === "") continue;
+				declared.set(declaredId, record);
+			}
+			for (const [id, record] of declared) {
+				var detailForDeclared = details !== void 0 && details !== null ? details[id] : void 0;
+				var declaredName = typeof record["name"] === "string" ? record["name"] : void 0;
+				rows.push(rowOf(id, declaredName !== void 0 ? declaredName : detailForDeclared?.name, detailForDeclared, record));
+				seen.add(id);
+			}
+			if (Array.isArray(catalog)) for (var c = 0; c < catalog.length; c += 1) {
+				var model = catalog[c];
+				if (model === null || model === void 0 || typeof model.id !== "string" || model.id === "") continue;
+				if (seen.has(model.id)) continue;
+				seen.add(model.id);
+				var detail = details !== void 0 && details !== null ? details[model.id] : void 0;
+				rows.push(rowOf(model.id, model.name, detail, void 0));
+			}
+			return {
+				routeId,
+				mode: declared.size > 0 ? "custom" : "catalog",
+				rows,
+				pendingId: ""
+			};
+		}
+		/** 改一行（不可变更新：返回新的 rows）。 */
+		function patchModelRow(rows, id, patch) {
+			var next = [];
+			for (var i = 0; i < rows.length; i += 1) {
+				if (rows[i].id !== id) {
+					next.push(rows[i]);
+					continue;
+				}
+				next.push({
+					...rows[i],
+					...patch,
+					customized: true
+				});
+			}
+			return next;
+		}
+		/** 加一行自定义模型（目录里没有的 id）。id 为空或已存在时原样返回。 */
+		function addModelRow(rows, id) {
+			var trimmed = String(id).trim();
+			if (trimmed === "") return [...rows];
+			for (var i = 0; i < rows.length; i += 1) if (rows[i].id === trimmed) return [...rows];
+			return [...rows, {
+				id: trimmed,
+				name: trimmed,
+				served: true,
+				contextWindow: "",
+				maxTokens: "",
+				source: "declared",
+				customized: true
+			}];
+		}
+		/**
+		* 校验：能不能把这份清单写进 `models`。
+		*
+		* 官方那边错一条会让**整条路由**解析失败（`invalid()` 抛错），所以这里先拦：
+		* 空 id、重复 id、非正整数窗口/输出。
+		* @returns 第一条错误信息；全通过返回 undefined。
+		*/
+		function validateModelRows(rows) {
+			var seen = /* @__PURE__ */ new Set();
+			for (var i = 0; i < rows.length; i += 1) {
+				var row = rows[i];
+				if (!row.served) continue;
+				if (row.id.trim() === "") return "有模型的 ID 是空的";
+				if (seen.has(row.id)) return "模型 ID 重复：" + row.id;
+				seen.add(row.id);
+				if (numericField(row.contextWindow) === "invalid") return row.id + " 的上下文窗口要填正整数（留空表示用默认值）";
+				if (numericField(row.maxTokens) === "invalid") return row.id + " 的最大输出要填正整数（留空表示用默认值）";
+			}
+		}
+		/** 数字字段解析：'' → undefined（不写这个字段），正整数 → number，其余 → 'invalid'。 */
+		function numericField(text) {
+			var trimmed = String(text ?? "").trim();
+			if (trimmed === "") return void 0;
+			var value = Number(trimmed);
+			if (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0) return "invalid";
+			return value;
+		}
+		/**
+		* 生成要写进 `llm-pi-ai.providers.<id>.models` 的数组。
+		*
+		* 只写「需要的字段」：`id` 必填；`name` / `contextWindow` / `maxTokens` / `input` 只在确实有值时写。
+		* 不写 `reasoningEfforts` / `compat` —— 那两样语义复杂（档位要配 wire 值），界面上没有可靠的
+		* 输入方式，宁可不写（不写 = 沿用目录里那份），也不要写错让整条路由挂掉。
+		* @param rows - 编辑器里的行（只取勾选的）。
+		*/
+		function modelListPayload(rows) {
+			var out = [];
+			for (var i = 0; i < rows.length; i += 1) {
+				var row = rows[i];
+				if (!row.served) continue;
+				var entry = { id: row.id };
+				if (row.name !== "" && row.name !== row.id) entry["name"] = row.name;
+				var window = numericField(row.contextWindow);
+				if (typeof window === "number") entry["contextWindow"] = window;
+				var output = numericField(row.maxTokens);
+				if (typeof output === "number") entry["maxTokens"] = output;
+				if (Array.isArray(row.input) && row.input.length > 0) entry["input"] = [...row.input];
+				out.push(entry);
+			}
+			return out;
+		}
+		/**
+		* 这份清单能不能用「什么都不写」（= 回落目录默认）表达。
+		*
+		* 条件：一条都没被改过参数、且目录里的每一条都还勾着（没有裁掉任何模型）。
+		* 这时写 `models` 是多余的，而且会把目录里后续新增的模型永久挡在门外——所以宁可 unset。
+		*/
+		function isDefaultCatalogEquivalent(rows) {
+			for (var i = 0; i < rows.length; i += 1) {
+				var row = rows[i];
+				if (row.source === "declared") return false;
+				if (!row.served) return false;
+				if (row.customized) return false;
+			}
+			return true;
+		}
+		//#endregion
+		//#region src/client/provider-edit.ts
+		/** 可编辑的协议种类（与官方 pi-ai 的 adapter 名一致）。 */
+		const PROVIDER_API_OPTIONS = ["openai-completions", "anthropic-messages"];
+		function str(value) {
+			return typeof value === "string" ? value : "";
+		}
+		/**
+		* 从宿主返回的 route 数据里取出可编辑字段的初始值。
+		* @param route - `/provider/status` 的 `routes[]` 里的一条。
+		*/
+		function providerEditForm(route) {
+			const record = route !== null && typeof route === "object" ? route : {};
+			return {
+				displayName: str(record["displayName"] ?? record["name"]),
+				api: str(record["api"]),
+				baseURL: str(record["baseURL"] ?? record["baseUrl"]),
+				apiKeyEnv: str(record["apiKeyEnv"])
+			};
+		}
+		/**
+		* 表单 → 写入 ops。只发真的改过的字段；空值发 `unset` 而不是 `set ''`。
+		*
+		* 与「添加供应商」那条路径（`providerSaveOps`）的区别就在这两点上：添加时"空值不发 op"
+		* 是对的（没选协议不该把已有 api 抹成空串），而编辑时用户清空一个字段表达的正是
+		* "移除这个键"；`set ''` 会在配置里留下一个值为空串的项，下游还得再判一次空。
+		*
+		* @param routeId - 目标 route id。
+		* @param form - 表单当前值。
+		* @param original - 打开编辑时的原值快照。
+		* @returns 可直接交给 `settings/mutate` 的 ops（空数组 = 什么都没改）。
+		*/
+		function providerEditSaveOps(routeId, form, original) {
+			const ops = [];
+			for (const field of [
+				"displayName",
+				"api",
+				"baseURL",
+				"apiKeyEnv"
+			]) {
+				const next = String(form[field] ?? "").trim();
+				if (next === String(original[field] ?? "").trim()) continue;
+				if (next === "") {
+					ops.push({
+						op: "unset",
+						path: [
+							"providers",
+							routeId,
+							field
+						]
+					});
+					continue;
+				}
+				ops.push({
+					op: "set",
+					path: [
+						"providers",
+						routeId,
+						field
+					],
+					value: next
+				});
+			}
+			return ops;
+		}
+		/**
+		* 表单校验：返回错误文案的词典键（全部合法时是 undefined）。
+		*
+		* 只拦真正会出问题的输入，不做多余的格式审查：
+		*   - `api` 必须是 pi-ai 认得的那两种之一——写错了适配器装不起来，而且报错很远；
+		*   - `baseURL` 给了就必须是 http(s) 开头，否则请求会在很后面才失败；
+		*   - `apiKeyEnv` 是环境变量名，限制成大写字母/数字/下划线（与新增面板的派生规则一致）。
+		* @param form - 表单当前值。
+		*/
+		function validateProviderEdit(form) {
+			if (form.api !== "" && PROVIDER_API_OPTIONS.indexOf(form.api) === -1) return "edit.badApi";
+			if (form.baseURL !== "" && !/^https?:\/\//i.test(form.baseURL)) return "edit.badBaseUrl";
+			if (form.apiKeyEnv !== "" && !/^[A-Z0-9_]+$/.test(form.apiKeyEnv)) return "edit.badKeyEnv";
+		}
+		/**
+		* 表单里有没有实质改动（用于决定"保存"按钮是否可点）。
+		* @param form - 表单当前值。
+		* @param original - 打开编辑时的原值快照。
+		*/
+		function isProviderEditDirty(form, original) {
+			return providerEditSaveOps("_", form, original).length > 0;
+		}
+		//#endregion
 		//#region src/client/settings.ts
 		/**
 		* 设置页 Provider 标签：CC Switch 式卡片 + 「添加供应商」面板 + 「pi-ai 桥接」二级标签。
@@ -1313,14 +1960,14 @@ window.__ModuleLoader__.load({
 		*/
 		/** 当前用的是哪一档 pi-ai。宿主报的 source：版本号 / 'dependency' / 'dsh'。 */
 		function piAiSourceLabel(source) {
-			if (source === "dependency") return "兜底依赖";
-			if (source === "dsh") return "dsh 自带";
-			return "已下载";
+			if (source === "dependency") return t("bridge.srcDependency");
+			if (source === "dsh") return t("bridge.srcDsh");
+			return t("bridge.srcVendored");
 		}
 		function piAiSourceHint(source) {
-			if (source === "dependency") return "插件 vendor/ 下手动安装的兜底版本（可选档；没装就会落到 dsh 自带那份）";
-			if (source === "dsh") return "dsh 自己装的那份 pi-ai，版本随 dsh 发布走（不一定比上游旧）";
-			return "按需下载并验证过的版本，放在 vendor/pi-ai/<版本>/；换版本需重启 dsh";
+			if (source === "dependency") return t("bridge.hintDependency");
+			if (source === "dsh") return t("bridge.hintDsh");
+			return t("bridge.hintVendored");
 		}
 		/**
 		* 「pi-ai 桥接」标签页的明细行。纯函数，只返回数据，组件照着渲染——这样能离线测，
@@ -1343,8 +1990,11 @@ window.__ModuleLoader__.load({
 			}
 			rows.push({
 				key: "pi",
-				text: "当前 pi-ai 版本",
-				value: String(bridgeRecord.piAiVersion) + "（" + piAiSourceLabel(bridgeRecord.source) + "）",
+				text: t("bridge.version"),
+				value: tf("bridge.srcParen", {
+					version: bridgeRecord.piAiVersion,
+					source: piAiSourceLabel(bridgeRecord.source)
+				}),
 				title: piAiSourceHint(bridgeRecord.source)
 			});
 			if (updatesEnabled === false) rows.push({
@@ -1355,9 +2005,9 @@ window.__ModuleLoader__.load({
 			});
 			if (bridgeRecord.probeUnverified === true) rows.push({
 				key: "unverified",
-				text: "当前这份 pi-ai 没做过兼容性体检",
-				value: "看原因",
-				title: "解析不出桥接副本的 import 需求（上游改了打包格式），按目录存在放行。建议关注 pi-ai 发版说明",
+				text: t("bridge.probeUnverified"),
+				value: t("bridge.reason"),
+				title: t("bridge.probeUnverifiedTip"),
 				warn: true
 			});
 			var rejected = Array.isArray(bridgeRecord.rejected) ? bridgeRecord.rejected : [];
@@ -1365,8 +2015,8 @@ window.__ModuleLoader__.load({
 				var skipped = rejected[i];
 				rows.push({
 					key: "skip-" + i,
-					text: "跳过 " + String(skipped.version) + "：兼容性检查没通过",
-					value: "看原因",
+					text: tf("bridge.skip", { version: skipped.version }),
+					value: t("bridge.reason"),
 					title: String(skipped.error),
 					warn: true
 				});
@@ -1375,15 +2025,15 @@ window.__ModuleLoader__.load({
 				var updateRecord = update;
 				if (updateRecord.pending !== void 0) rows.push({
 					key: "pending",
-					text: "已下载 " + String(updateRecord.pending) + "，验证通过（完整性 + 兼容性），重启 dsh 后生效",
+					text: tf("bridge.pending", { version: updateRecord.pending }),
 					warn: true
 				});
 				if (updateRecord.rejected !== void 0 && updateRecord.rejected !== null) {
 					var rejectedLatest = updateRecord.rejected;
 					rows.push({
 						key: "rejected",
-						text: String(rejectedLatest.version) + " 验证没通过，已跳过（不会切过去）",
-						value: "看原因",
+						text: tf("bridge.rejected", { version: rejectedLatest.version }),
+						value: t("bridge.reason"),
 						title: String(rejectedLatest.error),
 						warn: true
 					});
@@ -1393,12 +2043,12 @@ window.__ModuleLoader__.load({
 		}
 		/** 上游那一行的文字（右侧按钮由组件补）。updatesEnabled === false 时说明自动下载已停用。 */
 		function piAiUpstreamText(update, updatesEnabled) {
-			if (updatesEnabled === false) return "上游 自动检查已停用（本地版）";
-			if (update === void 0 || update === null) return "上游 未检查";
+			if (updatesEnabled === false) return t("bridge.upstreamPaused");
+			if (update === void 0 || update === null) return t("bridge.upstreamUnchecked");
 			var updateRecord = update;
-			if (updateRecord.latest === void 0) return "上游 未检查";
-			var when = updateRecord.lastCheck === void 0 ? "" : "（检查于 " + relativeTime(updateRecord.lastCheck) + "）";
-			return "上游 " + String(updateRecord.latest) + when;
+			if (updateRecord.latest === void 0) return t("bridge.upstreamUnchecked");
+			var when = updateRecord.lastCheck === void 0 ? "" : tf("bridge.upstreamCheckedAt", { when: relativeTime(updateRecord.lastCheck) });
+			return tf("bridge.upstreamVersion", { version: updateRecord.latest }) + when;
 		}
 		/** 单个摘要 chip：「5h余量:90% 34min后重置」；余额类无标签只显示金额；sep 为组间分割线。 */
 		function headlineChip(chip, key) {
@@ -1429,30 +2079,72 @@ window.__ModuleLoader__.load({
 				className: "pv_chipItem"
 			}, parts);
 		}
+		/**
+		* 能力 id → 样式类 + 字典 key（模型行与详情卡共用一套）。
+		*
+		* 分开两件事是必须的：**样式类以 id 为键**（语言无关），显示名才走 t()。
+		* 原来拿中文显示名当键，切到英文就一个类都匹配不上——徽章会丢掉配色。
+		*/
+		var CAP_KEYS = {
+			vision: {
+				cls: "pv_capVision",
+				label: "cap.vision"
+			},
+			reasoning: {
+				cls: "pv_capReason",
+				label: "cap.reasoning"
+			},
+			video: {
+				cls: "pv_capVideo",
+				label: "cap.video"
+			}
+		};
+		/**
+		* 一条详情里**已知为真**的能力 id（顺序：视觉、推理、视频），离线可测的纯函数。
+		*
+		* 返回 id 而不是显示名：id 是语言无关的内部标识，显示名在渲染时才 t() 出来。
+		* 只认 `true`：`false` 是「明确不支持」，`undefined` 是「没查过」（自定义模型 id 在 pi-ai
+		* 目录里查不到、route 也没声明模态时就是这样）。两者都不出徽章，但它们是两回事——
+		* 详情卡里必须分开写，否则等于把「没查过」渲染成「没有视觉」。
+		*/
+		function capabilityKeysOf(detail) {
+			var keys = [];
+			if (detail === void 0 || detail === null) return keys;
+			if (detail.vision === true) keys.push("vision");
+			if (detail.reasoning === true) keys.push("reasoning");
+			if (detail.video === true) keys.push("video");
+			return keys;
+		}
+		/** 一条详情的**显示用**能力徽章文案（顺序同 {@link capabilityKeysOf}）；语言由 t() 现取。 */
+		function capabilityBadges(detail) {
+			return capabilityKeysOf(detail).map(function(id) {
+				return t(CAP_KEYS[id].label);
+			});
+		}
+		/** 能力 id → 样式类；未知 id 不给类，不塞半条样式。 */
+		function capClassOf(id) {
+			return CAP_KEYS[id] === void 0 ? "" : CAP_KEYS[id].cls;
+		}
+		/** 能力字段有没有出处：三样全是 undefined 就是「未知」，界面得说明白。 */
+		function capabilitiesKnown(detail) {
+			if (detail === void 0 || detail === null) return false;
+			return detail.vision !== void 0 || detail.video !== void 0 || detail.reasoning !== void 0;
+		}
 		/** 模型行：名称 + 能力徽章（视觉/推理/视频）+ 上下文标签，悬浮出 Cherry 式详情卡。 */
 		function modelRow(model, account, detailsById) {
 			var detail = lookupDetail(detailsById, account.id, model.id);
 			var ctx = formatContext(detail !== void 0 && detail.contextWindow !== void 0 ? detail.contextWindow : model.contextWindow);
-			var caps = [];
-			if (detail !== void 0) {
-				if (detail.vision === true) caps.push(react.default.createElement("span", {
-					key: "v",
-					className: "pv_capMini pv_capVision"
-				}, "视觉"));
-				if (detail.reasoning === true) caps.push(react.default.createElement("span", {
-					key: "r",
-					className: "pv_capMini pv_capReason"
-				}, "推理"));
-				if (detail.video === true) caps.push(react.default.createElement("span", {
-					key: "t",
-					className: "pv_capMini pv_capVideo"
-				}, "视频"));
-				if (detail.source === "declared") caps.push(react.default.createElement("span", {
-					key: "d",
-					className: "pv_capMini pv_capDeclared",
-					title: "pi-ai 目录里没有这个模型，能力按你在路由里声明的 input 显示"
-				}, "声明"));
-			}
+			var caps = capabilityKeysOf(detail).map(function(id) {
+				return react.default.createElement("span", {
+					key: id,
+					className: "pv_capMini " + capClassOf(id)
+				}, t(CAP_KEYS[id].label));
+			});
+			if (detail !== void 0 && detail.source === "declared") caps.push(react.default.createElement("span", {
+				key: "declared",
+				className: "pv_capMini pv_capDeclared",
+				title: t("cap.declaredTip")
+			}, t("cap.declared")));
 			return react.default.createElement("div", {
 				className: "pv_mRow",
 				key: "m-" + model.id
@@ -1470,28 +2162,32 @@ window.__ModuleLoader__.load({
 				className: "pv_tipTitle",
 				key: "t"
 			}, model.name)];
-			rows.push(tipLine("服务商", shortName(account), "p"));
-			rows.push(tipLine("模型 ID", model.id, "id"));
+			rows.push(tipLine(t("prov.provider"), shortName(account), "p"));
+			rows.push(tipLine(t("prov.modelId"), model.id, "id"));
+			var capIds = capabilityKeysOf(detail);
+			if (capIds.length > 0) rows.push(react.default.createElement("div", {
+				className: "pv_tipCaps",
+				key: "c"
+			}, capIds.map(function(id) {
+				return tipCap(t(CAP_KEYS[id].label), capClassOf(id));
+			})));
+			if (!capabilitiesKnown(detail)) rows.push(react.default.createElement("div", {
+				className: "pv_tipDim",
+				key: "caps-unknown"
+			}, t("cap.unknown")));
 			if (detail !== void 0) {
-				var caps = [];
-				if (detail.vision === true) caps.push(tipCap("视觉", "pv_capVision"));
-				if (detail.video === true) caps.push(tipCap("视频", "pv_capVideo"));
-				if (detail.reasoning === true) caps.push(tipCap("推理", "pv_capReason"));
-				if (caps.length > 0) rows.push(react.default.createElement("div", {
-					className: "pv_tipCaps",
-					key: "c"
-				}, caps));
-				if (detail.contextWindow !== void 0) rows.push(tipLine("上下文窗口", detail.contextWindow.toLocaleString("en-US"), "cw"));
-				if (detail.maxTokens !== void 0) rows.push(tipLine("最大输出", detail.maxTokens.toLocaleString("en-US"), "mt"));
-				rows.push(tipLine("思维链", detail.reasoning === true ? Array.isArray(detail.thinkingLevels) && detail.thinkingLevels.length > 0 ? detail.thinkingLevels.join("、") : "自动" : "关闭", "tk"));
+				var cw = detail.contextWindow !== void 0 ? detail.contextWindow : model.contextWindow;
+				if (cw !== void 0) rows.push(tipLine(t("cap.cw"), cw.toLocaleString("en-US"), "cw"));
+				if (detail.maxTokens !== void 0) rows.push(tipLine(t("cap.maxTokens"), detail.maxTokens.toLocaleString("en-US"), "mt"));
+				rows.push(tipLine(t("cap.chain"), detail.reasoning === void 0 ? t("cap.unknownShort") : detail.reasoning === true ? Array.isArray(detail.thinkingLevels) && detail.thinkingLevels.length > 0 ? detail.thinkingLevels.join("、") : t("cap.auto") : t("cap.off"), "tk"));
 				if (detail.source === "declared") rows.push(react.default.createElement("div", {
 					className: "pv_tipDim",
 					key: "src"
-				}, "能力来自这条路由的声明（pi-ai 目录没收录这个模型 ID）"));
+				}, t("cap.sourceDeclared")));
 			} else rows.push(react.default.createElement("div", {
 				className: "pv_tipDim",
 				key: "dim"
-			}, "该模型没有本地元数据"));
+			}, t("cap.noMeta")));
 			return react.default.createElement("div", { className: "pv_tip" }, rows);
 		}
 		function tipLine(label, value, key) {
@@ -1515,12 +2211,96 @@ window.__ModuleLoader__.load({
 			};
 			if (preset.missingKey === true) return {
 				disabled: false,
-				tag: "缺密钥"
+				tag: t("prov.presetMissingKey")
 			};
 			return {
 				disabled: true,
-				tag: "已配置"
+				tag: t("prov.presetConfigured")
 			};
+		}
+		/**
+		* 保存供应商要发的 `settings/mutate` ops：**逐字段写**，不是整段覆盖。
+		*
+		* 原来这条发的是 `{op:'set', path:['providers', id], value:{api,baseURL,apiKeyEnv}}`，
+		* 而宿主的 applyPathOp 对「路径正好到对象本身」的 set 是 `{...section, [id]: op.value}` ——
+		* 也就是**整段替换**：对一个已有 route 点一次「确认添加」，手写的 models（逐模型
+		* contextWindow / maxTokens / input / reasoningEfforts）、compat.thinkingFormat、retryPolicy
+		* 会一起消失（issue #1 顺带报的写入路径坑，代价是静默的数据丢失）。
+		*
+		* 逐字段 set（路径带字段名）在 applyPathOp 里是 `{...child, [field]: value}`：只覆盖我们
+		* 负责的那三个字段，其余原样保留。新建 route 时逐字段写同样成立（中间对象按需创建），
+		* 所以不用分「新建 / 已存在」两条路径。
+		*
+		* 空值不发 op：没选协议（api 为空）时不该把已有的 api 抹成空串。
+		* @param routeId - 目标 route id。
+		* @param form - 表单里的三个字段。
+		*/
+		function providerSaveOps(routeId, form) {
+			var ops = [];
+			var fields = [
+				{
+					field: "api",
+					value: String(form.api ?? "")
+				},
+				{
+					field: "baseURL",
+					value: String(form.baseURL ?? "").trim()
+				},
+				{
+					field: "apiKeyEnv",
+					value: String(form.apiKeyEnv ?? "").trim()
+				}
+			];
+			for (var i = 0; i < fields.length; i += 1) {
+				if (fields[i].value === "") continue;
+				ops.push({
+					op: "set",
+					path: [
+						"providers",
+						routeId,
+						fields[i].field
+					],
+					value: fields[i].value
+				});
+			}
+			return ops;
+		}
+		/**
+		* 这条 route 是不是已经配过了（决定「添加」还是「更新」的措辞与提示）。
+		*
+		* 依据是预设清单上的 configured 标记（宿主 `/provider/presets` 给的，与卡片上的
+		* 「已配置 / 缺密钥」同源）——界面里不该另算一套「已存在」的判断。
+		* @param presets - `/provider/presets` 的清单。
+		* @param routeId - 要查的 route id。
+		*/
+		function isRouteConfigured(presets, routeId) {
+			if (!Array.isArray(presets)) return false;
+			for (var i = 0; i < presets.length; i += 1) {
+				var preset = presets[i];
+				if (preset !== null && typeof preset === "object" && preset["id"] === routeId && preset["configured"] === true) return true;
+			}
+			return false;
+		}
+		/**
+		* 删除前把一条 route 的配置导出成 YAML 文本（issue #3 的期望 4：删除要能留下原文）。
+		*
+		* 删除一次做两件事——清路由、清凭据——且都不可撤销；手写的 `models` / `compat` /
+		* `retryPolicy` 会一起消失。给一份能直接贴回 `settings.yaml` 的原文是最低成本的补救。
+		*
+		* 密钥值**不导出**：浏览器端只拿得到掩码（宿主不下发真值），所以导出的是凭据名，
+		* 让用户知道删除后该重填哪一条。
+		* @param account - 卡片上的那条账户（含路由元信息）。
+		*/
+		function routeYamlOf(account) {
+			var lines = [t("yaml.header"), account.id + ":"];
+			if (typeof account.displayName === "string" && account.displayName !== "") lines.push("  displayName: " + account.displayName);
+			if (typeof account.api === "string" && account.api !== "") lines.push("  api: " + account.api);
+			if (typeof account.baseUrl === "string" && account.baseUrl !== "") lines.push("  baseURL: " + account.baseUrl);
+			if (typeof account.apiKeyEnv === "string" && account.apiKeyEnv !== "") {
+				lines.push("  apiKeyEnv: " + account.apiKeyEnv);
+				lines.push(t("yaml.credNote"));
+			}
+			return lines.join("\n") + "\n";
 		}
 		/**
 		* 「刷新余量 / 保存密钥」之后的结果判定：成功返回 undefined，失败给出原因。
@@ -1538,7 +2318,7 @@ window.__ModuleLoader__.load({
 				if (reason !== void 0 && reason !== null && String(reason) !== "") return String(reason);
 			}
 			if (record.error !== void 0 && record.error !== null) return String(record.error);
-			return "未知错误";
+			return t("err.unknown");
 		}
 		/**
 		* 添加 provider：选预设 → 填密钥/端点 → 测试 → 通过才能添加。
@@ -1616,13 +2396,13 @@ window.__ModuleLoader__.load({
 				if (form.routeId.trim() === "" || form.baseURL.trim() === "" || form.key.trim() === "") {
 					setTest({
 						phase: "fail",
-						message: "路由 ID / API 地址 / API 密钥都要填"
+						message: t("prov.addManualHint")
 					});
 					return;
 				}
 				setTest({
 					phase: "run",
-					message: "正在用这把密钥实连供应商探测模型…"
+					message: t("prov.testing")
 				});
 				apiCall("llm/discoverModels", {
 					settingsNs: "llm-pi-ai",
@@ -1641,7 +2421,10 @@ window.__ModuleLoader__.load({
 					}
 					setTest({
 						phase: "ok",
-						message: "✓ 连通，发现 " + String(models.length) + " 个模型" + (names.length > 0 ? "：" + names.join("、") + (models.length > 3 ? " …" : "") : "")
+						message: names.length === 0 ? tf("prov.testOk", { count: models.length }) : tf("prov.testOkNames", {
+							count: models.length,
+							names: models.length > 3 ? tf("prov.testOkMore", { names: names.join("、") }) : names.join("、")
+						})
 					});
 				}).catch(function(cause) {
 					setTest({
@@ -1650,28 +2433,34 @@ window.__ModuleLoader__.load({
 					});
 				});
 			}
+			/**
+			* 保存供应商：**逐字段写**，不是整段覆盖。
+			*
+			* 原来这条发的是 `{op:'set', path:['providers', id], value:{api,baseURL,apiKeyEnv}}`，
+			* 而宿主的 applyPathOp 对「路径到对象本身」的 set 是 `{...section, [id]: op.value}` ——
+			* 也就是**整段替换**：对一个已有 route 点一次「确认添加」，手写的 models（逐模型
+			* contextWindow/maxTokens/input/reasoningEfforts）、compat.thinkingFormat、retryPolicy
+			* 会一起消失（issue #1 顺带报的写入路径坑，代价是静默的数据丢失）。
+			*
+			* 逐字段 set（路径带字段名）在 applyPathOp 里是 `{...child, [field]: value}`：只覆盖我们
+			* 负责的那三个字段，其余原样保留。新建 route 时逐字段写同样成立（中间对象按需创建），
+			* 所以这里不需要分「新建 / 已存在」两条路径。
+			*/
 			function add() {
 				setBusy(true);
 				setNote(null);
-				var profile = {
-					api: form.api,
-					baseURL: form.baseURL.trim(),
-					apiKeyEnv: form.apiKeyEnv.trim()
-				};
+				var routeId = form.routeId.trim();
+				var existed = isRouteConfigured(presets, routeId);
 				apiCall("settings/mutate", {
 					ns: "llm-pi-ai",
-					ops: [{
-						op: "set",
-						path: ["providers", form.routeId.trim()],
-						value: profile
-					}]
+					ops: providerSaveOps(routeId, form)
 				}).then(function() {
 					return apiCall("credentials/set", {
 						ref: form.apiKeyEnv.trim(),
 						value: form.key.trim()
 					});
 				}).then(function() {
-					setNote("已添加 " + form.routeId.trim());
+					setNote(existed ? tf("prov.updated", { id: routeId }) : tf("prov.added", { id: routeId }));
 					setTest({
 						phase: "idle",
 						message: ""
@@ -1679,7 +2468,7 @@ window.__ModuleLoader__.load({
 					patchForm({ key: "" });
 					if (typeof props.onAdded === "function") props.onAdded();
 				}).catch(function(cause) {
-					setNote("添加失败：" + String(cause && cause.message ? cause.message : cause) + "（配置可能已写入、仅密钥未存，检查后可重试）");
+					setNote(tf("prov.addFailed", { reason: cause && cause.message ? cause.message : cause }));
 				}).then(function() {
 					setBusy(false);
 				});
@@ -1715,7 +2504,7 @@ window.__ModuleLoader__.load({
 			if (pickItems.length === 0) pickItems.push(react.default.createElement("div", {
 				className: "pv_pickEmpty",
 				key: "empty"
-			}, "没有匹配的供应商"));
+			}, t("prov.noMatch")));
 			return react.default.createElement("div", { className: "pv_pc" }, react.default.createElement("div", {
 				className: "pv_pcBody",
 				style: {
@@ -1723,7 +2512,7 @@ window.__ModuleLoader__.load({
 					paddingTop: "10px",
 					gap: "6px"
 				}
-			}, react.default.createElement("div", { className: "pv_line pv_row" }, react.default.createElement("span", null, "供应商"), react.default.createElement("span", {
+			}, react.default.createElement("div", { className: "pv_line pv_row" }, react.default.createElement("span", null, t("prov.provider")), react.default.createElement("span", {
 				className: "pv_pick",
 				ref: pickRef
 			}, react.default.createElement("button", {
@@ -1733,21 +2522,21 @@ window.__ModuleLoader__.load({
 					setPickOpen(!pickOpen);
 					setPickFilter("");
 				}
-			}, react.default.createElement("span", null, form.routeId === "" ? "选择供应商…" : pickedLabel), react.default.createElement("span", { className: "pv_pcCaret" }, pickOpen ? "▾" : "▸")), pickOpen === false ? null : react.default.createElement("div", { className: "pv_pickMenu" }, react.default.createElement("input", {
+			}, react.default.createElement("span", null, form.routeId === "" ? t("prov.selectPlaceholder") : pickedLabel), react.default.createElement("span", { className: "pv_pcCaret" }, pickOpen ? "▾" : "▸")), pickOpen === false ? null : react.default.createElement("div", { className: "pv_pickMenu" }, react.default.createElement("input", {
 				className: "pv_mFilter",
 				style: { width: "100%" },
 				type: "text",
-				placeholder: "过滤供应商",
+				placeholder: t("prov.filter"),
 				value: pickFilter,
 				autoFocus: true,
 				onChange: function(event) {
 					setPickFilter(event.target.value);
 				}
-			}), react.default.createElement("div", { className: "pv_pickList" }, pickItems)))), react.default.createElement("div", { className: "pv_line pv_row" }, react.default.createElement("span", null, "路由 ID"), react.default.createElement("input", {
+			}), react.default.createElement("div", { className: "pv_pickList" }, pickItems)))), react.default.createElement("div", { className: "pv_line pv_row" }, react.default.createElement("span", null, t("prov.routeId")), react.default.createElement("input", {
 				className: customPicked ? "pv_field pv_key" : "pv_field pv_ro",
 				value: form.routeId,
 				readOnly: customPicked !== true,
-				title: customPicked ? "给这个网关起个名字（kebab-case）" : "由所选供应商决定",
+				title: customPicked ? t("prov.routeIdHintCustom") : t("prov.routeIdHintFixed"),
 				onChange: function(event) {
 					if (customPicked !== true) return;
 					patchForm({
@@ -1755,7 +2544,7 @@ window.__ModuleLoader__.load({
 						apiKeyEnv: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "_") + "_API_KEY"
 					});
 				}
-			})), react.default.createElement("div", { className: "pv_line pv_row" }, react.default.createElement("span", null, "API 密钥"), react.default.createElement("input", {
+			})), react.default.createElement("div", { className: "pv_line pv_row" }, react.default.createElement("span", null, t("prov.apiKey")), react.default.createElement("input", {
 				className: "pv_field pv_key",
 				type: "password",
 				placeholder: "sk-…",
@@ -1769,14 +2558,14 @@ window.__ModuleLoader__.load({
 				target: "_blank",
 				rel: "noreferrer",
 				style: { marginLeft: "8px" }
-			}, "获取密钥 ↗")), react.default.createElement("div", { className: "pv_line pv_row" }, react.default.createElement("span", null, "API 地址"), react.default.createElement("input", {
+			}, t("prov.keyLink"))), react.default.createElement("div", { className: "pv_line pv_row" }, react.default.createElement("span", null, t("prov.apiBase")), react.default.createElement("input", {
 				className: form.baseURL === "" ? "pv_field pv_key" : "pv_field pv_ro",
 				value: form.baseURL,
 				readOnly: form.baseURL !== "",
 				onChange: function(event) {
 					patchForm({ baseURL: event.target.value });
 				}
-			})), react.default.createElement("div", { className: "pv_line pv_row" }, react.default.createElement("span", null, "协议"), customPicked ? react.default.createElement("select", {
+			})), react.default.createElement("div", { className: "pv_line pv_row" }, react.default.createElement("span", null, t("prov.protocol")), customPicked ? react.default.createElement("select", {
 				className: "pv_field",
 				value: form.api,
 				onChange: function(event) {
@@ -1786,19 +2575,19 @@ window.__ModuleLoader__.load({
 				className: "pv_field pv_ro",
 				value: form.api,
 				readOnly: true
-			})), react.default.createElement("div", { className: "pv_line pv_row" }, react.default.createElement("span", null, ""), react.default.createElement("span", { className: "pv_hint" }, "密钥存为 " + form.apiKeyEnv)), react.default.createElement("div", { className: "pv_actRow" }, react.default.createElement("button", {
+			})), react.default.createElement("div", { className: "pv_line pv_row" }, react.default.createElement("span", null, ""), react.default.createElement("span", { className: "pv_hint" }, tf("prov.credStoredAs", { ref: form.apiKeyEnv }))), react.default.createElement("div", { className: "pv_actRow" }, react.default.createElement("button", {
 				type: "button",
 				className: "pv_action",
 				style: { marginLeft: "0" },
 				disabled: test.phase === "run",
 				onClick: runTest
-			}, test.phase === "run" ? "测试中…" : "测试"), react.default.createElement("button", {
+			}, test.phase === "run" ? t("prov.testingShort") : t("prov.test")), react.default.createElement("button", {
 				type: "button",
 				className: "pv_action",
 				disabled: busy || test.phase !== "ok",
-				title: test.phase === "ok" ? "" : "先通过测试才能添加",
+				title: test.phase === "ok" ? "" : t("prov.needTestFirst"),
 				onClick: add
-			}, busy ? "添加中…" : "添加到列表"), react.default.createElement("button", {
+			}, busy ? t("prov.adding") : t("prov.addToList")), react.default.createElement("button", {
 				type: "button",
 				className: "pv_action",
 				style: { marginLeft: "auto" },
@@ -1810,7 +2599,7 @@ window.__ModuleLoader__.load({
 					});
 					setNote(null);
 				}
-			}, "取消")), test.message === "" ? null : react.default.createElement("div", { className: "plan_note" + (test.phase === "fail" ? " plan_badText" : "") }, test.message), note === null ? null : react.default.createElement("div", { className: "plan_note" }, note)));
+			}, t("prov.cancel"))), test.message === "" ? null : react.default.createElement("div", { className: "plan_note" + (test.phase === "fail" ? " plan_badText" : "") }, test.message), note === null ? null : react.default.createElement("div", { className: "plan_note" }, note)));
 		}
 		/** 逐模型编辑器的一行（勾选 + 可编辑字段 + 移除）。 */
 		function modelEditRow(row, patch, remove) {
@@ -1889,7 +2678,7 @@ window.__ModuleLoader__.load({
 			function add(id, name, detail, entry) {
 				if (id === "" || seen[id] === true) return;
 				seen[id] = true;
-				var declaredInput = Array.isArray(entry === void 0 ? void 0 : entry.input) ? entry.input : [];
+				var declaredInput = entry !== void 0 && Array.isArray(entry.input) ? entry.input : [];
 				rows.push({
 					id,
 					name,
@@ -2170,7 +2959,12 @@ window.__ModuleLoader__.load({
 				className: "pv_action",
 				disabled: props.busy,
 				onClick: props.onCancel
-			}, "取消"), react.default.createElement("button", {
+			}, t("prov.cancel")), react.default.createElement("button", {
+				type: "button",
+				className: "pv_action",
+				disabled: props.busy,
+				onClick: props.onExport
+			}, t("del.exportBtn")), react.default.createElement("button", {
 				type: "button",
 				className: "pv_delYes pv_dangerBtn",
 				disabled: props.busy,
@@ -2211,6 +3005,15 @@ window.__ModuleLoader__.load({
 			var presetsState = react.default.useState([]);
 			var presets = presetsState[0];
 			var setPresets = presetsState[1];
+			var modelEditorsState = react.default.useState({});
+			modelEditorsState[0];
+			modelEditorsState[1];
+			var editorOpenState = react.default.useState({});
+			editorOpenState[0];
+			editorOpenState[1];
+			var routesState = react.default.useState({});
+			var routesById = routesState[0];
+			var setRoutesById = routesState[1];
 			var catTickState = react.default.useState(0);
 			var setCatTick = catTickState[1];
 			var delState = react.default.useState(null);
@@ -2233,6 +3036,18 @@ window.__ModuleLoader__.load({
 			var savingKeyState = react.default.useState({});
 			var savingKey = savingKeyState[0];
 			var setSavingKey = savingKeyState[1];
+			var editOpenState = react.default.useState({});
+			var editOpen = editOpenState[0];
+			var setEditOpen = editOpenState[1];
+			var editFormsState = react.default.useState({});
+			var editForms = editFormsState[0];
+			var setEditForms = editFormsState[1];
+			var editOriginState = react.default.useState({});
+			var editOrigin = editOriginState[0];
+			var setEditOrigin = editOriginState[1];
+			var editBusyState = react.default.useState({});
+			var editBusy = editBusyState[0];
+			var setEditBusy = editBusyState[1];
 			var toastState = react.default.useState(null);
 			var toast = toastState[0];
 			var setToast = toastState[1];
@@ -2254,8 +3069,15 @@ window.__ModuleLoader__.load({
 			var refresh = react.default.useCallback(function(force) {
 				loadProviderStatus().then(function(payload) {
 					setStatus(payload);
+					var byId = {};
+					var list = payload !== null && payload !== void 0 && Array.isArray(payload.routes) ? payload.routes : [];
+					for (var i = 0; i < list.length; i += 1) {
+						var entry = list[i];
+						if (entry !== null && typeof entry === "object" && typeof entry.id === "string") byId[entry.id] = entry;
+					}
+					setRoutesById(byId);
 				}).catch(function() {
-					setStatus(STATUS_UNAVAILABLE);
+					setStatus(statusUnavailable());
 				});
 				loadPlanStatus(force).then(function(payload) {
 					setPlan(payload);
@@ -2329,8 +3151,8 @@ window.__ModuleLoader__.load({
 			}
 			function refreshSummary(account) {
 				var percent = worstPercent(account);
-				if (percent !== void 0) return "（余 " + String(percent) + "%）";
-				if (Array.isArray(account.balances) && account.balances.length > 0) return "（" + account.balances[0].value + "）";
+				if (percent !== void 0) return tf("toast.refreshSummaryPct", { percent });
+				if (Array.isArray(account.balances) && account.balances.length > 0) return tf("toast.refreshSummaryBalance", { value: account.balances[0].value });
 				return "";
 			}
 			function refreshAccount(account) {
@@ -2338,10 +3160,16 @@ window.__ModuleLoader__.load({
 				postJson("/provider/refresh", { providerId: account.id }).then(function(res) {
 					if (res !== null && res !== void 0 && res.account !== void 0) mergePlanAccount(res.account);
 					var failure = refreshFailure(res);
-					if (failure === void 0) showToast("✓ " + shortName(account) + " 余量已刷新" + refreshSummary(res.account), true);
-					else showToast("✗ " + shortName(account) + " 刷新失败：" + failure, false);
+					if (failure === void 0) showToast("✓ " + tf("toast.refreshed", { name: shortName(account) }) + refreshSummary(res.account), true);
+					else showToast("✗ " + tf("toast.refreshFailed", {
+						name: shortName(account),
+						reason: failure
+					}), false);
 				}).catch(function(cause) {
-					showToast("✗ " + shortName(account) + " 刷新失败：" + String(cause && cause.message ? cause.message : cause), false);
+					showToast("✗ " + tf("toast.refreshFailed", {
+						name: shortName(account),
+						reason: cause && cause.message ? cause.message : cause
+					}), false);
 				}).then(function() {
 					setRefreshingFlag(account.id, false);
 				});
@@ -2355,11 +3183,11 @@ window.__ModuleLoader__.load({
 				var draft = keyDrafts[account.id];
 				var value = draft === void 0 ? "" : String(draft).trim();
 				if (ref === "") {
-					showToast("✗ " + shortName(account) + " 这条路由没有凭据名，无法存密钥", false);
+					showToast("✗ " + tf("toast.noCredentialRef", { name: shortName(account) }), false);
 					return;
 				}
 				if (value === "") {
-					showToast("✗ " + shortName(account) + " 先填密钥", false);
+					showToast("✗ " + tf("toast.emptyKey", { name: shortName(account) }), false);
 					return;
 				}
 				setSavingKey(function(prev) {
@@ -2376,15 +3204,38 @@ window.__ModuleLoader__.load({
 				}).then(function(res) {
 					if (res !== null && res !== void 0 && res.account !== void 0) mergePlanAccount(res.account);
 					var failure = refreshFailure(res);
-					if (failure === void 0) showToast("✓ " + shortName(account) + " 密钥已保存，" + refreshSummary(res.account), true);
-					else showToast("✓ 密钥已保存，但余量没查通：" + failure, false);
+					if (failure === void 0) showToast("✓ " + tf("toast.keySaved", {
+						name: shortName(account),
+						summary: refreshSummary(res.account)
+					}), true);
+					else showToast("✓ " + tf("toast.keySavedNoQuota", { reason: failure }), false);
 					reloadPresets();
 				}).catch(function(cause) {
-					showToast("✗ 密钥保存失败：" + String(cause && cause.message ? cause.message : cause), false);
+					showToast("✗ " + tf("toast.keySaveFailed", { reason: String(cause && cause.message ? cause.message : cause) }), false);
 				}).then(function() {
 					setSavingKey(function(prev) {
 						return withKey(prev, account.id, false);
 					});
+				});
+			}
+			/**
+			* 删除前把这条 route 的配置导出成 YAML 文本（issue #3 期望 4）。
+			*
+			* 删除是「清路由 + 清凭据」且不可撤销，手写的 `models` / `compat` / `retryPolicy` 一起没。
+			* 界面上给一份能直接贴回 `settings.yaml` 的原文，是这里唯一成本够低、又真能救回配置的办法。
+			* 密钥**不导出**：值在浏览器端拿不到（宿主只下发掩码），导出凭据名让用户知道该重填哪一个。
+			*/
+			function exportRoute(account) {
+				var text = routeYamlOf(account);
+				var clipboard = navigator !== void 0 && navigator !== null ? navigator.clipboard : void 0;
+				if (clipboard === void 0 || typeof clipboard.writeText !== "function") {
+					setNote(t("del.exportNoClipboard"));
+					return;
+				}
+				clipboard.writeText(text).then(function() {
+					setNote(t("del.exported"));
+				}, function(cause) {
+					setNote(tf("del.exportFailed", { reason: cause && cause.message ? cause.message : cause }));
 				});
 			}
 			function removeProvider(account) {
@@ -2412,11 +3263,82 @@ window.__ModuleLoader__.load({
 					else if (result.applied === true) setNote("已下载 " + String(result.latest) + "，验证通过（完整性 + 兼容性），重启 dsh 后生效");
 					else if (result.compatible === false) setNote(String(result.latest) + " 验证没通过，已跳过（不会切过去）");
 					else setNote("已是最新（" + String(result.latest) + "）");
+				});
+			}
+			/**
+			* 展开/收起某张卡的编辑表单。
+			*
+			* 打开时**从 route 快照取初值**（`routesById[id]`，宿主下发的那份 YAML 解析结果），
+			* 而不是从只读展示字段拼——展示字段经过格式化（短名、掩码），拿它当编辑初值会把
+			* 展示形态写回配置。快照缺失时退回展示值，至少不比现在更差。
+			*/
+			function toggleEditMode(account, on) {
+				if (on) {
+					var form = providerEditForm(routesById[account.id] !== void 0 ? routesById[account.id] : account);
+					setEditForms(function(prev) {
+						return withKey(prev, account.id, form);
+					});
+					setEditOrigin(function(prev) {
+						return withKey(prev, account.id, form);
+					});
+				}
+				setEditOpen(function(prev) {
+					return withKey(prev, account.id, on);
+				});
+			}
+			/** 改一个编辑字段（表单值留在本地，按「保存」才写盘）。 */
+			function setEditField(id, field, value) {
+				setEditForms(function(prev) {
+					var current = prev[id] !== void 0 ? prev[id] : {};
+					var next = {};
+					for (var key in current) next[key] = current[key];
+					next[field] = value;
+					return withKey(prev, id, next);
+				});
+			}
+			/**
+			* 保存编辑：**只写改动过的字段**（见 provider-edit.ts 的说明）。
+			*
+			* 与「添加供应商」那条路径的关键差别：这里**不要求重新测试、不要求重打 API key**。
+			* 官方 Models 页被禁用后，改一个端点还得先过一遍连通性测试显然不合理；
+			* 配置字段的写入本身不涉及凭据（key 走 credentials 通道，另有补录入口）。
+			*/
+			function saveProviderEdit(account) {
+				var form = editForms[account.id] !== void 0 ? editForms[account.id] : {};
+				var original = editOrigin[account.id] !== void 0 ? editOrigin[account.id] : {};
+				var bad = validateProviderEdit(form);
+				if (bad !== void 0) {
+					setNote(t(bad));
+					return;
+				}
+				var ops = providerEditSaveOps(account.id, form, original);
+				if (ops.length === 0) {
+					setNote(t("edit.noChange"));
+					setEditOpen(function(prev) {
+						return withKey(prev, account.id, false);
+					});
+					return;
+				}
+				setEditBusy(function(prev) {
+					return withKey(prev, account.id, true);
+				});
+				apiCall("settings/mutate", {
+					ns: "llm-pi-ai",
+					ops
+				}).then(function() {
+					setNote(tf("edit.saved", { id: account.id }));
+					setEditOpen(function(prev) {
+						return withKey(prev, account.id, false);
+					});
+					return postJson("/provider/refresh").catch(function() {});
+				}).then(function() {
 					refresh(true);
 				}).catch(function(cause) {
-					setNote("更新失败：" + String(cause && cause.message ? cause.message : cause));
+					setNote(tf("toast.updateFailed", { reason: cause && cause.message ? cause.message : cause }));
 				}).then(function() {
-					setBusy(false);
+					setEditBusy(function(prev) {
+						return withKey(prev, account.id, false);
+					});
 				});
 			}
 			/** 折叠态记忆：undefined 时回落到默认值（报警/错误的卡片默认展开）。 */
@@ -2459,9 +3381,9 @@ window.__ModuleLoader__.load({
 				type: "button",
 				className: "pv_action pv_push",
 				disabled: busy || updatesEnabled === false,
-				title: updatesEnabled === false ? "本地版已停用 pi-ai 自动下载：vendor/ 不会落地第二份 pi-ai（要跟上游就用 DSH_PROVIDER_UPDATE=on 启动 dsh）" : "",
+				title: updatesEnabled === false ? t("bridge.pausedTitle") : "",
 				onClick: checkUpdate
-			}, updatesEnabled === false ? "自动下载已停用" : busy ? "检查中 ..." : "检查更新")));
+			}, updatesEnabled === false ? t("bridge.pausedBtn") : busy ? t("bridge.checking") : t("bridge.check"))));
 			var accounts = plan !== null && Array.isArray(plan.accounts) ? plan.accounts : [];
 			var modelsByProvider = {};
 			for (var gi = 0; gi < catalogGroups.length; gi += 1) modelsByProvider[catalogGroups[gi].id] = catalogGroups[gi].models;
@@ -2477,12 +3399,12 @@ window.__ModuleLoader__.load({
 					bodyRows.push(react.default.createElement("div", {
 						className: "pv_line pv_row",
 						key: "id"
-					}, react.default.createElement("span", null, "路由 ID"), react.default.createElement("span", { className: "pv_field" }, String(account.id))));
+					}, react.default.createElement("span", null, t("prov.routeId")), react.default.createElement("span", { className: "pv_field" }, String(account.id))));
 					var keyless = account.authConfigured === false && typeof account.apiKeyEnv === "string" && account.apiKeyEnv !== "";
 					bodyRows.push(react.default.createElement("div", {
 						className: "pv_line pv_row",
 						key: "key"
-					}, react.default.createElement("span", null, "API 密钥"), keyless ? react.default.createElement("span", {
+					}, react.default.createElement("span", null, t("prov.apiKey")), keyless ? react.default.createElement("span", {
 						className: "pv_pick",
 						style: {
 							display: "inline-flex",
@@ -2511,32 +3433,46 @@ window.__ModuleLoader__.load({
 							flex: "0 0 auto"
 						},
 						disabled: savingKey[account.id] === true,
-						title: "存进 " + String(account.apiKeyEnv) + " 并立刻实测一次余量",
+						title: tf("prov.saveKeyTip", { ref: account.apiKeyEnv }),
 						onClick: function() {
 							saveKey(account);
 						}
-					}, savingKey[account.id] === true ? "保存中…" : "保存")) : react.default.createElement("span", { className: "pv_field" }, account.keyHint !== void 0 ? account.keyHint : "已配置")));
+					}, savingKey[account.id] === true ? t("prov.saving") : t("prov.save"))) : react.default.createElement("span", { className: "pv_field" }, account.keyHint !== void 0 ? account.keyHint : t("prov.credential"))));
 					if (account.baseUrl !== void 0) bodyRows.push(react.default.createElement("div", {
 						className: "pv_line pv_row",
 						key: "url"
-					}, react.default.createElement("span", null, "API 地址"), react.default.createElement("span", { className: "pv_field" }, String(account.baseUrl))));
+					}, react.default.createElement("span", null, t("prov.apiBase")), react.default.createElement("span", { className: "pv_field" }, String(account.baseUrl))));
 					if (account.api !== void 0) bodyRows.push(react.default.createElement("div", {
 						className: "pv_line pv_row",
 						key: "api"
-					}, react.default.createElement("span", null, "协议"), react.default.createElement("span", { className: "pv_field" }, String(account.api))));
+					}, react.default.createElement("span", null, t("prov.protocol")), react.default.createElement("span", { className: "pv_field" }, String(account.api))));
 					if (account.apiKeyEnv !== void 0) bodyRows.push(react.default.createElement("div", {
 						className: "pv_line pv_row",
 						key: "ref"
-					}, react.default.createElement("span", null, ""), react.default.createElement("span", { className: "pv_hint" }, "密钥存为 " + String(account.apiKeyEnv))));
+					}, react.default.createElement("span", null, ""), react.default.createElement("span", { className: "pv_hint" }, tf("prov.credStoredAs", { ref: account.apiKeyEnv }))));
 					var models = modelsByProvider[account.id];
+					if (models !== void 0 && models.length === 0) {
+						var fromDetails = [];
+						for (var dk in detailsById) {
+							var detail = detailsById[dk];
+							if (detail === void 0 || detail === null || detail.provider !== account.id) continue;
+							var detailId = typeof detail.id === "string" && detail.id !== "" ? detail.id : dk.split("/").pop();
+							if (detailId === void 0) continue;
+							fromDetails.push({
+								id: detailId,
+								name: typeof detail.name === "string" && detail.name !== "" ? detail.name : detailId
+							});
+						}
+						if (fromDetails.length > 0) models = fromDetails;
+					}
 					if (models === void 0) bodyRows.push(react.default.createElement("div", {
 						className: "pv_line",
 						key: "m-load"
-					}, "模型目录加载中…"));
+					}, t("prov.modelsLoading")));
 					else if (models.length === 0 && account.deletable !== true) bodyRows.push(react.default.createElement("div", {
 						className: "pv_line",
 						key: "m-none"
-					}, "目录里没有这个 provider 的模型"));
+					}, t("prov.noModels")));
 					else {
 						var modelsOpen = isOpen(account.id + ":models", false);
 						var filterText = filters[account.id] === void 0 ? "" : String(filters[account.id]);
@@ -2551,7 +3487,10 @@ window.__ModuleLoader__.load({
 							onClick: function() {
 								toggle(account.id + ":models", false);
 							}
-						}, react.default.createElement("span", null, "模型（" + (needle === "" ? String(models.length) : String(filtered.length) + "/" + String(models.length)) + "）"))];
+						}, react.default.createElement("span", null, needle === "" ? tf("prov.models", { count: models.length }) : tf("prov.modelsFiltered", {
+							shown: filtered.length,
+							total: models.length
+						})))];
 						if (account.deletable === true) mTopChildren.push(react.default.createElement("button", {
 							type: "button",
 							className: "pv_action pv_meOpen",
@@ -2571,7 +3510,7 @@ window.__ModuleLoader__.load({
 						}, react.default.createElement("input", {
 							className: "pv_mFilter",
 							type: "text",
-							placeholder: "过滤",
+							placeholder: t("prov.filter"),
 							value: filterText,
 							onChange: function(event) {
 								setFilter(account.id, event.target.value);
@@ -2579,7 +3518,7 @@ window.__ModuleLoader__.load({
 						}), filterText === "" ? null : react.default.createElement("button", {
 							type: "button",
 							className: "pv_fclear",
-							title: "清除",
+							title: t("prov.clear"),
 							onClick: function() {
 								setFilter(account.id, "");
 							}
@@ -2587,7 +3526,7 @@ window.__ModuleLoader__.load({
 						mTopChildren.push(react.default.createElement("div", {
 							className: "pv_mCaretCol",
 							key: "m-caret",
-							title: modelsOpen ? "收起" : "展开",
+							title: modelsOpen ? t("prov.collapse") : t("prov.expand"),
 							onClick: function() {
 								toggle(account.id + ":models", false);
 							}
@@ -2618,11 +3557,11 @@ window.__ModuleLoader__.load({
 								}, react.default.createElement("span", {
 									className: "pv_mId",
 									style: { fontFamily: "inherit" }
-								}, "模型 ID"), react.default.createElement("span", { className: "pv_mName" }, "名称"), react.default.createElement("span", { className: "pv_mCaps" }, "能力"), react.default.createElement("span", { className: "pv_mCtx" }, "上下文")));
+								}, t("prov.modelId")), react.default.createElement("span", { className: "pv_mName" }, t("prov.name")), react.default.createElement("span", { className: "pv_mCaps" }, t("prov.caps")), react.default.createElement("span", { className: "pv_mCtx" }, t("prov.ctx"))));
 								if (filtered.length === 0) mListRows.push(react.default.createElement("div", {
 									className: "pv_line",
 									key: "m-empty"
-								}, "没有匹配「" + filterText + "」的模型"));
+								}, tf("m.noMatch", { query: filterText })));
 								else for (var m = 0; m < filtered.length; m += 1) mListRows.push(modelRow(filtered[m], account, detailsById));
 								mBoxRows.push(react.default.createElement("div", {
 									className: "pv_mList",
@@ -2643,6 +3582,84 @@ window.__ModuleLoader__.load({
 						className: "plan_note plan_badText",
 						key: "warn"
 					}, account.credentialWarning));
+					if (editOpen[account.id] === true) {
+						var form = editForms[account.id] !== void 0 ? editForms[account.id] : providerEditForm(account);
+						var dirty = isProviderEditDirty(form, editOrigin[account.id] !== void 0 ? editOrigin[account.id] : form);
+						var busyEdit = editBusy[account.id] === true;
+						var fieldRow = function(labelKey, inputEl, key) {
+							return react.default.createElement("div", {
+								className: "pv_field",
+								key
+							}, react.default.createElement("span", { className: "pv_flabel" }, t(labelKey)), inputEl);
+						};
+						var editRows = [
+							fieldRow("edit.displayName", react.default.createElement("input", {
+								className: "pv_key",
+								type: "text",
+								value: form.displayName,
+								placeholder: account.id,
+								onChange: function(event) {
+									setEditField(account.id, "displayName", event.target.value);
+								}
+							}), "displayName"),
+							fieldRow("edit.api", react.default.createElement("select", {
+								className: "pv_field pv_key",
+								value: form.api,
+								onChange: function(event) {
+									setEditField(account.id, "api", event.target.value);
+								}
+							}, react.default.createElement("option", { value: "" }, t("edit.apiDefault")), PROVIDER_API_OPTIONS.map(function(option) {
+								return react.default.createElement("option", {
+									value: option,
+									key: option
+								}, option);
+							})), "api"),
+							fieldRow("edit.baseUrl", react.default.createElement("input", {
+								className: "pv_key",
+								type: "text",
+								value: form.baseURL,
+								placeholder: t("edit.baseUrlPlaceholder"),
+								onChange: function(event) {
+									setEditField(account.id, "baseURL", event.target.value);
+								}
+							}), "baseURL"),
+							fieldRow("edit.keyEnv", react.default.createElement("input", {
+								className: "pv_key",
+								type: "text",
+								value: form.apiKeyEnv,
+								placeholder: account.id.toUpperCase() + "_API_KEY",
+								onChange: function(event) {
+									setEditField(account.id, "apiKeyEnv", event.target.value);
+								}
+							}), "apiKeyEnv"),
+							react.default.createElement("div", {
+								className: "plan_note",
+								key: "hint"
+							}, t("edit.emptyHint")),
+							react.default.createElement("div", {
+								className: "pv_editActs",
+								key: "acts"
+							}, react.default.createElement("button", {
+								type: "button",
+								className: "pv_action",
+								disabled: busyEdit || !dirty,
+								onClick: function() {
+									saveProviderEdit(account);
+								}
+							}, busyEdit ? t("edit.saving") : t("edit.save")), react.default.createElement("button", {
+								type: "button",
+								className: "pv_action",
+								disabled: busyEdit,
+								onClick: function() {
+									toggleEditMode(account, false);
+								}
+							}, t("prov.cancel")))
+						];
+						bodyRows.push(react.default.createElement("div", {
+							className: "pv_editPanel",
+							key: "edit"
+						}, editRows));
+					}
 				}
 				var linkUrl = typeof account.websiteUrl === "string" && account.websiteUrl !== "" ? account.websiteUrl : typeof account.baseUrl === "string" && account.baseUrl !== "" ? account.baseUrl : void 0;
 				cards.push(react.default.createElement("div", {
@@ -2667,22 +3684,30 @@ window.__ModuleLoader__.load({
 					href: linkUrl,
 					target: "_blank",
 					rel: "noreferrer",
-					title: "打开官网 " + linkTextOf(linkUrl),
+					title: tf("prov.openSite", { url: linkTextOf(linkUrl) }),
 					onClick: function(event) {
 						if (event && typeof event.stopPropagation === "function") event.stopPropagation();
 					}
 				}, "↗")))), react.default.createElement("div", { className: "pv_pcMeta" }, chipEls, react.default.createElement("span", { className: "pv_metaActs" }, account.fetchedAt === void 0 ? null : react.default.createElement("span", {
 					className: "pv_fresh",
-					title: "上次刷新 " + String(account.fetchedAt).slice(11, 19)
+					title: tf("prov.lastRefresh", { time: String(account.fetchedAt).slice(11, 19) })
 				}, "◷ " + relativeTime(account.fetchedAt)), react.default.createElement("button", {
 					type: "button",
 					className: "pv_iconBtn" + (refreshingState[0][account.id] === true ? " pv_spin" : ""),
 					disabled: refreshingState[0][account.id] === true,
-					title: refreshingState[0][account.id] === true ? "刷新中…" : "刷新余量" + (account.fetchedAt !== void 0 ? "（上次 " + String(account.fetchedAt).slice(11, 19) + "）" : ""),
+					title: refreshingState[0][account.id] === true ? t("prov.refreshing") : account.fetchedAt !== void 0 ? tf("prov.refreshQuotaAt", { time: String(account.fetchedAt).slice(11, 19) }) : t("prov.refreshQuota"),
 					onClick: function() {
 						refreshAccount(account);
 					}
-				}, "↻"), account.deletable === true ? react.default.createElement("button", {
+				}, "↻"), react.default.createElement("button", {
+					type: "button",
+					className: "pv_iconBtn" + (editOpen[account.id] === true ? " pv_editOn" : ""),
+					disabled: editOpen[account.id] === true,
+					title: t("edit.tip"),
+					onClick: function() {
+						toggleEditMode(account, editOpen[account.id] !== true);
+					}
+				}, "✎"), account.deletable === true ? react.default.createElement("button", {
 					type: "button",
 					className: "pv_iconBtn",
 					title: "删除这个 provider（会先弹出确认，列清要删的配置与密钥）",
@@ -2692,7 +3717,7 @@ window.__ModuleLoader__.load({
 					}
 				}, "✕") : null))), react.default.createElement("div", {
 					className: "pv_pcCaretCol",
-					title: expanded ? "收起" : "展开",
+					title: expanded ? t("prov.collapse") : t("prov.expand"),
 					onClick: function() {
 						toggle(account.id, dflt);
 					}
@@ -2701,7 +3726,7 @@ window.__ModuleLoader__.load({
 			if (cards.length === 0) cards.push(react.default.createElement("div", {
 				className: "pv_line",
 				key: "__none"
-			}, String(plan !== null && plan.error !== void 0 ? plan.error : "暂无 provider 额度数据")));
+			}, String(plan !== null && plan.error !== void 0 ? plan.error : t("prov.none"))));
 			var tabProviders = react.default.createElement("button", {
 				type: "button",
 				className: "pv_tab" + (tab === "providers" ? " pv_tabOn" : ""),
@@ -2715,7 +3740,7 @@ window.__ModuleLoader__.load({
 				onClick: function() {
 					setTab("bridge");
 				}
-			}, "pi-ai 桥接");
+			}, t("bridge.tab"));
 			return react.default.createElement("div", { className: "pv_stack" }, react.default.createElement("div", { className: "pv_tabs" }, tabProviders, tabBridge), tab === "bridge" ? react.default.createElement("div", { className: "pv_pc" }, react.default.createElement("div", {
 				className: "pv_pcBody",
 				style: {
@@ -2733,13 +3758,16 @@ window.__ModuleLoader__.load({
 				account: delTarget,
 				busy: delBusy,
 				error: delError,
+				onExport: function() {
+					if (delTarget !== null) exportRoute(delTarget);
+				},
 				onCancel: function() {
 					if (delBusy === true) return;
 					setDelTarget(null);
 					setDelError(null);
 				},
 				onConfirm: function() {
-					removeProvider(delTarget);
+					if (delTarget !== null) removeProvider(delTarget);
 				}
 			}));
 		}
@@ -2749,7 +3777,7 @@ window.__ModuleLoader__.load({
 		* 插件样式：沿用 GUI 的 CSS 变量，跟模型座位视觉一致。
 		* installCss 一律手写 style 标签（官方 styles.insert 需要 inject 'styles'，见文件末尾注释）。
 		*/
-		var css = ".plan_root{position:relative;display:inline-flex;align-items:center}.plan_dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-label-tertiary)}.plan_dot_ok{background:#22a06b}.plan_dot_warn{background:#d9a300}.plan_dot_bad{background:#d9534f}.plan_tag{margin-left:auto;font-size:12px;color:var(--dsw-alias-label-tertiary);font-weight:400}.plan_warnText{color:#b8860b}.plan_badText{color:#d9534f}.plan_note{margin-top:3px;font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);word-break:break-word}.mp_search{box-sizing:border-box;width:100%;padding:6px 10px;margin-bottom:4px;font:inherit;font-size:12px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:8px;outline:0}.mp_search:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}.mp_chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}.mp_chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;font:inherit;font-size:12.5px;line-height:18px;color:var(--dsw-alias-label-secondary);background:0 0;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:999px;cursor:pointer}.mp_chip[data-on=\"1\"]{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.05));border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}.mp_modelName{font-weight:500}.mp_empty{padding:14px 10px;text-align:center;font-size:12px;color:var(--dsw-alias-label-tertiary)}.ms_trigger{display:flex;align-items:center;gap:4px;min-width:0;max-width:min(560px,60vw);max-width:min(560px,60cqw);height:28px;padding:0 4px 0 8px;border:0;border-radius:24px;background:transparent;outline:0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:20px;font-weight:500;cursor:pointer;white-space:nowrap}.ms_trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.ms_trigger:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.ms_tLabel{min-width:0;overflow:hidden;text-overflow:ellipsis}.ms_tProvider{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;flex-shrink:999}.ms_tModel{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;flex-shrink:1}.ms_tSlash{flex:0 0 auto}.ms_tEffort{flex:0 0 auto;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary))}.ms_tQuota{flex:0 0 auto;display:inline-flex;align-items:center;gap:3px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary))}@container (max-width:760px){.ms_tProvider,.ms_tSlash{display:none}}@container (max-width:620px){.ms_tQuotaText{display:none}}.ms_chev{flex:0 0 auto;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary));transition:transform .12s ease}.ms_chevOpen{transform:rotate(180deg)}.ms_menu{position:absolute;bottom:calc(100% + 6px);right:0;z-index:1100;display:flex;flex-direction:column;width:max-content;min-width:min(240px,calc(100vw - 32px));max-width:min(420px,calc(100vw - 32px));max-height:min(360px,calc(100vh - 96px));overflow:hidden;padding:4px;border:0;border-radius:20px;background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18));color:var(--dsw-alias-label-primary)}.ms_cell{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:auto;min-width:100%;height:40px;padding:0 10px;border:0;border-radius:10px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:22px;cursor:pointer;text-align:left}.ms_cell:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.ms_cellLabel{flex:0 0 auto;white-space:nowrap}.ms_cellValue{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:var(--dsw-alias-label-tertiary)}.ms_cellChev{flex:0 0 auto;color:var(--dsw-alias-label-tertiary)}.ms_scroll{min-height:0;overflow-y:auto;display:flex;flex-direction:column}.ms_group{margin-top:4px}.ms_groupTitle{position:sticky;top:0;z-index:1;padding:5px 8px 3px;background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;font-weight:500}.ms_option{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:auto;min-width:100%;min-height:38px;padding:6px 8px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;font-size:14px;line-height:20px;text-align:left;cursor:pointer}.ms_option:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.ms_option:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.ms_name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}.ms_capsCol{flex:none;width:92px;display:flex;justify-content:flex-end;align-items:center;gap:4px}.ms_ctxCol{flex:none;width:48px;text-align:right;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}.ms_check{flex:0 0 18px;display:grid;place-items:center;color:var(--dsw-alias-label-primary)}.ms_status{padding:10px;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}.pv_section{display:flex;flex-direction:column;gap:12px;max-width:640px}.pv_card{padding:14px 16px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:12px;background:var(--dsw-alias-bg-layer-1,#fff)}.pv_title{font-size:13px;font-weight:600;line-height:18px;margin-bottom:8px}.pv_line{display:flex;align-items:center;gap:10px;font-size:13px;line-height:22px;padding:3px 0;color:var(--dsw-alias-label-secondary)}.pv_action{margin-left:auto;font:inherit;font-size:12px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.05));border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:6px;padding:4px 12px;cursor:pointer}.pv_action:disabled{opacity:.5;cursor:default}.pv_stack{display:flex;flex-direction:column;gap:14px;max-width:600px}.pv_pc{list-style:none;border:.5px solid var(--dsw-alias-border-l4,rgba(0,0,0,.15));border-radius:16px;background:var(--dsw-alias-bg-layer-3,#fff);transition:border-color .16s,background .16s;display:flex;flex-direction:column}.pv_pc:hover{border-color:var(--dsw-alias-label-dimmed,rgba(0,0,0,.3))}.pv_pcOpen{background:var(--dsw-alias-bg-layer-2,#f4f5f6);border-color:var(--dsw-alias-label-dimmed,rgba(0,0,0,.3))}.pv_pcTop{display:flex;align-items:stretch}.pv_pcMain{flex:1;min-width:0;display:flex;flex-direction:column}.pv_pcCaretCol{flex:none;width:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--dsw-alias-label-tertiary)}.pv_pcCaretCol:hover{color:var(--dsw-alias-label-secondary)}.pv_pcHead{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border:0;background:0 0;cursor:pointer;font:inherit;color:inherit;text-align:left;border-radius:12px}.pv_pcHead:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#3b5bdb);outline-offset:-2px}.pv_pcName{font-size:15px;font-weight:600;line-height:1.4;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv_pcChips{flex:none;display:flex;align-items:center;gap:10px;font-size:13px;white-space:nowrap}.pv_chipItem{display:inline-flex;align-items:baseline;gap:2px}.pv_chipLabel{color:var(--dsw-alias-label-secondary)}.pv_chipSep{flex:none;width:1px;height:12px;margin:0 4px;background:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}.pv_chipReset{color:var(--dsw-alias-label-tertiary);font-size:12px}.pv_pcCaret{flex:none;display:block;color:var(--dsw-alias-label-tertiary);transition:transform .16s}.pv_pcCaretOpen{transform:rotate(180deg)}.pv_pcMeta{display:flex;align-items:center;gap:10px;padding:2px 16px 14px;font-size:13px;flex-wrap:wrap}.pv_metaActs{margin-left:auto;display:inline-flex;align-items:center;gap:4px}.pv_pcWeb{display:inline-flex;align-items:center;color:var(--dsw-alias-label-tertiary);text-decoration:none;font-size:14px;line-height:20px;padding:0 2px;border-radius:6px}.pv_pcWeb:hover{color:var(--dsw-alias-label-secondary)}.pv_lv{flex:none;margin-left:auto;font-size:12px;line-height:18px;padding:1px 10px;border-radius:999px;white-space:nowrap;color:var(--dsw-alias-state-business-primary,#5b8cff);border:1px solid var(--dsw-alias-state-business-primary,#5b8cff)}.pv_pickItem,.pv_iconBtn,.pv_action,.pv_tab,.pv_addBtn,.pv_fclear,.pv_delYes,.pv_delNo,.mp_chip,.pv_pcLink{transition:background-color .16s ease,color .16s ease}.pv_iconBtn:focus-visible,.pv_action:focus-visible,.pv_tab:focus-visible,.pv_pickItem:focus-visible,.pv_addBtn:focus-visible,.pv_mFilter:focus-visible,input.pv_field:focus-visible,select.pv_field:focus-visible,select.pv_msEff:focus-visible,a.pv_pcLink:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#3b5bdb);outline-offset:1px}.pv_pcBody{border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));padding:10px 18px 14px;display:flex;flex-direction:column;gap:4px}.pv_line .plan_tag{margin-left:0}.pv_line .pv_push{margin-left:auto}.pv_row>span:first-child{width:72px;flex:none}.pv_hint{font-size:12px;line-height:16px;color:var(--dsw-alias-label-tertiary)}.pv_field{display:inline-flex;align-items:center;min-width:240px;max-width:100%;padding:6px 12px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary)}.pv_mBox{border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:12px;padding:0 14px;display:flex;flex-direction:column}.pv_mRight{margin-left:auto;display:inline-flex;align-items:center;gap:8px}.pv_iconBtn{border:0;background:0 0;cursor:pointer;font:inherit;font-size:15px;padding:3px 6px;border-radius:6px;color:var(--dsw-alias-label-tertiary)}.pv_iconBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.pv_delOn{color:#e03131;font-size:12px;width:auto;padding:2px 8px}.pv_delBox{display:inline-flex;gap:2px;align-items:center;padding:3px 5px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03))}.pv_delYes{border:0;background:0 0;cursor:pointer;font:inherit;font-size:12px;color:#e03131;padding:3px 9px;border-radius:6px}.pv_delYes:hover{background:rgba(224,49,49,.12)}.pv_delNo{border:0;background:0 0;cursor:pointer;font:inherit;font-size:12px;color:var(--dsw-alias-label-secondary);padding:3px 9px;border-radius:6px}.pv_delNo:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}@keyframes pvRot{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.pv_spin{display:inline-block;animation:pvRot 1s linear infinite}.pv_toast{position:fixed;bottom:24px;right:24px;z-index:500;padding:10px 18px;border-radius:12px;font-size:13px;line-height:20px;max-width:min(420px,80vw);background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18))}.pv_toastOk{color:#2f9e44}.pv_toastFail{color:#e03131}.pv_fresh{font-size:12px;line-height:18px;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}.pv_addBtn{width:100%;padding:13px;border:1px dashed var(--dsw-alias-border-l2,rgba(0,0,0,.2));border-radius:14px;background:0 0;cursor:pointer;font:inherit;font-size:14px;color:var(--dsw-alias-label-secondary)}.pv_addBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.03))}input.pv_field{cursor:text}select.pv_field{cursor:pointer}input.pv_ro{background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.05));color:var(--dsw-alias-label-tertiary);cursor:default}input.pv_key{background:var(--dsw-alias-bg-layer-1,#fff);border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}.pv_actRow{display:flex;gap:10px;align-items:center;padding:8px 0 4px}.pv_pick{flex:1;min-width:0;position:relative}.pv_pickBtn{width:100%;cursor:pointer;justify-content:space-between;gap:8px}.pv_pickMenu{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:250;padding:6px;display:flex;flex-direction:column;gap:4px;border-radius:10px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18))}.pv_pickList{max-height:240px;overflow:auto;display:flex;flex-direction:column}.pv_pickItem{display:flex;align-items:center;gap:6px;padding:8px 12px;border:0;background:0 0;cursor:pointer;font:inherit;font-size:13.5px;color:var(--dsw-alias-label-primary);text-align:left;border-radius:8px}.pv_pickItem:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.04))}.pv_pickItem:disabled{opacity:.5;cursor:default}.pv_pickEmpty{padding:12px;font-size:13px;color:var(--dsw-alias-label-tertiary);text-align:center}.pv_msRow{display:flex;align-items:center;gap:8px}.pv_msMain{flex:1;min-width:0;display:flex;align-items:center;gap:8px;text-align:left}select.pv_msEff{flex:none;font:inherit;font-size:12px;padding:3px 8px;cursor:pointer;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:6px;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-secondary)}.pv_tabs{display:flex;gap:2px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));margin-bottom:14px}.pv_tab{font:inherit;font-size:14px;padding:8px 14px;border:0;background:0 0;cursor:pointer;color:var(--dsw-alias-label-secondary);border-bottom:2px solid transparent;margin-bottom:-1px}.pv_tab:hover{color:var(--dsw-alias-label-primary)}.pv_tabOn{color:var(--dsw-alias-label-primary);border-bottom-color:var(--dsw-alias-brand-primary,#3b5bdb);font-weight:600}.pv_pcLead{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}.pv_pcLeadRow{display:flex;align-items:center;gap:8px}.pv_pcLink{font-size:13px;line-height:1.5;color:var(--dsw-alias-label-tertiary);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv_pcLink:hover{color:var(--dsw-alias-label-secondary);text-decoration:underline}.pv_mRow{position:relative;display:flex;align-items:center;gap:8px;padding:3px 0}.pv_mId{flex:none;width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);font-family:ui-monospace,Menlo,Consolas,monospace}.pv_mName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv_mHeadRow{display:flex;align-items:center;gap:8px;padding:5px 0 4px;font-size:12px;color:var(--dsw-alias-label-tertiary);border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}.pv_mCaps{flex:none;width:100px;display:inline-flex;justify-content:flex-end;align-items:center;gap:6px}.pv_mCtx{flex:none;width:56px;text-align:right;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}.pv_capIcons{display:inline-flex;gap:6px;font-size:12px;line-height:16px}.pv_capMini{font-size:11px;line-height:16px;padding:0 7px;border-radius:999px;white-space:nowrap}.pv_mHead{display:flex;align-items:center;gap:6px;flex:1;min-width:0;font:inherit;font-size:13px;font-weight:600;line-height:18px;padding:0;border:0;background:0 0;cursor:pointer;color:var(--dsw-alias-label-primary);text-align:left}.pv_mHead:hover{color:var(--dsw-alias-label-secondary)}.pv_mTop{display:flex;align-items:center;gap:8px;height:38px;padding:0}.pv_mCaretCol{flex:none;width:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--dsw-alias-label-tertiary)}.pv_mCaretCol:hover{color:var(--dsw-alias-label-secondary)}.pv_mList{border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));margin-top:0;padding-top:6px;display:flex;flex-direction:column}.pv_mFilter{flex:none;width:240px;box-sizing:border-box;padding:5px 24px 5px 12px;font:inherit;font-size:13px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:8px;outline:0;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-primary)}.pv_mFilter:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}.pv_fbox{position:relative;display:inline-flex;align-items:center;flex:none}.pv_fclear{position:absolute;right:2px;top:50%;transform:translateY(-50%);border:0;background:0 0;cursor:pointer;font:inherit;font-size:14px;line-height:1;padding:2px 6px;color:var(--dsw-alias-label-tertiary);border-radius:6px}.pv_fclear:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.pv_tip{display:none;position:absolute;left:0;bottom:calc(100% + 6px);z-index:300;width:270px;padding:12px 14px;border-radius:12px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18));flex-direction:column;gap:6px}.pv_mRow:hover .pv_tip{display:flex}.pv_tipTitle{font-size:13px;font-weight:600;line-height:18px}.pv_tipRow{display:flex;gap:10px;font-size:12px;line-height:18px}.pv_tipLabel{flex:none;width:60px;color:var(--dsw-alias-label-tertiary)}.pv_tipDim{font-size:11px;color:var(--dsw-alias-label-tertiary)}.pv_tipCaps{display:flex;gap:6px;flex-wrap:wrap}.pv_cap{font-size:11px;padding:1px 8px;border-radius:999px}.pv_capVision{color:#2f9e44;background:rgba(47,158,68,.12)}.pv_capVideo{color:#7c3aed;background:rgba(124,58,237,.12)}.pv_capReason{color:#b8860b;background:rgba(217,162,0,.15)}.pv_capDeclared{color:#0b7285;background:rgba(11,114,133,.12)}.pv_meOpen{flex:none;margin-left:0;height:26px;padding:0 10px;font-size:12px}.pv_me{display:flex;flex-direction:column;gap:8px;padding:10px 0 4px;border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12))}.pv_meHead{display:flex;align-items:center;gap:10px}.pv_meTitle{font-size:13px;font-weight:600;line-height:18px}.pv_meList{display:flex;flex-direction:column;max-height:320px;overflow:auto;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:10px}.pv_meRow{display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:12px;line-height:18px;border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.06))}.pv_meRow:last-child{border-bottom:0}.pv_meRowOff{opacity:.45}.pv_meCheck{flex:none;margin:0;cursor:pointer}.pv_meIdBox{flex:none;display:inline-flex;align-items:center;gap:6px;width:220px;min-width:0}.pv_meIdBox .pv_mId{max-width:150px}.pv_meName{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary)}.pv_meNum{flex:none;width:96px;box-sizing:border-box;padding:3px 8px;font:inherit;font-size:12px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:7px;outline:0;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-primary)}.pv_meNum:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}.pv_meCap{flex:none;display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:var(--dsw-alias-label-tertiary);user-select:none}.pv_meCap input{margin:0;cursor:pointer}.pv_meAdd{display:flex;align-items:center;gap:8px}.pv_meActs{display:flex;align-items:center;gap:8px}.pv_mask{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.42);padding:24px}.pv_modal{width:min(520px,100%);box-sizing:border-box;display:flex;flex-direction:column;gap:10px;padding:18px 20px;border-radius:14px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-elevation-prominent,0 18px 48px rgba(0,0,0,.28))}.pv_modalTitle{font-size:14px;font-weight:600;line-height:20px}.pv_modalRow{display:flex;gap:12px;font-size:12px;line-height:19px}.pv_modalLabel{flex:none;width:80px;color:var(--dsw-alias-label-tertiary)}.pv_modalValue{flex:1 1 auto;min-width:0;word-break:break-word}.pv_modalWarn{font-size:12px;line-height:18px;padding:8px 10px;border-radius:8px;color:#a33;background:rgba(217,83,79,.12)}.pv_modalActs{display:flex;justify-content:flex-end;gap:10px;margin-top:2px}.pv_dangerBtn{color:#fff !important;background:#d9534f !important;border-color:#d9534f !important}.pv_dangerBtn:disabled{opacity:.6;cursor:default}";
+		var css = ".plan_root{position:relative;display:inline-flex;align-items:center}.plan_dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-label-tertiary)}.plan_dot_ok{background:#22a06b}.plan_dot_warn{background:#d9a300}.plan_dot_bad{background:#d9534f}.plan_tag{margin-left:auto;font-size:12px;color:var(--dsw-alias-label-tertiary);font-weight:400}.plan_warnText{color:#b8860b}.plan_badText{color:#d9534f}.plan_note{margin-top:3px;font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);word-break:break-word}.mp_search{box-sizing:border-box;width:100%;padding:6px 10px;margin-bottom:4px;font:inherit;font-size:12px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:8px;outline:0}.mp_search:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}.mp_chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}.mp_chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;font:inherit;font-size:12.5px;line-height:18px;color:var(--dsw-alias-label-secondary);background:0 0;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:999px;cursor:pointer}.mp_chip[data-on=\"1\"]{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.05));border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}.mp_modelName{font-weight:500}.mp_empty{padding:14px 10px;text-align:center;font-size:12px;color:var(--dsw-alias-label-tertiary)}.ms_trigger{display:flex;align-items:center;gap:4px;min-width:0;max-width:min(560px,60vw);max-width:min(560px,60cqw);height:28px;padding:0 4px 0 8px;border:0;border-radius:24px;background:transparent;outline:0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:20px;font-weight:500;cursor:pointer;white-space:nowrap}.ms_trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.ms_trigger:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.ms_tLabel{min-width:0;overflow:hidden;text-overflow:ellipsis}.ms_tProvider{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;flex-shrink:999}.ms_tModel{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;flex-shrink:1}.ms_tSlash{flex:0 0 auto}.ms_tEffort{flex:0 0 auto;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary))}.ms_tQuota{flex:0 0 auto;display:inline-flex;align-items:center;gap:3px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary))}@container (max-width:760px){.ms_tProvider,.ms_tSlash{display:none}}@container (max-width:620px){.ms_tQuotaText{display:none}}.ms_chev{flex:0 0 auto;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary));transition:transform .12s ease}.ms_chevOpen{transform:rotate(180deg)}.ms_menu{position:absolute;bottom:calc(100% + 6px);right:0;z-index:1100;display:flex;flex-direction:column;width:max-content;min-width:min(240px,calc(100vw - 32px));max-width:min(420px,calc(100vw - 32px));max-height:min(360px,calc(100vh - 96px));overflow:hidden;padding:4px;border:0;border-radius:20px;background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18));color:var(--dsw-alias-label-primary)}.ms_cell{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:auto;min-width:100%;height:40px;padding:0 10px;border:0;border-radius:10px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:22px;cursor:pointer;text-align:left}.ms_cell:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.ms_cellLabel{flex:0 0 auto;white-space:nowrap}.ms_cellValue{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:var(--dsw-alias-label-tertiary)}.ms_cellChev{flex:0 0 auto;color:var(--dsw-alias-label-tertiary)}.ms_scroll{min-height:0;overflow-y:auto;display:flex;flex-direction:column}.ms_group{margin-top:4px}.ms_groupTitle{position:sticky;top:0;z-index:1;padding:5px 8px 3px;background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;font-weight:500}.ms_option{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:auto;min-width:100%;min-height:38px;padding:6px 8px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;font-size:14px;line-height:20px;text-align:left;cursor:pointer}.ms_option:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.ms_option:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.ms_name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}.ms_capsCol{flex:none;width:92px;display:flex;justify-content:flex-end;align-items:center;gap:4px}.ms_ctxCol{flex:none;width:48px;text-align:right;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}.ms_check{flex:0 0 18px;display:grid;place-items:center;color:var(--dsw-alias-label-primary)}.ms_status{padding:10px;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}.pv_section{display:flex;flex-direction:column;gap:12px;max-width:640px}.pv_card{padding:14px 16px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:12px;background:var(--dsw-alias-bg-layer-1,#fff)}.pv_title{font-size:13px;font-weight:600;line-height:18px;margin-bottom:8px}.pv_line{display:flex;align-items:center;gap:10px;font-size:13px;line-height:22px;padding:3px 0;color:var(--dsw-alias-label-secondary)}.pv_action{margin-left:auto;font:inherit;font-size:12px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.05));border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:6px;padding:4px 12px;cursor:pointer}.pv_action:disabled{opacity:.5;cursor:default}.pv_stack{display:flex;flex-direction:column;gap:14px;max-width:600px}.pv_pc{list-style:none;border:.5px solid var(--dsw-alias-border-l4,rgba(0,0,0,.15));border-radius:16px;background:var(--dsw-alias-bg-layer-3,#fff);transition:border-color .16s,background .16s;display:flex;flex-direction:column}.pv_pc:hover{border-color:var(--dsw-alias-label-dimmed,rgba(0,0,0,.3))}.pv_pcOpen{background:var(--dsw-alias-bg-layer-2,#f4f5f6);border-color:var(--dsw-alias-label-dimmed,rgba(0,0,0,.3))}.pv_pcTop{display:flex;align-items:stretch}.pv_pcMain{flex:1;min-width:0;display:flex;flex-direction:column}.pv_pcCaretCol{flex:none;width:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--dsw-alias-label-tertiary)}.pv_pcCaretCol:hover{color:var(--dsw-alias-label-secondary)}.pv_pcHead{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border:0;background:0 0;cursor:pointer;font:inherit;color:inherit;text-align:left;border-radius:12px}.pv_pcHead:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#3b5bdb);outline-offset:-2px}.pv_pcName{font-size:15px;font-weight:600;line-height:1.4;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv_pcChips{flex:none;display:flex;align-items:center;gap:10px;font-size:13px;white-space:nowrap}.pv_chipItem{display:inline-flex;align-items:baseline;gap:2px}.pv_chipLabel{color:var(--dsw-alias-label-secondary)}.pv_chipSep{flex:none;width:1px;height:12px;margin:0 4px;background:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}.pv_chipReset{color:var(--dsw-alias-label-tertiary);font-size:12px}.pv_pcCaret{flex:none;display:block;color:var(--dsw-alias-label-tertiary);transition:transform .16s}.pv_pcCaretOpen{transform:rotate(180deg)}.pv_pcMeta{display:flex;align-items:center;gap:10px;padding:2px 16px 14px;font-size:13px;flex-wrap:wrap}.pv_metaActs{margin-left:auto;display:inline-flex;align-items:center;gap:4px}.pv_pcWeb{display:inline-flex;align-items:center;color:var(--dsw-alias-label-tertiary);text-decoration:none;font-size:14px;line-height:20px;padding:0 2px;border-radius:6px}.pv_pcWeb:hover{color:var(--dsw-alias-label-secondary)}.pv_lv{flex:none;margin-left:auto;font-size:12px;line-height:18px;padding:1px 10px;border-radius:999px;white-space:nowrap;color:var(--dsw-alias-state-business-primary,#5b8cff);border:1px solid var(--dsw-alias-state-business-primary,#5b8cff)}.pv_pickItem,.pv_iconBtn,.pv_action,.pv_tab,.pv_addBtn,.pv_fclear,.pv_delYes,.pv_delNo,.mp_chip,.pv_pcLink{transition:background-color .16s ease,color .16s ease}.pv_iconBtn:focus-visible,.pv_action:focus-visible,.pv_tab:focus-visible,.pv_pickItem:focus-visible,.pv_addBtn:focus-visible,.pv_mFilter:focus-visible,input.pv_field:focus-visible,select.pv_field:focus-visible,select.pv_msEff:focus-visible,a.pv_pcLink:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#3b5bdb);outline-offset:1px}.pv_pcBody{border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));padding:10px 18px 14px;display:flex;flex-direction:column;gap:4px}.pv_line .plan_tag{margin-left:0}.pv_line .pv_push{margin-left:auto}.pv_row>span:first-child{width:72px;flex:none}.pv_hint{font-size:12px;line-height:16px;color:var(--dsw-alias-label-tertiary)}.pv_field{display:inline-flex;align-items:center;min-width:240px;max-width:100%;padding:6px 12px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary)}.pv_mBox{border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:12px;padding:0 14px;display:flex;flex-direction:column}.pv_mRight{margin-left:auto;display:inline-flex;align-items:center;gap:8px}.pv_iconBtn{border:0;background:0 0;cursor:pointer;font:inherit;font-size:15px;padding:3px 6px;border-radius:6px;color:var(--dsw-alias-label-tertiary)}.pv_iconBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.pv_delOn{color:#e03131;font-size:12px;width:auto;padding:2px 8px}.pv_modelEditor{display:flex;flex-direction:column;gap:6px;padding:8px 10px;margin-top:6px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.02))}.pv_edHead{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dsw-alias-label-secondary)}.pv_edMode{margin-left:auto;font-size:11px;padding:1px 6px;border-radius:6px;background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.pv_edItem{display:flex;flex-direction:column;gap:4px}.pv_edItemOff{opacity:.5}.pv_edRow{display:flex;align-items:center;gap:6px;font-size:12px}.pv_edId{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv_edTag{font-size:11px;padding:1px 6px;border-radius:6px;background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06));color:var(--dsw-alias-label-secondary)}.pv_edCaret{margin-left:auto;border:0;background:0 0;cursor:pointer;font:inherit;font-size:11px;padding:1px 6px;border-radius:6px;color:var(--dsw-alias-label-tertiary)}.pv_edCaret:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.pv_edFields{display:flex;flex-direction:column;gap:4px;padding:6px 0 2px 22px}.pv_edField{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dsw-alias-label-secondary)}.pv_edField > .pv_field{flex:1;min-width:0}.pv_edAdd{display:flex;align-items:center;gap:6px}.pv_edActs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.pv_delPanel{display:flex;flex-direction:column;gap:6px;padding:10px 12px;margin-top:2px;border:1px solid rgba(224,49,49,.35);border-radius:10px;background:rgba(224,49,49,.05)}.pv_delPanelTitle{font-size:13px;font-weight:500;color:#e03131}.pv_delPanelBody{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}.pv_delPanelActs{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.pv_delPanel .pv_delYes{border:1px solid rgba(224,49,49,.5);background:rgba(224,49,49,.1);font-weight:500}.pv_delPanel .pv_delNo{border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12))}.pv_delYes{border:0;background:0 0;cursor:pointer;font:inherit;font-size:12px;color:#e03131;padding:3px 9px;border-radius:6px}.pv_delYes:hover{background:rgba(224,49,49,.12)}.pv_delNo{border:0;background:0 0;cursor:pointer;font:inherit;font-size:12px;color:var(--dsw-alias-label-secondary);padding:3px 9px;border-radius:6px}.pv_delNo:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}@keyframes pvRot{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.pv_spin{display:inline-block;animation:pvRot 1s linear infinite}.pv_toast{position:fixed;bottom:24px;right:24px;z-index:500;padding:10px 18px;border-radius:12px;font-size:13px;line-height:20px;max-width:min(420px,80vw);background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18))}.pv_toastOk{color:#2f9e44}.pv_toastFail{color:#e03131}.pv_fresh{font-size:12px;line-height:18px;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}.pv_addBtn{width:100%;padding:13px;border:1px dashed var(--dsw-alias-border-l2,rgba(0,0,0,.2));border-radius:14px;background:0 0;cursor:pointer;font:inherit;font-size:14px;color:var(--dsw-alias-label-secondary)}.pv_addBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.03))}input.pv_field{cursor:text}select.pv_field{cursor:pointer}input.pv_ro{background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.05));color:var(--dsw-alias-label-tertiary);cursor:default}input.pv_key{background:var(--dsw-alias-bg-layer-1,#fff);border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}.pv_actRow{display:flex;gap:10px;align-items:center;padding:8px 0 4px}.pv_pick{flex:1;min-width:0;position:relative}.pv_pickBtn{width:100%;cursor:pointer;justify-content:space-between;gap:8px}.pv_pickMenu{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:250;padding:6px;display:flex;flex-direction:column;gap:4px;border-radius:10px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18))}.pv_pickList{max-height:240px;overflow:auto;display:flex;flex-direction:column}.pv_pickItem{display:flex;align-items:center;gap:6px;padding:8px 12px;border:0;background:0 0;cursor:pointer;font:inherit;font-size:13.5px;color:var(--dsw-alias-label-primary);text-align:left;border-radius:8px}.pv_pickItem:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.04))}.pv_pickItem:disabled{opacity:.5;cursor:default}.pv_pickEmpty{padding:12px;font-size:13px;color:var(--dsw-alias-label-tertiary);text-align:center}.pv_msRow{display:flex;align-items:center;gap:8px}.pv_msMain{flex:1;min-width:0;display:flex;align-items:center;gap:8px;text-align:left}select.pv_msEff{flex:none;font:inherit;font-size:12px;padding:3px 8px;cursor:pointer;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:6px;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-secondary)}.pv_tabs{display:flex;gap:2px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));margin-bottom:14px}.pv_tab{font:inherit;font-size:14px;padding:8px 14px;border:0;background:0 0;cursor:pointer;color:var(--dsw-alias-label-secondary);border-bottom:2px solid transparent;margin-bottom:-1px}.pv_tab:hover{color:var(--dsw-alias-label-primary)}.pv_tabOn{color:var(--dsw-alias-label-primary);border-bottom-color:var(--dsw-alias-brand-primary,#3b5bdb);font-weight:600}.pv_pcLead{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}.pv_pcLeadRow{display:flex;align-items:center;gap:8px}.pv_pcLink{font-size:13px;line-height:1.5;color:var(--dsw-alias-label-tertiary);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv_pcLink:hover{color:var(--dsw-alias-label-secondary);text-decoration:underline}.pv_mRow{position:relative;display:flex;align-items:center;gap:8px;padding:3px 0}.pv_mId{flex:none;width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);font-family:ui-monospace,Menlo,Consolas,monospace}.pv_mName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv_mHeadRow{display:flex;align-items:center;gap:8px;padding:5px 0 4px;font-size:12px;color:var(--dsw-alias-label-tertiary);border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}.pv_mCaps{flex:none;width:100px;display:inline-flex;justify-content:flex-end;align-items:center;gap:6px}.pv_mCtx{flex:none;width:56px;text-align:right;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}.pv_capIcons{display:inline-flex;gap:6px;font-size:12px;line-height:16px}.pv_capMini{font-size:11px;line-height:16px;padding:0 7px;border-radius:999px;white-space:nowrap}.pv_mHead{display:flex;align-items:center;gap:6px;flex:1;min-width:0;font:inherit;font-size:13px;font-weight:600;line-height:18px;padding:0;border:0;background:0 0;cursor:pointer;color:var(--dsw-alias-label-primary);text-align:left}.pv_mHead:hover{color:var(--dsw-alias-label-secondary)}.pv_mTop{display:flex;align-items:center;gap:8px;height:38px;padding:0}.pv_mCaretCol{flex:none;width:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--dsw-alias-label-tertiary)}.pv_mCaretCol:hover{color:var(--dsw-alias-label-secondary)}.pv_mList{border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));margin-top:0;padding-top:6px;display:flex;flex-direction:column}.pv_mFilter{flex:none;width:240px;box-sizing:border-box;padding:5px 24px 5px 12px;font:inherit;font-size:13px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:8px;outline:0;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-primary)}.pv_mFilter:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}.pv_fbox{position:relative;display:inline-flex;align-items:center;flex:none}.pv_fclear{position:absolute;right:2px;top:50%;transform:translateY(-50%);border:0;background:0 0;cursor:pointer;font:inherit;font-size:14px;line-height:1;padding:2px 6px;color:var(--dsw-alias-label-tertiary);border-radius:6px}.pv_fclear:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}.pv_tip{display:none;position:absolute;left:0;bottom:calc(100% + 6px);z-index:300;width:270px;padding:12px 14px;border-radius:12px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18));flex-direction:column;gap:6px}.pv_mRow:hover .pv_tip{display:flex}.pv_tipTitle{font-size:13px;font-weight:600;line-height:18px}.pv_tipRow{display:flex;gap:10px;font-size:12px;line-height:18px}.pv_tipLabel{flex:none;width:60px;color:var(--dsw-alias-label-tertiary)}.pv_tipDim{font-size:11px;color:var(--dsw-alias-label-tertiary)}.pv_tipCaps{display:flex;gap:6px;flex-wrap:wrap}.pv_cap{font-size:11px;padding:1px 8px;border-radius:999px}.pv_capVision{color:#2f9e44;background:rgba(47,158,68,.12)}.pv_capVideo{color:#7c3aed;background:rgba(124,58,237,.12)}.pv_capReason{color:#b8860b;background:rgba(217,162,0,.15)}.pv_capDeclared{color:#0b7285;background:rgba(11,114,133,.12)}.pv_meOpen{flex:none;margin-left:0;height:26px;padding:0 10px;font-size:12px}.pv_me{display:flex;flex-direction:column;gap:8px;padding:10px 0 4px;border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12))}.pv_meHead{display:flex;align-items:center;gap:10px}.pv_meTitle{font-size:13px;font-weight:600;line-height:18px}.pv_meList{display:flex;flex-direction:column;max-height:320px;overflow:auto;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:10px}.pv_meRow{display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:12px;line-height:18px;border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.06))}.pv_meRow:last-child{border-bottom:0}.pv_meRowOff{opacity:.45}.pv_meCheck{flex:none;margin:0;cursor:pointer}.pv_meIdBox{flex:none;display:inline-flex;align-items:center;gap:6px;width:220px;min-width:0}.pv_meIdBox .pv_mId{max-width:150px}.pv_meName{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary)}.pv_meNum{flex:none;width:96px;box-sizing:border-box;padding:3px 8px;font:inherit;font-size:12px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:7px;outline:0;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-primary)}.pv_meNum:focus{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2,rgba(0,0,0,.2)))}.pv_meCap{flex:none;display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:var(--dsw-alias-label-tertiary);user-select:none}.pv_meCap input{margin:0;cursor:pointer}.pv_meAdd{display:flex;align-items:center;gap:8px}.pv_meActs{display:flex;align-items:center;gap:8px}.pv_mask{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.42);padding:24px}.pv_modal{width:min(520px,100%);box-sizing:border-box;display:flex;flex-direction:column;gap:10px;padding:18px 20px;border-radius:14px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-elevation-prominent,0 18px 48px rgba(0,0,0,.28))}.pv_modalTitle{font-size:14px;font-weight:600;line-height:20px}.pv_modalRow{display:flex;gap:12px;font-size:12px;line-height:19px}.pv_modalLabel{flex:none;width:80px;color:var(--dsw-alias-label-tertiary)}.pv_modalValue{flex:1 1 auto;min-width:0;word-break:break-word}.pv_modalWarn{font-size:12px;line-height:18px;padding:8px 10px;border-radius:8px;color:#a33;background:rgba(217,83,79,.12)}.pv_modalActs{display:flex;justify-content:flex-end;gap:10px;margin-top:2px}.pv_dangerBtn{color:#fff !important;background:#d9534f !important;border-color:#d9534f !important}.pv_dangerBtn:disabled{opacity:.6;cursor:default}";
 		var tagId = "dsh-llm-provider/plan.css";
 		/**
 		* 挂样式：手写 style 标签（带 data-plugin-css 标记，重复调用幂等）。
@@ -2770,7 +3798,7 @@ window.__ModuleLoader__.load({
 		/** 测试环境标识：标题加「· 测试」后缀 + favicon 右下角盖橙色「测」角标。 */
 		function markTestEnv() {
 			try {
-				if (document.title.indexOf("测试") === -1) document.title = (document.title === "" ? "dsh" : document.title) + " · 测试";
+				if (document.title.indexOf(t("test.titleSuffix")) === -1) document.title = (document.title === "" ? "dsh" : document.title) + t("test.titleSuffix");
 				var iconLink = document.querySelector("link[rel~=\"icon\"]");
 				var img = new window.Image();
 				img.onload = function() {
@@ -2788,7 +3816,7 @@ window.__ModuleLoader__.load({
 						g.font = "bold 24px sans-serif";
 						g.textAlign = "center";
 						g.textBaseline = "middle";
-						g.fillText("测", 46, 48);
+						g.fillText(t("test.faviconBadge"), 46, 48);
 						setFavicon(canvas.toDataURL("image/png"));
 						return;
 					}
@@ -2800,7 +3828,7 @@ window.__ModuleLoader__.load({
 				img.src = iconLink === null ? "/favicon.ico" : iconLink.href;
 			} catch (cause) {}
 		}
-		/** 替换 favicon；dataUrl 为 undefined 时退到一个纯「测」字圆形 icon。 */
+		/** 替换 favicon；dataUrl 为 undefined 时退到一个纯「测」字圆形 icon（文字也走字典）。 */
 		function setFavicon(dataUrl) {
 			try {
 				var link = document.querySelector("link[rel~=\"icon\"]");
@@ -2813,7 +3841,8 @@ window.__ModuleLoader__.load({
 					link.href = dataUrl;
 					return;
 				}
-				link.href = "data:image/svg+xml," + encodeURIComponent("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\"><circle cx=\"32\" cy=\"32\" r=\"30\" fill=\"#e8890c\"/><text x=\"32\" y=\"43\" font-size=\"30\" font-weight=\"bold\" fill=\"#fff\" text-anchor=\"middle\">测</text></svg>");
+				var svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\"><circle cx=\"32\" cy=\"32\" r=\"30\" fill=\"#e8890c\"/><text x=\"32\" y=\"43\" font-size=\"30\" font-weight=\"bold\" fill=\"#fff\" text-anchor=\"middle\">" + t("test.faviconBadge") + "</text></svg>";
+				link.href = "data:image/svg+xml," + encodeURIComponent(svg);
 			} catch (cause) {}
 		}
 		//#endregion
@@ -2962,25 +3991,57 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 		exports.LEGACY_PROVIDER_ALIASES = LEGACY_PROVIDER_ALIASES;
+		exports.LOCAL_DICT = LOCAL_DICT;
+		exports.PROVIDER_API_OPTIONS = PROVIDER_API_OPTIONS;
+		exports.addModelRow = addModelRow;
 		exports.aliasSelection = aliasSelection;
 		exports.apply = apply;
+		exports.buildModelEditor = buildModelEditor;
+		exports.capabilitiesKnown = capabilitiesKnown;
+		exports.capabilityBadges = capabilityBadges;
+		exports.capabilityKeysOf = capabilityKeysOf;
 		exports.defaultEffortOf = defaultEffortOf;
-		exports.detailKey = detailKey;
 		exports.detailsOfProvider = detailsOfProvider;
 		exports.dropPlanAccount = dropPlanAccount;
 		exports.headlineChips = headlineChips;
 		exports.inject = inject;
+		exports.isDefaultCatalogEquivalent = isDefaultCatalogEquivalent;
+		exports.isProviderEditDirty = isProviderEditDirty;
+		exports.isRouteConfigured = isRouteConfigured;
+		exports.localT = localT;
 		exports.lookupDetail = lookupDetail;
 		exports.mergePlanAccount = mergePlanAccount;
+		exports.modelListPayload = modelListPayload;
+		exports.modelRow = modelRow;
+		exports.modelTip = modelTip;
 		exports.normalizeSelection = normalizeSelection;
 		exports.onPlanChange = onPlanChange;
+		exports.patchModelRow = patchModelRow;
 		exports.piAiBridgeRows = piAiBridgeRows;
 		exports.piAiUpstreamText = piAiUpstreamText;
 		exports.presetPickState = presetPickState;
+		exports.providerEditForm = providerEditForm;
+		exports.providerEditSaveOps = providerEditSaveOps;
+		exports.providerSaveOps = providerSaveOps;
+		exports.quotaShortOf = quotaShortOf;
+		exports.quotaTextOf = quotaTextOf;
+		exports.quotaTipOf = quotaTipOf;
 		exports.reasoningTextOf = reasoningTextOf;
 		exports.refreshFailure = refreshFailure;
+		exports.relativeTime = relativeTime;
 		exports.resetCountdownText = resetCountdownText;
+		exports.routeYamlOf = routeYamlOf;
+		exports.setT = setT;
 		exports.shortWindowLabel = shortWindowLabel;
+		Object.defineProperty(exports, "t", {
+			enumerable: true,
+			get: function() {
+				return t;
+			}
+		});
+		exports.tf = tf;
+		exports.validateModelRows = validateModelRows;
+		exports.validateProviderEdit = validateProviderEdit;
 		return module.exports;
 	}
 });

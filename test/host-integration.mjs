@@ -71,18 +71,21 @@ process.env.DSH_HOME = realHome
 const hostA = await importFresh('lib/index.js')
 const vendor = join(pluginDir, 'vendor')
 const vendorPiAi = join(vendor, 'pi-ai')
-const bridgeDir = join(vendor, 'llm-bridge')
+// r6+ 桥接工作区在插件包外的安全区（$DSH_HOME/llm-provider-bridge）——插件包随时会被
+// 整棵递归删，包内不能有任何「指向别处」的链（两次事故的结构性教训）。
+const bridgeDir = join(realHome, 'llm-provider-bridge', 'llm-bridge')
 
 if (degraded) {
   console.log('（降级模式：跳过 A 组桥接断言，只验路由契约）')
 } else {
   checkThat('A. 桥接装载成功（官方 bundle + dsh 自带 pi-ai 解析链路跑通）', hostA.Config !== undefined, 'Config 导出缺失')
-  checkThat('A. vendor/llm-bridge 里是官方适配器 bundle 副本', existsSync(join(bridgeDir, 'lib', 'index.js')), bridgeDir)
+  checkThat('A. 安全区 llm-bridge 里是官方适配器 bundle 副本', existsSync(join(bridgeDir, 'lib', 'index.js')), bridgeDir)
   const bridgeBytes = existsSync(join(bridgeDir, 'lib', 'index.js')) ? statSync(join(bridgeDir, 'lib', 'index.js')).size : 0
   checkThat('A. 副本体积与官方 bundle 一致量级（<1 MB）', bridgeBytes > 0 && bridgeBytes < 1024 * 1024, String(bridgeBytes))
   checkThat('A. vendor/ 下没有 pi-ai 目录（本地版不落地 pi-ai 副本）', !existsSync(vendorPiAi), vendorPiAi)
   const status = existsSync(join(vendor, 'status.json')) ? JSON.parse(readFileSync(join(vendor, 'status.json'), 'utf8')) : {}
-  checkThat('A. status.json 记的是 dsh 自带那份 pi-ai', status.piAiSource === 'dsh', JSON.stringify(status))
+  // 合并版在 Desktop 上会解析出 dsh-app（安装树锚点）或 dsh（bundle 解析链）——都是宿主自带那份
+  checkThat('A. status.json 记的是 dsh 自带那份 pi-ai（dsh-app / dsh）', status.piAiSource === 'dsh' || status.piAiSource === 'dsh-app', JSON.stringify(status))
   checkThat('A. 启动检查没发任何网络请求', fetchCalls.length === 0, fetchCalls.join(', '))
 }
 

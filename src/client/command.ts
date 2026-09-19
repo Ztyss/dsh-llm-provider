@@ -30,14 +30,19 @@ export function registerModelCommand(scope: ClientScope): void {
            *
            * 口径照官方 ui-model-selection 的同名实现：被寻址成子代理的会话不能用模型选择
            * （那是 agent 自己的事），普通会话放行。sessions 面缺席或没有这个方法时一律放行——
-           * 契约只要求返回布尔，不能因为拿不到服务就抛。
+           * 契约只要求返回布尔，**实现永远不能抛**（宿主对每条贡献都是裸调，一抛整批 `/`
+           * 候选陪葬）：任何异常都吞掉并放行，宁可多显示一条菜单。
            */
           available: function (session: { sessionId?: string } | null | undefined): boolean {
-            var sessions = scope.sessions as SessionsFace | undefined
-            if (sessions === undefined || sessions === null || typeof sessions.subagentAddress !== 'function') return true
-            var sessionId = session !== null && session !== undefined ? session.sessionId : undefined
-            if (typeof sessionId !== 'string' || sessionId === '') return true
-            return sessions.subagentAddress(sessionId) === undefined
+            try {
+              var sessions = scope.sessions as SessionsFace | undefined
+              if (sessions === undefined || sessions === null || typeof sessions.subagentAddress !== 'function') return true
+              var sessionId = session !== null && session !== undefined ? session.sessionId : undefined
+              if (typeof sessionId !== 'string' || sessionId === '') return true
+              return sessions.subagentAddress(sessionId) === undefined
+            } catch {
+              return true
+            }
           },
           ui: {
             kind: 'popupSelect',
