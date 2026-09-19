@@ -1,20 +1,24 @@
-// pi-ai 候选探测与链接安全（issue #6 的根因防线）。
+// pi-ai 候选探测与链接安全 —— **新策略下的防线**。
 //
-// 事故经过（issue 原文有完整日志）：用户删掉插件目录里的 `vendor/pi-ai`
-// （260 MB 里 178 MB 是 npm 缓存、82 MB 是这份下载）后重启，宿主自己那份 pi-ai
-// 也解析不到，桥接失败；再卸载插件，官方 llm-pi-ai 条目回来却 import 不到 pi-ai，
-// 整个 plugin tree 加载失败 —— DSH Desktop 打不开。
+// 事故（issue #6 + 2026-09-18 现场）：
+//   插件曾把 npm 下载的 pi-ai 副本装进 `vendor/pi-ai/<v>/`，于是一条
+//   `rmSync(recursive)` 的写路径躺在插件里；而宿主那份 pi-ai 一旦被清空，
+//   DSH 会在 boot 阶段整体加载失败 —— **卸载插件也救不回来**。
 //
-// 本测试盯两件事，都不需要真的删东西：
-//   1. 桥接失败时的诊断要有信息量：候选逐条报「路径 + 在不在 + 用过没用过」，
-//      而不是一句 `没有能用的 pi-ai：` 后面空白（issue 的「诊断盲区」）。
-//   2. 插件只准删自己建的**链接**，绝不能顺着链接把别人的目录内容删掉 —— 这是
-//      「删插件的东西把宿主的东西一起删了」这类事故的结构性防线。
+// 新策略（用户诉求）：**pi-ai 只用 DSH 自带那一份，不额外下载**。于是：
+//   1. 候选清单里不该再出现「下载档」与「兜底依赖档」，只剩宿主那一档；
+//   2. 插件里不该再有任何删除 pi-ai 目录的写路径（连函数一起没了）；
+//   3. 链接只准摘链接自己，绝不顺着链接删目标内容。
+//
+// 本文件盯这三件事，都不需要真的删东西。
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { activeLinkTarget, isDirectoryLink, piAiCandidates, preferHostOnEqualVersion, removeDirectoryLink } from '../lib/bridge.js'
-import { pruneInstalledVersions } from '../lib/updater.js'
+import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { isDirectoryLink, piAiCandidates, removeDirectoryLink } from '../lib/bridge.js'
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 let failures = 0
 function check(name, cond, extra) {
@@ -22,26 +26,23 @@ function check(name, cond, extra) {
   if (!cond) failures += 1
 }
 
-// ---- 1. 候选清单带存在性状态 ----
+// ---- 1. 候选清单：只剩宿主那一档 ----
 const report = piAiCandidates(true)
 check('候选报告是数组', Array.isArray(report) && report.length > 0)
 check('每条候选都带路径', report.every((c) => typeof c.root === 'string' && c.root !== ''))
 check('每条候选都带 key 与版本/来源文字', report.every((c) => typeof c.key === 'string' && typeof c.version === 'string'))
 check('每条候选都带「在不在」的结论', report.every((c) => typeof c.exists === 'boolean'))
+check('候选只有宿主那一档（没有下载档 / 兜底依赖档）', report.every((c) => c.key === 'dsh'))
 
-// 存在的判定必须跟真实文件系统一致（不然诊断又变成猜）
 const roots = piAiCandidates(false)
 check('不带状态时仍返回同样数量的候选', roots.length === report.length)
 check('不探测时不做文件系统访问', roots.every((c) => c.exists === undefined))
 
-// 本插件的 vendor 根：下面多处断言都靠它区分「插件自己的目录」与「宿主的目录」
-const vendorRoot = join(process.cwd(), 'vendor')
+// 本插件的 vendor 根：用它区分「插件自己的目录」与「宿主的目录」
+const vendorRoot = join(root, 'vendor')
 
-// ---- 1b. 候选目录必须**真的可用**，不能只因为"路径拼得出来"就当成候选 ----
-// 这是端到端验证时抓到的真问题：全局安装（npm -g）布局下，`@deepseek-ai/dsh/node_modules/
-// @earendil-works/pi-ai` 这个目录**存在但是空的**（没有 package.json）——`dsh` 候选因此整条
-// 消失，桥接只剩 `dependency` 一条，报错里也看不出宿主那份被找过。
-// 修法：存在的候选必须是**真的能解析出 pi-ai 包**的目录（有 package.json）。
+// ---- 2. 候选目录必须真的可用：manifest + 入口都在 ----
+// 只判 package.json 存在是不够的 —— 事故形态正是「目录在、manifest 在、dist 被清空」。
 for (const candidate of report) {
   if (candidate.exists !== true) continue
   check(
@@ -50,28 +51,40 @@ for (const candidate of report) {
     candidate.root,
   )
 }
-// 宿主那份 pi-ai 的常见落点：profile 的直接依赖、以及嵌在 dsh 包里的那份
-const hostPaths = report.filter((c) => c.key !== 'dependency').map((c) => c.root)
-check('候选里覆盖了「profile 的直接依赖」这一档（或确实一条宿主候选都没有）',
-  hostPaths.length === 0 || hostPaths.some((p) => p.indexOf('profiles') !== -1 && p.indexOf('@earendil-works') !== -1),
-  hostPaths.join(' | '))
-
-// ---- 2. 宿主那份 pi-ai 的候选路径必须来自**宿主**的 node_modules，而不是本插件的 vendor ----
-// 结构断言：只要 vendor/pi-ai 里的版本目录不该出现在宿主候选上。
-const hostish = report.filter((c) => c.key !== 'dependency' && !c.root.startsWith(vendorRoot))
-check('存在来自 vendor 之外的候选（宿主那份）或明确没有', hostish.length >= 0)
-
-// 最关键的一条：`dsh` 候选的路径必须指向宿主安装树/profile，不可能指向本插件目录
 const dshCandidate = report.find((c) => c.key === 'dsh')
 if (dshCandidate !== undefined) {
   check(
-    'dsh 那份 pi-ai 的路径不在本插件目录里（删插件不该影响宿主解析）',
+    'dsh 那份 pi-ai 的路径不在本插件目录里（插件不该是宿主依赖的来源）',
     !dshCandidate.root.startsWith(vendorRoot),
+    dshCandidate.root,
+  )
+  check(
+    'dsh 候选路径指向宿主安装树或 profile',
+    dshCandidate.root.includes('node_modules'),
     dshCandidate.root,
   )
 }
 
-// ---- 3. 链接的识别与安全移除 ----
+// ---- 3. 插件里不该再有任何删除 pi-ai 目录的写路径 ----
+// 这是本次策略变更的硬约束：下载入口关闭后，installVersion / pruneInstalledVersions
+// 这两个带 rmSync(recursive) 的函数连同调用方一起移除了。
+const updaterSrc = readFileSync(join(root, 'lib', 'updater.js'), 'utf8')
+check('updater 里不再有 rmSync（危险的递归删除已移除）', !/rmSync/.test(updaterSrc))
+check('updater 里不再有 installVersion', !/installVersion/.test(updaterSrc))
+check('updater 里不再有 pruneInstalledVersions', !/pruneInstalledVersions/.test(updaterSrc))
+check('updater 里不再有 npm 下载/安装命令', !/npm-cli\.js|execFile/.test(updaterSrc))
+
+// 启动时的后台检查也必须不触网：只看这个函数的**函数体**里有没有真的调用
+// （不能用宽正则扫全文——注释里提到 checkAndUpdate 会造成误判）。
+{
+  const body = /function startBackgroundCheck\([^)]*\)\s*\{([\s\S]*?)\n\}/.exec(updaterSrc)
+  const bodyText = body === null ? '' : body[1]
+  check('startBackgroundCheck 函数体存在', body !== null)
+  check('startBackgroundCheck 不再调用 checkAndUpdate（不触网）', !/checkAndUpdate\s*\(/.test(bodyText), bodyText)
+  check('startBackgroundCheck 不再读上次检查时间（不再节流轮询）', !/lastCheck|Date\.now/.test(bodyText), bodyText)
+}
+
+// ---- 4. 链接的识别与安全移除 ----
 const sandbox = mkdtempSync(join(tmpdir(), 'dsh-link-'))
 const target = join(sandbox, 'real-target')
 mkdirSync(target, { recursive: true })
@@ -85,7 +98,7 @@ const linkPath = join(linkParent, 'pi-ai')
 
 // Windows 上建 junction 不需要管理员权限（软链需要）；POSIX 上用相对软链
 const linkType = process.platform === 'win32' ? 'junction' : 'dir'
-symlinkSync(linkType === 'junction' ? target : target, linkPath, linkType)
+symlinkSync(target, linkPath, linkType)
 
 check('链接被认成链接', isDirectoryLink(linkPath) === true)
 check('真实目录不被认成链接', isDirectoryLink(target) === false)
@@ -112,39 +125,9 @@ check('普通目录不会被当成链接删掉', existsSync(join(notALink, 'insi
 
 rmSync(sandbox, { force: true, recursive: true })
 
-// ---- 4. 同一版本时优先复用宿主那份（issue #4 第 2 条期望）----
-// 下载副本排在前面是有道理的（它可能是更新的版本），但版本相同时让副本赢会白占一份约 80 MB
-// 的重复目录，而且切换生效还得等重启——用宿主那份本来就在跑。
-const equalVersions = preferHostOnEqualVersion([
-  { key: '0.85.1', version: '0.85.1', root: '/plugin/vendor/pi-ai/0.85.1', link: true },
-  { key: 'dsh', version: '0.85.1', root: '/app/node_modules/@earendil-works/pi-ai', link: true },
-])
-check('同版本时宿主那份排到了前面', equalVersions[0].key === 'dsh', equalVersions[0].key)
-check('同版本的两条一个都没丢', equalVersions.length === 2)
-
-const newerDownload = preferHostOnEqualVersion([
-  { key: '0.86.0', version: '0.86.0', root: '/plugin/vendor/pi-ai/0.86.0', link: true },
-  { key: 'dsh', version: '0.85.1', root: '/app/node_modules/@earendil-works/pi-ai', link: true },
-])
-check('下载副本更新时仍然排前面（升级路径不受影响）', newerDownload[0].key === '0.86.0', newerDownload[0].key)
-
-// 版本读不出来（'dsh 自带' 这种字面值）时不乱换位：那说明这一档本身有问题
-const unknownHostVersion = preferHostOnEqualVersion([
-  { key: '0.85.1', version: '0.85.1', root: '/plugin/vendor/pi-ai/0.85.1', link: true },
-  { key: 'dsh', version: 'dsh 自带', root: '/app/node_modules/@earendil-works/pi-ai', link: true },
-])
-check('宿主版本读不出来时不换位', unknownHostVersion[0].key === '0.85.1', unknownHostVersion[0].key)
-
-const noHost = preferHostOnEqualVersion([
-  { key: 'dependency', version: '内置依赖', root: '/plugin/vendor/node_modules/@earendil-works/pi-ai', link: false },
-])
-check('没有宿主候选时原样返回', noHost[0].key === 'dependency')
-
-// ---- 5. 旧版本回收（issue #4 第 4 条期望）：没有可回收的对象时不能乱删 ----
-// 这个环境里 vendor/pi-ai 要么不存在、要么只有 1 份，都不该触发删除。
-check('链接指向读得出来或明确没有', activeLinkTarget() === undefined || typeof activeLinkTarget() === 'string')
-const prunedNothing = pruneInstalledVersions(() => {})
-check('没有多余版本时不删任何东西', Array.isArray(prunedNothing) && prunedNothing.length === 0)
+// ---- 5. 插件不再持有"回收旧版本"的写路径（连同其辅助函数一起移除）----
+check('bridge 里不再导出 activeLinkTarget（回收逻辑已随策略移除）',
+  !/activeLinkTarget/.test(readFileSync(join(root, 'lib', 'bridge.js'), 'utf8')))
 
 console.log(failures === 0 ? '\n候选探测与链接安全测试全部通过' : `\n${failures} 个失败`)
 process.exit(failures === 0 ? 0 : 1)

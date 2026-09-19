@@ -262,7 +262,7 @@ export function apply(ctx: PluginContext, config: unknown): void {
       kind: 'exact',
       path: '/provider/status',
       handler: (_req, res) => {
-        const { status: bridgeState, updater } = readVendorState()
+        const { status: bridgeState } = readVendorState()
         // 诊断：这一插件实际发现了哪些路由（含凭据名，不含值），排查配置问题时最有用
         const llm = service<LlmService>('llm')
         let declaredCount = -1
@@ -309,15 +309,19 @@ export function apply(ctx: PluginContext, config: unknown): void {
           // 插件不写宿主配置：缺了就报出来，由用户用「添加 Provider」补。不能静默——
           // 缺了 DeepSeek 会从模型列表里消失，看不出原因。
           deepseekRouteMissing: bridge.ok && !routes.some((route) => route.id === 'deepseek'),
-          // 更新状态（界面「pi-ai 桥接」标签页用）：
-          //   latest   —— 上次检查时上游的最新版
-          //   pending  —— 已下载、等重启生效的版本
-          //   rejected —— 下载了但兼容性体检没通过的那版（含原因），永远不会切过去
+          // pi-ai 来源策略（界面「pi-ai 桥接」标签页用）：
+          //   hostOnly  —— 策略已固定为「只用 DSH 自带那份」，下载/更新入口关闭
+          //   latest    —— 历史遗留字段：旧版本曾在这里报上游最新版，现在恒为 undefined
+          //   pending   —— 历史遗留：曾表示"已下载等重启"，现在不会再有下载，恒为 undefined
+          //   rejected  —— 历史遗留：曾表示"下载了但体检没过"，同上
+          // 保留这些键是为了让老前端不炸（读 undefined 就不显示那一行）；
+          // 同时**不再读 updater-state.json 的 lastCheck**——那个文件已无人写。
           update: {
-            lastCheck: readString(updater['lastCheck']),
-            latest: readString(bridgeState['latestVersion']),
-            pending: bridgeState['needsRestart'] === true ? readString(bridgeState['piAiVersion']) : undefined,
-            rejected: readRejected(bridgeState['latestRejected']),
+            hostOnly: true,
+            lastCheck: undefined,
+            latest: undefined,
+            pending: undefined,
+            rejected: undefined,
           },
           // 测试环境标识（scripts/test-profile.sh 启动时带 DSH_PROVIDER_TEST=1）：
           // 浏览器端看到后给标题/favicon 加「测」标，一眼区分测试实例
@@ -474,29 +478,21 @@ export function apply(ctx: PluginContext, config: unknown): void {
     'dsh-llm-provider: /provider/test route',
   )
 
-  // 启动时后台顺带查一次上游（6 小时节流，DSH_PROVIDER_UPDATE=off 可关）：有更新就下好、
-  // 验证通过后标待重启，下次启动生效——新装的机器不用手点「检查更新」。手动入口仍在
-  // （设置页按钮 → POST /provider/update），替换一律要求验证通过，见 updater.ts 头部注释。
-  startBackgroundCheck(logger, bridge.ok ? bridge.piAiVersion : undefined)
+  // pi-ai 跟随 DSH 自带那份，下载/更新入口已关闭：这里不再有任何后台网络检查。
+  // （旧行为是 6 小时节流查一次 npm、有新版就下副本——连同那条写路径一起移除了，
+  //   理由见 updater.ts 头部。）
+  startBackgroundCheck(logger)
 
   logger?.info?.('dsh-llm-provider active: GET /plan/status, GET /provider/status, POST /provider/update')
 }
 
-/** 读一版被跳过的记录（status.json 里的 latestRejected）。 */
-function readRejected(value: unknown): { version: string | undefined; error: string | undefined } | undefined {
-  const record = asRecord(value)
-  if (Object.keys(record).length === 0) return undefined
-  return { version: readString(record['version']), error: readString(record['error']) }
-}
-
 /**
- * 读插件在 vendor/ 下的两个状态文件：
- *   status.json        —— 谁装到哪一版、体检结论（bridge.ts 与 updater.ts 写）
- *   updater-state.json —— 上次检查上游的时间（updater.ts 写）
- * 界面要的字段分在两个文件里（needsRestart / latestVersion 在 status.json，
- * lastCheck 在 updater-state.json），所以两个都要读。
+ * 读插件在 vendor/ 下的状态文件：`status.json`（桥接用哪份 pi-ai、体检结论）。
+ *
+ * 历史说明：这里曾经还读 `updater-state.json` 的 `lastCheck`（"上次检查上游的时间"）。
+ * 下载/更新入口关闭后那个文件不再被写，读取也就一并去掉了。
  */
-function readVendorState(): { status: AnyRecord; updater: AnyRecord } {
+function readVendorState(): { status: AnyRecord } {
   const read = (name: string): AnyRecord => {
     try {
       return asRecord(JSON.parse(readFileSync(join(vendorDir, name), 'utf8')))
@@ -504,7 +500,7 @@ function readVendorState(): { status: AnyRecord; updater: AnyRecord } {
       return {}
     }
   }
-  return { status: read('status.json'), updater: read('updater-state.json') }
+  return { status: read('status.json') }
 }
 
 function messageOf(error: unknown): string {

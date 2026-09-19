@@ -22,6 +22,7 @@ import { createRequire } from 'node:module'
 import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveDshHome } from './dsh-home.js'
+import { describeIntegrity, inspectPiAi, restoreHint } from './pi-ai-source.js'
 import { asRecord, readString, type AnyRecord } from './types.js'
 
 const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -229,20 +230,16 @@ function pluginDependencyRoot(): string {
 }
 
 /**
- * 当前生效的 pi-ai 包目录。
+ * 当前生效的 pi-ai 包目录——**永远是 DSH 自带那一份**。
  *
- * loadBridge() 挑定之后以它为准——挑的时候可能回退过，跟"vendor 里最新"不是一回事，
- * 而这个根目录下面那三个读 pi-ai 文件的模块（provider 名字、模型详情、候选清单）
- * 必须跟真正被加载的那份对上。没跑过 loadBridge 的场合退回静态推断。
+ * loadBridge() 挑定之后以它为准（`activeRoot`），没跑过 loadBridge 的场合退回静态推断。
+ * 新策略下两条路径都只会落在宿主那份上：插件不再自养副本，也就不存在
+ * 「界面按 A 份读、桥接其实跑的是 B 份」这类偏差。
  */
 let activeRoot: string | undefined
 export function activePiAiRoot(): string | undefined {
   if (activeRoot !== undefined) return activeRoot
-  const versions = installedVersions()
-  const newest = versions[versions.length - 1]
-  if (newest !== undefined) return join(piAiVersionsDir, newest)
-  if (existsSync(pluginDependencyRoot())) return pluginDependencyRoot()
-  return dshPiAiRoot(findSourceBundle())
+  return dshPiAiRoot(findSourceBundle()) ?? dshInstallTreePiAiRoot()
 }
 
 /** 读一个 pi-ai 包的版本号；读不到返回 undefined。 */
@@ -436,26 +433,20 @@ export function preferHostOnEqualVersion(list: PiAiCandidate[]): PiAiCandidate[]
 }
 
 /**
- * pi-ai 候选，按优先级排：
- *   1. `vendor/pi-ai/<版本>/`——updater 下载下来的，新 → 旧
- *   2. `vendor/node_modules/@earendil-works/pi-ai`——可选的手装兜底档（vendor/package.json 锁定）
- *   3. dsh 自己装的那份——从官方 bundle 的位置解析出来，包放哪一层都能找到
+ * pi-ai 候选：**只列 DSH 自带的那一份**（可能解析出多个落点，都是宿主自己的）。
  *
- * 两个「dsh 自带」的候选（profile 与安装树里的那份）都列出来，不只列第一个命中的：
- * 候选全不存在时，报错里得能看出**哪几条路径被找过**，否则用户拿到的是一句
- * 「没有能用的 pi-ai」后面一片空白（issue #6 的「诊断盲区」）。
+ * 策略变更（用户诉求）：不再把「updater 下载的 `vendor/pi-ai/<v>`」和「插件自带依赖」
+ * 当候选。插件的职责是**维护宿主那份**，而不是养一份自己的——后者会带来重复副本
+ * （issue #4：实测 260 MB）、多一条危险的写路径、以及"桥接跑的其实是另一份 pi-ai"
+ * 这类难查的偏差。
+ *
+ * 仍然支持解析出多个宿主落点（profile 一层、安装树一层）：dsh 换个布局也得找得到。
+ * 一条宿主候选都解析不出来时，**也要留一个位置**报出「找到哪几条路径都不在」，
+ * 否则用户拿到的是一句「没有能用的 pi-ai」后面一片空白（issue #6 的诊断盲区）。
  * @param probe - 是否顺带探一下每条候选在不在（`/provider/status` 与报错用它）。默认不探。
  */
 export function piAiCandidates(probe = false): PiAiCandidateReport[] {
   const list: PiAiCandidate[] = []
-  const versions = installedVersions()
-  for (let i = versions.length - 1; i >= 0; i -= 1) {
-    const version = versions[i]
-    if (version === undefined) continue
-    list.push({ key: version, version, root: join(piAiVersionsDir, version), link: true })
-  }
-  const dependency = pluginDependencyRoot()
-  list.push({ key: 'dependency', version: piAiVersionOf(dependency) ?? '内置依赖', root: dependency, link: false })
   // 宿主那两份：官方 bundle 的实际位置沿解析链找到的（那才是运行时真正会加载的），
   // 以及 dsh 安装树里的固定布局。都列出来，谁在就用谁。
   const dshRoot = dshPiAiRoot(findSourceBundle())
@@ -470,26 +461,29 @@ export function piAiCandidates(probe = false): PiAiCandidateReport[] {
     list.push({ key: 'dsh', version: piAiVersionOf(root) ?? 'dsh 自带', root, link: true })
   }
   // 一条宿主候选都没解析出来时，**也要留一个位置**：否则诊断里完全看不到「宿主那份被找过」，
-  // 用户只看到「只有内置依赖这一档、它不存在」，会以为插件根本没找宿主。
+  // 用户只看到「候选清单为空」，会以为插件根本没找宿主。
   // 这条候选存在的意义是"说得清找过哪儿"，不是"一定能用"——解析不到时按不存在报。
   if (hostRoots.length === 0) {
     list.push({ key: 'dsh', version: 'dsh 自带', root: dshInstallTreePiAiRoot() ?? defaultHostPiAiPath(), link: true })
   }
-  preferHostOnEqualVersion(list)
   if (!probe) return list
   return list.map((candidate) => ({ ...candidate, exists: isPiAiPackage(candidate.root) }))
 }
 
 /**
- * 候选目录里是不是**真有一个 pi-ai 包**（有 package.json）。
+ * 候选目录里是不是**真有一个能用的 pi-ai 包**。
  *
  * 不能只判 `existsSync(root)`：全局安装（npm -g）布局下 `@deepseek-ai/dsh/node_modules/
  * @earendil-works/pi-ai` 这个目录**存在但是空的**（没有 package.json）——那是 npm 建出来的
  * 空壳，里面什么都没有。按"目录存在"判会把这种空壳当成可用候选，体检时才发现没有入口，
  * 白跑一趟；也可能像这次一样，让「宿主那份」整条从候选里消失。
+ *
+ * 也不能只判 `package.json`：2026-09-18 事故的形态正是**目录在、manifest 在、
+ * `dist/` 被清空**。那时判"有 package.json"会把一份残骸报成可用，而宿主 boot 阶段
+ * 已经因此失败了。判据交给 {@link inspectPiAi}（manifest + 入口 + 官方要的子路径）。
  */
 function isPiAiPackage(root: string): boolean {
-  return existsSync(join(root, 'package.json'))
+  return inspectPiAi(root).usable
 }
 
 /**
@@ -638,9 +632,18 @@ export function loadBridge(): BridgeLoadResult {
       const detail = candidates
         .map((entry) => `${entry.version} ${entry.root}（${entry.reason ?? '未选中'}）`)
         .join('；')
+      // 宿主那份不完整时，光说「没有能用的」没用——用户需要知道**怎么恢复**。
+      // 恢复走 npm 官方渠道覆盖回宿主目录，插件不代劳下载（那正是关掉的写路径）。
+      const hostIntegrity = candidates
+        .filter((entry) => entry.key === 'dsh')
+        .map((entry) => inspectPiAi(entry.root))
+      const incomplete = hostIntegrity.find((integrity) => integrity.hasManifest && !integrity.usable)
+      const hint = incomplete === undefined
+        ? ''
+        : `\n${describeIntegrity(candidates.find((entry) => entry.key === 'dsh')?.root ?? '', incomplete)}\n${restoreHint(incomplete.version)}`
       return {
         ok: false,
-        error: `没有能用的 pi-ai：${detail === '' ? '（候选清单为空）' : detail}`,
+        error: `没有能用的 pi-ai：${detail === '' ? '（候选清单为空）' : detail}${hint}`,
         rejected,
         candidates,
       }
@@ -696,18 +699,6 @@ function setPiAiLink(target: string): void {
  */
 function clearPiAiLink(): void {
   removeDirectoryLink(join(bridgeDir, 'node_modules', '@earendil-works', 'pi-ai'))
-}
-
-/**
- * 桥接副本当前的 pi-ai 链指向哪儿（没链或读不到返回 undefined）。
- * 清理旧版本时用它保住「正在用的那一份」——磁盘回收不能把生效的那份删掉。
- */
-export function activeLinkTarget(): string | undefined {
-  try {
-    return readlinkSync(join(bridgeDir, 'node_modules', '@earendil-works', 'pi-ai'))
-  } catch {
-    return undefined
-  }
 }
 
 /**

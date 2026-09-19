@@ -80,13 +80,15 @@ check('坏 → 好 的顺序下，好候选仍通过', r2.ok === true)
 check('无需求 + 目录存在 → 通过', probePiAi([], good, 'noreq').ok === true)
 check('无需求 + 目录不存在 → 不通过', probePiAi([], join(tmpdir(), 'pi-ai-无-xyz'), 'noreq2').ok === false)
 // ---- 候选列表 ----
+// 策略（用户诉求）：pi-ai 只用 DSH 自带那一份，插件不再养副本，
+// 所以候选里**不该**再出现「下载档」与「兜底依赖档」。
 const candidates = piAiCandidates()
-check('候选里必有兜底依赖档', candidates.some((c) => c.key === 'dependency'))
-check('兜底依赖档不挂软链', candidates.find((c) => c.key === 'dependency').link === false)
-// dsh 自带那一档的目录是沿解析链找出来的：dsh 没装/依赖没装时它可以缺席，
-// 但在场时必须排最后，且是挂软链的那一档。
+check('候选里不再有下载档（vendor/pi-ai/<版本>）', !candidates.some((c) => /^\d+\.\d+\.\d+/.test(c.key)))
+check('候选里不再有兜底依赖档（插件自带依赖）', !candidates.some((c) => c.key === 'dependency'))
+check('候选只列宿主那一档', candidates.every((c) => c.key === 'dsh'))
+// dsh 自带那一档：没装/依赖没装时可以缺席，但在场时必须挂软链（桥接要把链指过去）。
 const dshTier = candidates.find((c) => c.key === 'dsh')
-check('dsh 自带档在场时排最后且挂软链', dshTier === undefined || (candidates[candidates.length - 1].key === 'dsh' && dshTier.link === true))
+check('dsh 自带档挂软链', dshTier === undefined || dshTier.link === true)
 check('每档都有 key/version/root', candidates.every((c) => c.key && c.version !== undefined && c.root !== undefined))
 
 console.log(failures === 0 ? '\npi-ai 体检测试全部通过' : `\n${failures} 个失败`)
