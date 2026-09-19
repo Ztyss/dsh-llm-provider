@@ -883,12 +883,18 @@ function modelEditRow(
           value: row.maxTokens,
           onChange: function (event: FieldEvent) { patch(row.id, { maxTokens: event.target.value }) },
         }),
-    react.createElement('button', {
-      type: 'button',
-      className: 'pv_iconBtn',
-      title: known ? '取消勾选 = 保存后不再服务这个模型' : '把这行自定义条目从清单里去掉（保存后生效）',
-      onClick: function () { remove(row.id) },
-    }, '✕'),
+    // 便捷删除：已配置（勾选）的模型与自定义条目给 ✕，一键从清单去掉（保存后生效）；
+    // 未勾选的目录候选本就不在服务清单里，不给 ✕（勾上即新增）
+    (row.enabled === true || known === false)
+      ? react.createElement('button', {
+          type: 'button',
+          className: 'pv_iconBtn',
+          title: known
+            ? '从已配置清单里删除这个模型（保存后生效）'
+            : '把这行自定义条目从清单里去掉',
+          onClick: function () { remove(row.id) },
+        }, '✕')
+      : react.createElement('span', { key: 'del-slot' }),
   )
 }
 
@@ -960,7 +966,6 @@ function ModelListEditor(props: {
   account: PlanAccount
   catalog: CatalogModel[]
   details: Record<string, ModelDetail> | undefined | null
-  filterText: string
   onSaved: (message: string) => void
   onClose: () => void
 }) {
@@ -1075,14 +1080,8 @@ function ModelListEditor(props: {
       .then(function () { setBusy(false) })
   }
 
-  // 过滤器照常作用于清单（与外层「模型（N）」头部共用同一条过滤词）
-  var needleLocal = props.filterText.trim().toLowerCase()
   var rows_ = []
-  for (var r = 0; r < rows.length; r += 1) {
-    if (needleLocal === '' || fuzzyMatch(props.filterText, rows[r].id + ' ' + rows[r].name)) {
-      rows_.push(modelEditRow(rows[r], patch, remove))
-    }
-  }
+  for (var r = 0; r < rows.length; r += 1) rows_.push(modelEditRow(rows[r], patch, remove))
   var enabledCount = 0
   for (var e = 0; e < rows.length; e += 1) if (rows[e].enabled === true) enabledCount += 1
 
@@ -1257,9 +1256,6 @@ export function ProviderSettingsSection() {
   var detailsState = react.useState({})
   var detailsById = detailsState[0]
   var setDetailsById = detailsState[1]
-  var filtersState = react.useState({})
-  var filters = filtersState[0]
-  var setFilters = filtersState[1]
   var presetsState = react.useState([])
   var presets = presetsState[0]
   var setPresets = presetsState[1]
@@ -1730,12 +1726,6 @@ export function ProviderSettingsSection() {
       return withKey(prev, key, isOpen(key, dflt) !== true)
     })
   }
-  /** 模型列表过滤词（按模型 ID 或名称匹配）。 */
-  function setFilter(id: string, value: string) {
-    setFilters(function (prev: AnyRecord) {
-      return withKey(prev, id, value)
-    })
-  }
 
   var bridge = status === null || status.bridge === undefined ? undefined : status.bridge
   var update = status === null || status.update === undefined ? undefined : status.update
@@ -1983,19 +1973,11 @@ export function ProviderSettingsSection() {
         } else if (models.length === 0 && account.deletable !== true) {
           bodyRows.push(react.createElement('div', { className: 'pv_line', key: 'm-none' }, t('prov.noModels')))
         } else {
-          // 模型区（带外框）独立折叠：卡片展开时默认收起，点「模型（N）」头展开
+          // 模型区（带外框）独立折叠：卡片展开时默认收起，点「模型（N）」头展开。
+          // 不设过滤器：一家 provider 的模型本就同源，条目少，过滤没有意义
           var modelsOpen = isOpen(account.id + ':models', false)
-          // 过滤：模糊匹配模型 ID 或名称（子串 / 缩写子序列 / 编辑距离容错）
-          var filterText = filters[account.id] === undefined ? '' : String(filters[account.id])
-          var needle = filterText.trim().toLowerCase()
-          var filtered = []
-          for (var fi = 0; fi < models.length; fi += 1) {
-            if (fuzzyMatch(filterText, models[fi].id + ' ' + models[fi].name)) {
-              filtered.push(models[fi])
-            }
-          }
           var mBoxRows = []
-          // 模型区头部（仿父卡片范式）：标题左；展开时过滤器靠右；最右 Chevron 旋转切换
+          // 模型区头部（仿父卡片范式）：标题左；最右 Chevron 旋转切换
           var mTopChildren = [
             react.createElement(
               'button',
@@ -2005,40 +1987,9 @@ export function ProviderSettingsSection() {
                 key: 'm-head',
                 onClick: function () { toggle(account.id + ':models', false) },
               },
-              react.createElement('span', null, needle === ''
-                ? tf('prov.models', { count: models.length })
-                : tf('prov.modelsFiltered', { shown: filtered.length, total: models.length })),
+              react.createElement('span', null, tf('prov.models', { count: models.length })),
             ),
           ]
-          if (modelsOpen) {
-            mTopChildren.push(
-              react.createElement(
-                'span',
-                { className: 'pv_fbox', key: 'm-filter' },
-                react.createElement('input', {
-                  className: 'pv_mFilter',
-                  type: 'text',
-                  placeholder: t('prov.filter'),
-                  value: filterText,
-                  onChange: function (event: FieldEvent) {
-                    setFilter(account.id, event.target.value)
-                  },
-                }),
-                filterText === ''
-                  ? null
-                  : react.createElement(
-                      'button',
-                      {
-                        type: 'button',
-                        className: 'pv_fclear',
-                        title: t('prov.clear'),
-                        onClick: function () { setFilter(account.id, '') },
-                      },
-                      '×',
-                    ),
-              ),
-            )
-          }
           mTopChildren.push(
             react.createElement(
               'div',
@@ -2062,7 +2013,6 @@ export function ProviderSettingsSection() {
                 account: account,
                 catalog: models,
                 details: detailsById,
-                filterText: filterText,
                 onSaved: function (message: string) {
                   showToast(message, true)
                   // 清单变了：重拉余额/路由元信息 + 模型目录 + 预设
@@ -2086,12 +2036,8 @@ export function ProviderSettingsSection() {
                 react.createElement('span', { className: 'pv_mCtx' }, t('prov.ctx')),
               ),
             )
-            if (filtered.length === 0) {
-              mListRows.push(react.createElement('div', { className: 'pv_line', key: 'm-empty' }, tf('m.noMatch', { query: filterText })))
-            } else {
-              for (var m = 0; m < filtered.length; m += 1) {
-                mListRows.push(modelRow(filtered[m], account, detailsById))
-              }
+            for (var m = 0; m < models.length; m += 1) {
+              mListRows.push(modelRow(models[m], account, detailsById))
             }
             // 列表区：分割线上边缘贯穿模型框
             mBoxRows.push(react.createElement('div', { className: 'pv_mList', key: 'm-list' }, mListRows))

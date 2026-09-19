@@ -155,10 +155,15 @@ try {
         return custom ? el.querySelector('.pv_meNum') !== null : el.querySelector('.pv_meNum') === null
       }),
       wrapId: rows.length > 0 && getComputedStyle(rows[0].querySelector('.pv_mId')).whiteSpace === 'normal',
+      noFilter: document.querySelector('.pv_mFilter') === null,
+      delBtnOnConfiguredOnly: rows.every(function (el) {
+        var configured = el.querySelector('.pv_meCheck').checked || el.querySelector('.pv_capDeclared') !== null
+        return (el.querySelector('.pv_iconBtn') !== null) === configured
+      }),
     }
   })()`)
   console.log('  清单探针:', JSON.stringify(editorProbe))
-  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.knownRowsReadOnly !== true || editorProbe.wrapId !== true) {
+  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.knownRowsReadOnly !== true || editorProbe.wrapId !== true || editorProbe.noFilter !== true || editorProbe.delBtnOnConfiguredOnly !== true) {
     throw new Error('模型清单结构没满足：' + JSON.stringify(editorProbe))
   }
   shots.push(await cdp.shot('02-model-list-editor'))
