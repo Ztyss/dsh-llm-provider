@@ -1271,20 +1271,14 @@ export function ProviderSettingsSection() {
   var savingKeyState = react.useState({})
   var savingKey = savingKeyState[0]
   var setSavingKey = savingKeyState[1]
-  // 卡片级编辑模式（按 provider id 存）：
-  //   editOpen   —— 这张卡正展开编辑表单
-  //   editForms  —— 表单当前值（打开时从 route 快照初始化）
-  //   editOrigin —— 打开时的原值快照，用于"只写改过的字段"与"没改就别点保存"
+  // 卡片级编辑（就地编辑，按 provider id 存）：
+  //   editForms  —— 表单草稿（没改过的卡没有草稿，字段直接显示 route 快照值）
   //   editBusy   —— 正在保存（防连点）
-  var editOpenState = react.useState({})
-  var editOpen = editOpenState[0]
-  var setEditOpen = editOpenState[1]
+  // 原值不再快照存储：随时从 routesById 现算（打开编辑模式的旧机制已删——字段就地可编辑，
+  // 保存按钮只在有改动时出现）
   var editFormsState = react.useState({})
   var editForms = editFormsState[0]
   var setEditForms = editFormsState[1]
-  var editOriginState = react.useState({})
-  var editOrigin = editOriginState[0]
-  var setEditOrigin = editOriginState[1]
   var editBusyState = react.useState({})
   var editBusy = editBusyState[0]
   var setEditBusy = editBusyState[1]
@@ -1647,23 +1641,7 @@ export function ProviderSettingsSection() {
       })
   }
 
-  /**
-   * 展开/收起某张卡的编辑表单。
-   *
-   * 打开时**从 route 快照取初值**（`routesById[id]`，宿主下发的那份 YAML 解析结果），
-   * 而不是从只读展示字段拼——展示字段经过格式化（短名、掩码），拿它当编辑初值会把
-   * 展示形态写回配置。快照缺失时退回展示值，至少不比现在更差。
-   */
-  function toggleEditMode(account: PlanAccount, on: boolean) {
-    if (on) {
-      var form = providerEditForm(routesById[account.id] !== undefined ? routesById[account.id] : account)
-      setEditForms(function (prev: AnyRecord) { return withKey(prev, account.id, form) })
-      setEditOrigin(function (prev: AnyRecord) { return withKey(prev, account.id, form) })
-    }
-    setEditOpen(function (prev: AnyRecord) { return withKey(prev, account.id, on) })
-  }
-
-  /** 改一个编辑字段（表单值留在本地，按「保存」才写盘）。 */
+  /** 改一个编辑字段（草稿留在本地，按「保存修改」才写盘）。 */
   function setEditField(id: string, field: keyof ProviderEditForm, value: string) {
     setEditForms(function (prev: AnyRecord) {
       var current = (prev[id] !== undefined ? prev[id] : {}) as unknown as Record<string, string>
@@ -1683,23 +1661,27 @@ export function ProviderSettingsSection() {
    */
   function saveProviderEdit(account: PlanAccount) {
     var form = (editForms[account.id] !== undefined ? editForms[account.id] : {}) as ProviderEditForm
-    var original = (editOrigin[account.id] !== undefined ? editOrigin[account.id] : {}) as ProviderEditForm
+    var origin = providerEditForm(routesById[account.id] !== undefined ? routesById[account.id] : account)
     var bad = validateProviderEdit(form)
     if (bad !== undefined) {
       setNote(t(bad))
       return
     }
-    var ops = providerEditSaveOps(account.id, form, original)
+    var ops = providerEditSaveOps(account.id, form, origin)
     if (ops.length === 0) {
       setNote(t('edit.noChange'))
-      setEditOpen(function (prev: AnyRecord) { return withKey(prev, account.id, false) })
       return
     }
     setEditBusy(function (prev: AnyRecord) { return withKey(prev, account.id, true) })
     apiCall('settings/mutate', { ns: 'llm-pi-ai', ops: ops })
       .then(function () {
         setNote(tf('edit.saved', { id: account.id }))
-        setEditOpen(function (prev: AnyRecord) { return withKey(prev, account.id, false) })
+        // 丢弃草稿：字段回落到刷新后的 route 快照，没有改动 → 保存按钮自动隐藏
+        setEditForms(function (prev: AnyRecord) {
+          var next: AnyRecord = {}
+          for (var key in prev) if (key !== account.id) next[key] = prev[key]
+          return next
+        })
         return postJson('/provider/refresh').catch(function () { /* 刷新失败不影响已保存的结果 */ })
       })
       .then(function () {
@@ -1800,6 +1782,28 @@ export function ProviderSettingsSection() {
             react.createElement('span', { className: 'pv_field' }, String(account.id)),
           ),
         )
+        // —— provider 级配置就地可编辑（没有「编辑模式」、没有下方独立表单）——
+        // 草稿没改过时字段直接显示 route 快照值；有改动才出现「保存修改 / 取消」。
+        // 原值现算而不是用展示字段：展示值经过格式化（短名、掩码），写回会把展示形态存进配置。
+        var editOrigin = providerEditForm(routesById[account.id] !== undefined ? routesById[account.id] : account)
+        var editForm = (editForms[account.id] !== undefined ? editForms[account.id] : editOrigin) as ProviderEditForm
+        var editDirty = isProviderEditDirty(editForm, editOrigin)
+        var busyEdit = editBusy[account.id] === true
+        // 显示名（卡片标题的文字）。路由 ID 是配置键，就地改名做不到，保持只读。
+        bodyRows.push(
+          react.createElement(
+            'div',
+            { className: 'pv_line pv_row', key: 'name' },
+            react.createElement('span', null, t('edit.displayName')),
+            react.createElement('input', {
+              className: 'pv_field pv_key',
+              type: 'text',
+              value: editForm.displayName,
+              placeholder: account.id,
+              onChange: function (event: FieldEvent) { setEditField(account.id, 'displayName', event.target.value) },
+            }),
+          ),
+        )
         // API 密钥行：配好了显示掩码提示（宿主派生前3+后4，值不出宿主）；
         // 只有路由、还没密钥时这里就是唯一能补 key 的地方（官方 Models 页已被本插件的
         // cordis.patch.yml 禁用，别处没有入口）。原生路由（source: native）也走同一条
@@ -1842,34 +1846,91 @@ export function ProviderSettingsSection() {
                 ),
           ),
         )
-        if (account.baseUrl !== undefined) {
-          bodyRows.push(
+        // API 地址：就地编辑；清空 = 移除这个键（回到官方默认端点）
+        bodyRows.push(
+          react.createElement(
+            'div',
+            { className: 'pv_line pv_row', key: 'url' },
+            react.createElement('span', null, t('prov.apiBase')),
+            react.createElement('input', {
+              className: 'pv_field pv_key',
+              type: 'text',
+              value: editForm.baseURL,
+              placeholder: t('edit.baseUrlPlaceholder'),
+              onChange: function (event: FieldEvent) { setEditField(account.id, 'baseURL', event.target.value) },
+            }),
+          ),
+        )
+        // 协议：就地选择；（默认）= 不写 api 键，由 pi-ai 按端点自行判定
+        bodyRows.push(
+          react.createElement(
+            'div',
+            { className: 'pv_line pv_row', key: 'api' },
+            react.createElement('span', null, t('prov.protocol')),
             react.createElement(
-              'div',
-              { className: 'pv_line pv_row', key: 'url' },
-              react.createElement('span', null, t('prov.apiBase')),
-              react.createElement('span', { className: 'pv_field' }, String(account.baseUrl)),
+              'select',
+              {
+                className: 'pv_field pv_key',
+                value: editForm.api,
+                onChange: function (event: FieldEvent) { setEditField(account.id, 'api', event.target.value) },
+              },
+              react.createElement('option', { value: '' }, t('edit.apiDefault')),
+              PROVIDER_API_OPTIONS.map(function (option: string) {
+                return react.createElement('option', { value: option, key: option }, option)
+              }),
             ),
-          )
-        }
-        // 协议 / 凭据名：原生适配器路由（deepseek-official 这类）不写 settings 段，可能只有其中一个
-        if (account.api !== undefined) {
+          ),
+        )
+        // 凭据名（密钥存为哪个环境变量）。值本身不在这里改：凭据走 credentials 通道，
+        // 卡片上方的补录框 / 右上角刷新才是值入口。
+        bodyRows.push(
+          react.createElement(
+            'div',
+            { className: 'pv_line pv_row', key: 'ref' },
+            react.createElement('span', null, t('edit.keyEnv')),
+            react.createElement('input', {
+              className: 'pv_field pv_key',
+              type: 'text',
+              value: editForm.apiKeyEnv,
+              placeholder: account.id.toUpperCase() + '_API_KEY',
+              onChange: function (event: FieldEvent) { setEditField(account.id, 'apiKeyEnv', event.target.value) },
+            }),
+          ),
+        )
+        // 有改动才出现操作区：写清「清空」的语义（删键，不是写空串）
+        if (editDirty || busyEdit) {
           bodyRows.push(
             react.createElement(
               'div',
-              { className: 'pv_line pv_row', key: 'api' },
-              react.createElement('span', null, t('prov.protocol')),
-              react.createElement('span', { className: 'pv_field' }, String(account.api)),
-            ),
-          )
-        }
-        if (account.apiKeyEnv !== undefined) {
-          bodyRows.push(
-            react.createElement(
-              'div',
-              { className: 'pv_line pv_row', key: 'ref' },
-              react.createElement('span', null, ''),
-              react.createElement('span', { className: 'pv_hint' }, tf('prov.credStoredAs', { ref: account.apiKeyEnv })),
+              { className: 'pv_editActs', key: 'edit-acts' },
+              react.createElement('div', { className: 'plan_note', key: 'hint' }, t('edit.emptyHint')),
+              react.createElement(
+                'button',
+                {
+                  type: 'button',
+                  className: 'pv_action',
+                  disabled: busyEdit || !editDirty,
+                  onClick: function () { saveProviderEdit(account) },
+                },
+                busyEdit ? t('edit.saving') : t('edit.save'),
+              ),
+              react.createElement(
+                'button',
+                {
+                  type: 'button',
+                  className: 'pv_action',
+                  disabled: busyEdit,
+                  onClick: function () {
+                    // 取消 = 丢弃草稿，字段回落到 route 快照（操作区随之隐藏）
+                    setEditForms(function (prev: AnyRecord) {
+                      var next: AnyRecord = {}
+                      for (var key in prev) if (key !== account.id) next[key] = prev[key]
+                      return next
+                    })
+                  },
+                },
+                t('prov.cancel'),
+              ),
             ),
           )
         }
@@ -2024,84 +2085,6 @@ export function ProviderSettingsSection() {
         if (typeof account.credentialWarning === 'string') {
           bodyRows.push(react.createElement('div', { className: 'plan_note plan_badText', key: 'warn' }, account.credentialWarning))
         }
-        // 编辑面板：provider 级的四个字段就地可改（displayName / api / baseURL / apiKeyEnv）。
-        // 与新增面板的关键差别：**不要求重打 key、不要求先测试通过**——那些门槛对"改一个
-        // 显示名"或"换个端点"来说是纯阻碍，而凭据另有补录通道（卡片上的 keyless 输入框）。
-        if (editOpen[account.id] === true) {
-          var form = (editForms[account.id] !== undefined ? editForms[account.id] : providerEditForm(account)) as ProviderEditForm
-          var dirty = isProviderEditDirty(form, (editOrigin[account.id] !== undefined ? editOrigin[account.id] : form) as ProviderEditForm)
-          var busyEdit = editBusy[account.id] === true
-          var fieldRow = function (labelKey: string, inputEl: unknown, key: string) {
-            return react.createElement(
-              'div',
-              { className: 'pv_field', key: key },
-              react.createElement('span', { className: 'pv_flabel' }, t(labelKey)),
-              inputEl,
-            )
-          }
-          var editRows = [
-            fieldRow('edit.displayName', react.createElement('input', {
-              className: 'pv_key',
-              type: 'text',
-              value: form.displayName,
-              placeholder: account.id,
-              onChange: function (event: FieldEvent) { setEditField(account.id, 'displayName', event.target.value) },
-            }), 'displayName'),
-            fieldRow('edit.api', react.createElement(
-              'select',
-              {
-                className: 'pv_field pv_key',
-                value: form.api,
-                onChange: function (event: FieldEvent) { setEditField(account.id, 'api', event.target.value) },
-              },
-              react.createElement('option', { value: '' }, t('edit.apiDefault')),
-              PROVIDER_API_OPTIONS.map(function (option: string) {
-                return react.createElement('option', { value: option, key: option }, option)
-              }),
-            ), 'api'),
-            fieldRow('edit.baseUrl', react.createElement('input', {
-              className: 'pv_key',
-              type: 'text',
-              value: form.baseURL,
-              placeholder: t('edit.baseUrlPlaceholder'),
-              onChange: function (event: FieldEvent) { setEditField(account.id, 'baseURL', event.target.value) },
-            }), 'baseURL'),
-            fieldRow('edit.keyEnv', react.createElement('input', {
-              className: 'pv_key',
-              type: 'text',
-              value: form.apiKeyEnv,
-              placeholder: account.id.toUpperCase() + '_API_KEY',
-              onChange: function (event: FieldEvent) { setEditField(account.id, 'apiKeyEnv', event.target.value) },
-            }), 'apiKeyEnv'),
-            // 写清"清空"的语义：删掉端点不是写一个空串，而是移除这个键（回到默认）。
-            react.createElement('div', { className: 'plan_note', key: 'hint' }, t('edit.emptyHint')),
-            react.createElement(
-              'div',
-              { className: 'pv_editActs', key: 'acts' },
-              react.createElement(
-                'button',
-                {
-                  type: 'button',
-                  className: 'pv_action',
-                  disabled: busyEdit || !dirty,
-                  onClick: function () { saveProviderEdit(account) },
-                },
-                busyEdit ? t('edit.saving') : t('edit.save'),
-              ),
-              react.createElement(
-                'button',
-                {
-                  type: 'button',
-                  className: 'pv_action',
-                  disabled: busyEdit,
-                  onClick: function () { toggleEditMode(account, false) },
-                },
-                t('prov.cancel'),
-              ),
-            ),
-          ]
-          bodyRows.push(react.createElement('div', { className: 'pv_editPanel', key: 'edit' }, editRows))
-        }
       }
 
       var linkUrl = typeof account.websiteUrl === 'string' && account.websiteUrl !== ''
@@ -2186,22 +2169,6 @@ export function ProviderSettingsSection() {
                     onClick: function () { refreshAccount(account) },
                   },
                   '↻',
-                ),
-                // 编辑 provider 级信息（显示名 / 协议 / 端点 / 凭据名）。
-                // 为什么要这个入口：官方 ui-settings-models 被本插件禁用后，卡片上的
-                // provider 字段全是只读文本（route id 是 span、baseUrl/api 是 span、
-                // displayName 只是标题），而「＋ 添加供应商」那条路径对目录预设锁死了
-                // baseURL 与 api，还要求重打 key + 测试通过才放行——等于改不了。
-                react.createElement(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'pv_iconBtn' + (editOpen[account.id] === true ? ' pv_editOn' : ''),
-                    disabled: editOpen[account.id] === true,
-                    title: t('edit.tip'),
-                    onClick: function () { toggleEditMode(account, editOpen[account.id] !== true) },
-                  },
-                  '✎',
                 ),
                 account.deletable === true
                   ? react.createElement(

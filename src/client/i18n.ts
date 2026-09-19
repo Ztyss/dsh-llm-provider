@@ -89,8 +89,7 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'prov.adding': '添加中…',
     'prov.needTestFirst': '先通过测试才能添加',
     'prov.cancel': '取消',
-    // ---- 卡片级 provider 编辑 ----
-    'edit.tip': '编辑这个供应商的配置（显示名 / 协议 / 端点 / 凭据名）',
+    // ---- 卡片级 provider 编辑（就地编辑）----
     'edit.displayName': '显示名',
     'edit.api': '协议',
     'edit.apiDefault': '（默认）',
@@ -283,8 +282,7 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'prov.adding': 'Adding…',
     'prov.needTestFirst': 'Pass the test first to add',
     'prov.cancel': 'Cancel',
-    // ---- per-card provider editing ----
-    'edit.tip': 'Edit this provider (display name / protocol / endpoint / credential name)',
+    // ---- per-card provider editing (inline) ----
     'edit.displayName': 'Display name',
     'edit.api': 'Protocol',
     'edit.apiDefault': '(default)',
