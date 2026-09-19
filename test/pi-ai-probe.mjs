@@ -3,7 +3,7 @@
 // 两件事：能不能从 bundle 源码里读出它对 pi-ai 的 import 需求；体检能不能挡住
 // 不兼容的候选——尤其是"先体检一个坏的、再体检一个好的"这种组合，因为 Node 对
 // 加载失败的 ESM 会留下半初始化记录，探针目录要是共用一条 URL，第二个必然误判成失败。
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { piAiCandidates, piAiRequirements, probePiAi } from '../lib/bridge.js'
@@ -80,12 +80,13 @@ check('坏 → 好 的顺序下，好候选仍通过', r2.ok === true)
 check('无需求 + 目录存在 → 通过', probePiAi([], good, 'noreq').ok === true)
 check('无需求 + 目录不存在 → 不通过', probePiAi([], join(tmpdir(), 'pi-ai-无-xyz'), 'noreq2').ok === false)
 // ---- 候选列表 ----
-// 策略（用户诉求）：pi-ai 只用 DSH 自带那一份，插件不再养副本，
-// 所以候选里**不该**再出现「下载档」与「兜底依赖档」。
+// 合并版候选策略：四档（vendor 下载档新→旧 → vendor 兜底依赖 → dsh-app 安装树 → dsh bundle 链）。
+// vendor 档默认不落地（下载 opt-in，DSH_PROVIDER_UPDATE=on 才启用），但档位本身保留——
+// 那是「未来切换插件管理的更新版 pi-ai」的既定路径。
 const candidates = piAiCandidates()
-check('候选里不再有下载档（vendor/pi-ai/<版本>）', !candidates.some((c) => /^\d+\.\d+\.\d+/.test(c.key)))
-check('候选里不再有兜底依赖档（插件自带依赖）', !candidates.some((c) => c.key === 'dependency'))
-check('候选只列宿主那一档', candidates.every((c) => c.key === 'dsh'))
+check('候选里没有内容残缺的下载档（在册的都有 package.json）', candidates.filter((c) => /^\d+\.\d+\.\d+/.test(c.key)).every((c) => existsSync(join(c.root, 'package.json'))))
+check('候选含兜底依赖档（opt-in 路径的档位保留）', candidates.some((c) => c.key === 'dependency'))
+check('宿主档的 key 为 dsh-app / dsh', candidates.filter((c) => c.key !== 'dependency').every((c) => c.key === 'dsh-app' || c.key === 'dsh'))
 // dsh 自带那一档：没装/依赖没装时可以缺席，但在场时必须挂软链（桥接要把链指过去）。
 const dshTier = candidates.find((c) => c.key === 'dsh')
 check('dsh 自带档挂软链', dshTier === undefined || dshTier.link === true)

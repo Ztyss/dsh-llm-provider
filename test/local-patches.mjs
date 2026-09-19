@@ -80,8 +80,8 @@ check('#2 输入乱序也规整成 5h→7d→30d', client.headlineChips({
 
 // 3. issue #5：详情索引按 provider+id
 const map = {
-  [client.detailKey('opencode-go', 'glm-5.1')]: { id: 'glm-5.1', provider: 'opencode-go', vision: false, source: 'pi-ai' },
-  [client.detailKey('zai-coding-cn', 'glm-5.1')]: { id: 'glm-5.1', provider: 'zai-coding-cn', vision: true, source: 'pi-ai' },
+  ['opencode-go/glm-5.1']: { id: 'glm-5.1', provider: 'opencode-go', vision: false, source: 'pi-ai' },
+  ['zai-coding-cn/glm-5.1']: { id: 'glm-5.1', provider: 'zai-coding-cn', vision: true, source: 'pi-ai' },
 }
 check('#5 同名模型按 provider 分开查（opencode-go）', client.lookupDetail(map, 'opencode-go', 'glm-5.1').vision, false)
 check('#5 同名模型按 provider 分开查（zai-coding-cn）', client.lookupDetail(map, 'zai-coding-cn', 'glm-5.1').vision, true)
@@ -91,7 +91,7 @@ check('#5 detailsOfProvider 只吐该家的', client.detailsOfProvider(map, 'ope
 // 4. issue #4：桥接页在「更新停用」时的行 / 文案
 const rows = client.piAiBridgeRows({ active: true, piAiVersion: '0.85.1', source: 'dsh' }, undefined, false)
 check('#4 停用更新时多一行说明', rows.some((row) => row.text.includes('自动下载已停用')), true)
-check('#4 上游文案标已停用', client.piAiUpstreamText({ latest: '0.86.0' }, false), '上游 自动检查已停用（本地版）')
+check('#4 上游文案标已停用', client.piAiUpstreamText({ latest: '0.86.0' }, false), 'Upstream auto-check disabled (no vendored copies)')
 
 // ---- 宿主端：真跑 lib/model-details.js ----
 const { withDeclaredModels, modelKey } = await import(new URL('../lib/model-details.js', import.meta.url).href)

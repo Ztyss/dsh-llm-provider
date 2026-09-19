@@ -188,4 +188,4 @@ export { piAiBridgeRows, piAiUpstreamText, presetPickState, providerSaveOps, isR
 export { providerEditForm, providerEditSaveOps, validateProviderEdit, isProviderEditDirty, PROVIDER_API_OPTIONS } from './provider-edit.js'
 export { reasoningTextOf, defaultEffortOf, headlineChips, shortWindowLabel, relativeTime, resetCountdownText, quotaShortOf, quotaTextOf, quotaTipOf } from './format.js'
 export { LOCAL_DICT, localT, t, tf, setT } from './i18n.js'
-export { buildModelEditor, patchModelRow, addModelRow, validateModelRows, modelListPayload } from './model-editor.js'
+export { buildModelEditor, patchModelRow, addModelRow, validateModelRows, modelListPayload, isDefaultCatalogEquivalent } from './model-editor.js'

@@ -26,17 +26,15 @@ function check(name, cond, extra) {
   if (!cond) failures += 1
 }
 
-// ---- 1. 候选清单：只剩宿主那一档 ----
-const report = piAiCandidates(true)
+// ---- 1. 候选清单：合并版四档（vendor 下载档 → 兜底依赖 → dsh-app → dsh）----
+// vendor 档默认不落地（下载 opt-in，DSH_PROVIDER_UPDATE=on 才启用），但档位保留；
+// 宿主档（dsh-app / dsh）永远优先级最低的那两档之前是 vendor，这是既定的候选顺序。
+const report = piAiCandidates()
 check('候选报告是数组', Array.isArray(report) && report.length > 0)
 check('每条候选都带路径', report.every((c) => typeof c.root === 'string' && c.root !== ''))
 check('每条候选都带 key 与版本/来源文字', report.every((c) => typeof c.key === 'string' && typeof c.version === 'string'))
-check('每条候选都带「在不在」的结论', report.every((c) => typeof c.exists === 'boolean'))
-check('候选只有宿主那一档（没有下载档 / 兜底依赖档）', report.every((c) => c.key === 'dsh'))
-
-const roots = piAiCandidates(false)
-check('不带状态时仍返回同样数量的候选', roots.length === report.length)
-check('不探测时不做文件系统访问', roots.every((c) => c.exists === undefined))
+check('含兜底依赖档（opt-in 路径的档位保留）', report.some((c) => c.key === 'dependency'))
+check('宿主档的 key 为 dsh-app / dsh', report.filter((c) => c.key !== 'dependency').every((c) => c.key === 'dsh-app' || c.key === 'dsh'))
 
 // 本插件的 vendor 根：用它区分「插件自己的目录」与「宿主的目录」
 const vendorRoot = join(root, 'vendor')
@@ -44,14 +42,14 @@ const vendorRoot = join(root, 'vendor')
 // ---- 2. 候选目录必须真的可用：manifest + 入口都在 ----
 // 只判 package.json 存在是不够的 —— 事故形态正是「目录在、manifest 在、dist 被清空」。
 for (const candidate of report) {
-  if (candidate.exists !== true) continue
+  if (!existsSync(candidate.root)) continue
   check(
     `存在的候选 ${candidate.key} 里确实有 package.json`,
     existsSync(join(candidate.root, 'package.json')),
     candidate.root,
   )
 }
-const dshCandidate = report.find((c) => c.key === 'dsh')
+const dshCandidate = report.find((c) => c.key === 'dsh' || c.key === 'dsh-app')
 if (dshCandidate !== undefined) {
   check(
     'dsh 那份 pi-ai 的路径不在本插件目录里（插件不该是宿主依赖的来源）',
@@ -65,23 +63,22 @@ if (dshCandidate !== undefined) {
   )
 }
 
-// ---- 3. 插件里不该再有任何删除 pi-ai 目录的写路径 ----
-// 这是本次策略变更的硬约束：下载入口关闭后，installVersion / pruneInstalledVersions
-// 这两个带 rmSync(recursive) 的函数连同调用方一起移除了。
+// ---- 3. 删除与后台网络写路径（合并策略：能力保留但默认关死 + 删除必须链感知）----
+// 两次事故的教训不是「不能有下载功能」，而是「绝不能用 rmSync(recursive) 碰任何可能
+// 藏 junction 的目录树」。合并版保留 opt-in 下载（DSH_PROVIDER_UPDATE=on），但：
+//   1. updater 里不允许出现任何递归删除；目录删除一律走链感知 removeTree；
+//   2. 自动下载默认关死，UPDATES_ENABLED 开关是唯一入口。
 const updaterSrc = readFileSync(join(root, 'lib', 'updater.js'), 'utf8')
-check('updater 里不再有 rmSync（危险的递归删除已移除）', !/rmSync/.test(updaterSrc))
-check('updater 里不再有 installVersion', !/installVersion/.test(updaterSrc))
-check('updater 里不再有 pruneInstalledVersions', !/pruneInstalledVersions/.test(updaterSrc))
-check('updater 里不再有 npm 下载/安装命令', !/npm-cli\.js|execFile/.test(updaterSrc))
+check('updater 里没有递归删除（rmSync 一律不带 recursive）', !/rmSync\([^)]*recursive/.test(updaterSrc))
+check('updater 的目录删除走链感知 removeTree', /removeTree/.test(updaterSrc))
+check('updater 有 UPDATES_ENABLED 门控（默认停用）', /UPDATES_ENABLED/.test(updaterSrc))
 
-// 启动时的后台检查也必须不触网：只看这个函数的**函数体**里有没有真的调用
-// （不能用宽正则扫全文——注释里提到 checkAndUpdate 会造成误判）。
+// 启动时的后台检查默认必须不触网：UPDATES_ENABLED 关闭时开头即返回
 {
   const body = /function startBackgroundCheck\([^)]*\)\s*\{([\s\S]*?)\n\}/.exec(updaterSrc)
   const bodyText = body === null ? '' : body[1]
   check('startBackgroundCheck 函数体存在', body !== null)
-  check('startBackgroundCheck 不再调用 checkAndUpdate（不触网）', !/checkAndUpdate\s*\(/.test(bodyText), bodyText)
-  check('startBackgroundCheck 不再读上次检查时间（不再节流轮询）', !/lastCheck|Date\.now/.test(bodyText), bodyText)
+  check('startBackgroundCheck 默认不触网（UPDATES_ENABLED 关闭即返回）', /UPDATES_ENABLED/.test(bodyText), bodyText.slice(0, 100))
 }
 
 // ---- 4. 链接的识别与安全移除 ----

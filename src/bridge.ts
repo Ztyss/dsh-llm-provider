@@ -913,7 +913,9 @@ export function syncBridgeLinks(bundlePath: string, piAiRoot: string): number {
     } catch { /* 还没有链 */ }
     const healthy = existsSync(linkPath)
     if (current === spec.target && healthy) return
-    removeLinkOrDir(linkPath)
+    // 只摘链接本身（removeDirectoryLink 的严格语义：真目录一律不碰）；不是链接才走
+    // removeLinkOrDir 的白名单递归路径（本链位上不该出现真目录，出现即抛，及时暴露）。
+    if (!removeDirectoryLink(linkPath)) removeLinkOrDir(linkPath)
     try {
       symlinkSync(spec.target, linkPath, spec.type)
       links += 1

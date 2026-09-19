@@ -439,7 +439,7 @@ rowsCheck('清单拿不到时不瞎认已配置', isRouteConfigured(undefined, '
 // 详情索引原来用模型 id 单键，而跨 provider 重名在 pi-ai 目录里是常态（实测 claude-opus-5 同时
 // 属于 anthropic / cloudflare-ai-gateway 等 7 家），后读到的那份会盖掉前面那家；能力字段则只有
 // pi-ai 目录一条链路，自定义模型 id 查不到就永远没有「视觉」徽章（详情卡也不会出）。
-const { detailKeyOf, indexModelDetails, capabilityBadges, capabilityKeysOf, capabilitiesKnown, modelRow, modelTip } = moduleExports
+const { lookupDetail, capabilityBadges, capabilityKeysOf, capabilitiesKnown, modelRow, modelTip } = moduleExports
 
 /** 把 react 桩造出来的元素树拍成文本：只为了断言行里 / 卡片上写了什么。 */
 function flattenText(node) {
@@ -450,7 +450,9 @@ function flattenText(node) {
   return ''
 }
 
-const capsApi = [detailKeyOf, indexModelDetails, capabilityBadges, capabilitiesKnown, modelRow, modelTip]
+// 合并版数据层：双索引（provider/id 首选 + 裸 id 兜底）由 lookupDetail 消费；
+// 索引构建在 loadModelDetailMap（异步，此处按同一键式离线复刻），local-patches.mjs 另有覆盖。
+const capsApi = [lookupDetail, capabilityBadges, capabilitiesKnown, modelRow, modelTip]
 rowsCheck('provider+id 索引与能力判定的纯函数都导出了（离线可测）', capsApi.every((fn) => typeof fn === 'function'))
 
 const detailPayload = [
@@ -458,15 +460,18 @@ const detailPayload = [
   { id: 'claude-opus-5', provider: 'cloudflare-ai-gateway', name: 'Claude Opus 5', vision: false, video: false, reasoning: false, thinkingLevels: [], contextWindow: 100000 },
   { id: 'deepseek-flash', provider: 'opencode-go', name: 'DeepSeek V4.1 Flash', vision: true, video: false, contextWindow: 1000000, maxTokens: 384000 },
 ]
-const indexed = typeof indexModelDetails === 'function' ? indexModelDetails(detailPayload) : {}
-const detailAt = (provider, id) => (typeof detailKeyOf === 'function' ? indexed[detailKeyOf(provider, id)] : undefined)
+const indexed = {}
+for (const d of detailPayload) {
+  indexed[d.provider + '/' + d.id] = d
+  if (indexed[d.id] === undefined) indexed[d.id] = d
+}
+const detailAt = (provider, id) => lookupDetail(indexed, provider, id)
 
 rowsCheck('同名模型两家各是一条，互不覆盖',
   detailAt('anthropic', 'claude-opus-5')?.contextWindow === 200000
     && detailAt('cloudflare-ai-gateway', 'claude-opus-5')?.contextWindow === 100000)
-rowsCheck('形状不对的条目跳过（不塞半条进索引）',
-  typeof indexModelDetails === 'function'
-    && Object.keys(indexModelDetails([{ id: 'x' }, null, 'y', { provider: 'p', id: 'z' }])).length === 1)
+rowsCheck('裸 id 兜底：老宿主不下发 provider 时仍能查到（合并版双索引）',
+  lookupDetail({ 'solo-model': { id: 'solo-model', provider: 'p' } }, 'p', 'solo-model')?.id === 'solo-model')
 
 const rowText = (model, account) => (typeof modelRow === 'function' ? flattenText(modelRow(model, account, indexed)) : '')
 rowsCheck('自定义模型（route 声明了 image）拿得到「视觉」徽章',
