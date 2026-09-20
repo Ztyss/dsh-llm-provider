@@ -521,7 +521,7 @@ try {
   await sleep(300)
   const emptyErr = await cdp.eval(`(document.querySelector('.pv_me .plan_badText') || {}).textContent || ''`)
   if (emptyErr === '') throw new Error('空 ID 没有报错')
-  // 上下文留空（自动按已知模型填默认 1048576）、最大输出显式填 100000（显式值优先）、
+  // 上下文留空（最小档默认：已知模型里最小的窗口 1000000）、最大输出显式填 100000（显式值优先）、
   // 勾视觉 + 推理——后面的 set-models 载荷断言同时钉住默认值 / 显式值 / 推理三条路径
   await cdp.eval(`
     var q = function (sel) { return document.querySelector('.pv_meForm ' + sel) }
@@ -610,7 +610,7 @@ try {
   const payloadOk = payload !== null && payload.providerId === 'opencode-go' && JSON.stringify(payload.models) === JSON.stringify([
     { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', contextWindow: 1000000, maxTokens: 384000, input: ['text', 'image'], reasoningEfforts: { low: 'low', high: 'high', max: 'max' } },
     { id: 'kimi-k3' },
-    { id: 'my-custom', name: 'My Custom', contextWindow: 1048576, maxTokens: 100000, input: ['text', 'image'], reasoning: true },
+    { id: 'my-custom', name: 'My Custom', contextWindow: 1000000, maxTokens: 100000, input: ['text', 'image'], reasoning: true },
   ])
   if (payloadOk !== true) throw new Error('勾选保存载荷不对（声明原样 + 已知只写 id + 自定义全参数含推理）：' + JSON.stringify(payload))
   shots.push(await cdp.shot('03-model-list-saved-toast'))

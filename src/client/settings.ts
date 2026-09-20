@@ -912,28 +912,48 @@ function modelEditRow(
 }
 
 /**
- * 「添加模型」表单留空时的默认值：取清单里已知模型中最大的 上下文/最大输出（同一家的
- * 自定义模型按家里最能打的那档填，最贴近真实）；一个已知数都没有时回退保守值。
- * 导出供离线测试钉住（空清单回退 / 取最大 / 非法值忽略）。
+ * 「添加模型」表单留空时的默认值，三级优先（用户批注定的策略）：
+ *   ① 精确匹配：pi-ai 模型库（全量元数据，不分 provider）里有同 id 条目 → 用它的
+ *      官方 contextWindow / maxTokens（跨供应商同名模型就是官方参数）；
+ *   ② 没有精确匹配：按清单里已知模型（pi-ai 元数据）的「最小档」填——保守，
+ *      宁可窗口偏小也别虚报导致上游拒绝；
+ *   ③ 连已知模型都没有：回退保守常数 131072 / 8192。
+ * 导出供离线测试钉住（精确匹配 / 最小档 / 常数回退 / 非法值忽略）。
  */
-export function resolveAddDefaults(rows: ModelEditRow[]): { ctx: string; max: string } {
-  var bestCtx = 0
-  var bestMax = 0
+export function resolveAddDefaults(
+  rows: ModelEditRow[],
+  modelId: string,
+  details: Record<string, ModelDetail> | undefined | null,
+): { ctx: string; max: string } {
+  // ① 精确匹配：pi-ai 模型库（全量元数据，不分 provider）里同 id 的条目 → 官方参数。
+  //    多条同名时取各维度的最小值，保守且确定。
+  var exactCtx: number | undefined = undefined
+  var exactMax: number | undefined = undefined
+  if (details !== null && details !== undefined && modelId !== '') {
+    var ctxs: number[] = []
+    var maxs: number[] = []
+    for (var dk in details) {
+      var d = details[dk]
+      if (d === null || d === undefined || d.id !== modelId) continue
+      if (typeof d.contextWindow === 'number' && d.contextWindow > 0) ctxs.push(d.contextWindow)
+      if (typeof d.maxTokens === 'number' && d.maxTokens > 0) maxs.push(d.maxTokens)
+    }
+    if (ctxs.length > 0) exactCtx = Math.min.apply(null, ctxs)
+    if (maxs.length > 0) exactMax = Math.min.apply(null, maxs)
+  }
+  // ② 已知模型（pi-ai 元数据）里的最小档：虚报大窗口会让超长输入打到上游才被拒，
+  //    最小档是最不误导的默认。只统计 known 行的元数据值，不把自定义行手填的数当依据。
+  var tierCtx: number | undefined = undefined
+  var tierMax: number | undefined = undefined
   for (var i = 0; i < rows.length; i += 1) {
-    var row = rows[i]
-    var candidates = [row.knownContextWindow, parsePositiveInt(row.contextWindow)]
-    for (var c = 0; c < candidates.length; c += 1) {
-      if (typeof candidates[c] === 'number' && (candidates[c] as number) > bestCtx) bestCtx = candidates[c] as number
-    }
-    var maxCandidates = [row.knownMaxTokens, parsePositiveInt(row.maxTokens)]
-    for (var m = 0; m < maxCandidates.length; m += 1) {
-      if (typeof maxCandidates[m] === 'number' && (maxCandidates[m] as number) > bestMax) bestMax = maxCandidates[m] as number
-    }
+    var r = rows[i]
+    if (r.known !== true) continue
+    if (typeof r.knownContextWindow === 'number' && r.knownContextWindow > 0 && (tierCtx === undefined || r.knownContextWindow < tierCtx)) tierCtx = r.knownContextWindow
+    if (typeof r.knownMaxTokens === 'number' && r.knownMaxTokens > 0 && (tierMax === undefined || r.knownMaxTokens < tierMax)) tierMax = r.knownMaxTokens
   }
-  return {
-    ctx: bestCtx > 0 ? String(bestCtx) : '131072',
-    max: bestMax > 0 ? String(bestMax) : '8192',
-  }
+  var ctx = exactCtx !== undefined ? exactCtx : tierCtx !== undefined ? tierCtx : 131072
+  var max = exactMax !== undefined ? exactMax : tierMax !== undefined ? tierMax : 8192
+  return { ctx: String(ctx), max: String(max) }
 }
 
 function parsePositiveInt(raw: string | undefined): number | undefined {
@@ -1070,7 +1090,7 @@ function ModelListEditor(props: {
     for (var i = 0; i < rows.length; i += 1) if (rows[i].id === id) exists = true
     if (exists) { setError('「' + id + '」已经在清单里了'); return }
     if (lookupDetail(props.details, account.id, id) !== undefined) { setError('「' + id + '」已在 pi-ai 目录里，直接在清单里勾选即可'); return }
-    var defaults = resolveAddDefaults(rows)
+    var defaults = resolveAddDefaults(rows, id, props.details)
     var ctxRaw = form.ctx.trim() === '' ? defaults.ctx : form.ctx.trim()
     var maxRaw = form.max.trim() === '' ? defaults.max : form.max.trim()
     var ctxNum = Number(ctxRaw)

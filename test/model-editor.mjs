@@ -198,23 +198,31 @@ const declaredWithLegacy = buildEditRows(declaredAccount, catalog, legacyDetails
 check('自定义清单 + 历史候选：只勾声明过的那一条', declaredWithLegacy.filter((r) => r.enabled).length === 1
   && declaredWithLegacy.find((r) => r.id === 'deepseek-v4-flash')?.enabled === true)
 
-// ---- 8. 「添加模型」表单留空时的默认值（取已知模型最大值，全无则回退保守值）----
-// 此前上下文/最大输出留空直接拦截「要填正整数」；改为自动填默认（用户要求），
-// 填进行里随时可改。deepseek 家里最能打的是 1M 窗口 / 384K 输出，默认就该是这档。
+// ---- 8. 「添加模型」表单留空时的默认值（三级策略：精确匹配官方参数 → 同供应商已知最小档 → 保守常数）----
+// 精确匹配：pi-ai 模型库（全量元数据，不分 provider）里有同 id 条目就用它的官方参数；
+// 匹配不到走「已知模型最小档」（保守，宁小勿虚报）；连已知模型都没有回退保守常数。
 const rowsForDefaults = [
-  { id: 'a', contextWindow: '1000000', maxTokens: '384000', knownContextWindow: undefined, knownMaxTokens: undefined },
-  { id: 'b', contextWindow: '', maxTokens: '', knownContextWindow: 65536, knownMaxTokens: 16384 },
+  { id: 'a', contextWindow: '1000000', maxTokens: '384000', knownContextWindow: 1000000, knownMaxTokens: 384000, known: true },
+  { id: 'b', contextWindow: '', maxTokens: '', knownContextWindow: 65536, knownMaxTokens: 16384, known: true },
 ]
-check('默认值 = 已知模型里取最大（1000000/384000）',
-  resolveAddDefaults(rowsForDefaults).ctx === '1000000' && resolveAddDefaults(rowsForDefaults).max === '384000')
+const officialDetails = {
+  'deepseek/deepseek-v4.1-flash': { id: 'deepseek-v4.1-flash', provider: 'deepseek', contextWindow: 1000000, maxTokens: 384000 },
+}
+check('精确匹配官方参数优先（1000000/384000，跨 provider 同名也算）', (() => {
+  const d = resolveAddDefaults(rowsForDefaults, 'deepseek-v4.1-flash', officialDetails)
+  return d.ctx === '1000000' && d.max === '384000'
+})())
+check('无精确匹配：取已知模型最小档（65536/16384，宁小勿虚报）', (() => {
+  const d = resolveAddDefaults(rowsForDefaults, 'new-custom-id', officialDetails)
+  return d.ctx === '65536' && d.max === '16384'
+})())
 check('没有任何已知值时回退保守值（131072/8192）', (() => {
-  const d = resolveAddDefaults([])
+  const d = resolveAddDefaults([], 'anything', undefined)
   return d.ctx === '131072' && d.max === '8192'
 })())
 check('非法字符串忽略，不进默认值', (() => {
-  const d = resolveAddDefaults([{ id: 'x', contextWindow: 'abc', maxTokens: '-5', knownContextWindow: undefined, knownMaxTokens: undefined }])
+  const d = resolveAddDefaults([{ id: 'x', contextWindow: 'abc', maxTokens: '-5', known: false }], 'm', undefined)
   return d.ctx === '131072' && d.max === '8192'
 })())
-
 console.log(failures === 0 ? '\n逐模型清单编辑测试全部通过' : `\n${failures} 个失败`)
 process.exit(failures === 0 ? 0 : 1)

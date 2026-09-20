@@ -2694,23 +2694,40 @@ window.__ModuleLoader__.load({
 			}, "✕") : null);
 		}
 		/**
-		* 「添加模型」表单留空时的默认值：取清单里已知模型中最大的 上下文/最大输出（同一家的
-		* 自定义模型按家里最能打的那档填，最贴近真实）；一个已知数都没有时回退保守值。
-		* 导出供离线测试钉住（空清单回退 / 取最大 / 非法值忽略）。
+		* 「添加模型」表单留空时的默认值，三级优先（用户批注定的策略）：
+		*   ① 精确匹配：pi-ai 模型库（全量元数据，不分 provider）里有同 id 条目 → 用它的
+		*      官方 contextWindow / maxTokens（跨供应商同名模型就是官方参数）；
+		*   ② 没有精确匹配：按清单里已知模型（pi-ai 元数据）的「最小档」填——保守，
+		*      宁可窗口偏小也别虚报导致上游拒绝；
+		*   ③ 连已知模型都没有：回退保守常数 131072 / 8192。
+		* 导出供离线测试钉住（精确匹配 / 最小档 / 常数回退 / 非法值忽略）。
 		*/
-		function resolveAddDefaults(rows) {
-			var bestCtx = 0;
-			var bestMax = 0;
+		function resolveAddDefaults(rows, modelId, details) {
+			var exactCtx = void 0;
+			var exactMax = void 0;
+			if (details !== null && details !== void 0 && modelId !== "") {
+				var ctxs = [];
+				var maxs = [];
+				for (var dk in details) {
+					var d = details[dk];
+					if (d === null || d === void 0 || d.id !== modelId) continue;
+					if (typeof d.contextWindow === "number" && d.contextWindow > 0) ctxs.push(d.contextWindow);
+					if (typeof d.maxTokens === "number" && d.maxTokens > 0) maxs.push(d.maxTokens);
+				}
+				if (ctxs.length > 0) exactCtx = Math.min.apply(null, ctxs);
+				if (maxs.length > 0) exactMax = Math.min.apply(null, maxs);
+			}
+			var tierCtx = void 0;
+			var tierMax = void 0;
 			for (var i = 0; i < rows.length; i += 1) {
-				var row = rows[i];
-				var candidates = [row.knownContextWindow, parsePositiveInt(row.contextWindow)];
-				for (var c = 0; c < candidates.length; c += 1) if (typeof candidates[c] === "number" && candidates[c] > bestCtx) bestCtx = candidates[c];
-				var maxCandidates = [row.knownMaxTokens, parsePositiveInt(row.maxTokens)];
-				for (var m = 0; m < maxCandidates.length; m += 1) if (typeof maxCandidates[m] === "number" && maxCandidates[m] > bestMax) bestMax = maxCandidates[m];
+				var r = rows[i];
+				if (r.known !== true) continue;
+				if (typeof r.knownContextWindow === "number" && r.knownContextWindow > 0 && (tierCtx === void 0 || r.knownContextWindow < tierCtx)) tierCtx = r.knownContextWindow;
+				if (typeof r.knownMaxTokens === "number" && r.knownMaxTokens > 0 && (tierMax === void 0 || r.knownMaxTokens < tierMax)) tierMax = r.knownMaxTokens;
 			}
 			return {
-				ctx: bestCtx > 0 ? String(bestCtx) : "131072",
-				max: bestMax > 0 ? String(bestMax) : "8192"
+				ctx: String(exactCtx !== void 0 ? exactCtx : tierCtx !== void 0 ? tierCtx : 131072),
+				max: String(exactMax !== void 0 ? exactMax : tierMax !== void 0 ? tierMax : 8192)
 			};
 		}
 		function parsePositiveInt(raw) {
@@ -2866,7 +2883,7 @@ window.__ModuleLoader__.load({
 					setError("「" + id + "」已在 pi-ai 目录里，直接在清单里勾选即可");
 					return;
 				}
-				var defaults = resolveAddDefaults(rows);
+				var defaults = resolveAddDefaults(rows, id, props.details);
 				var ctxRaw = form.ctx.trim() === "" ? defaults.ctx : form.ctx.trim();
 				var maxRaw = form.max.trim() === "" ? defaults.max : form.max.trim();
 				var ctxNum = Number(ctxRaw);
