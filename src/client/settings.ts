@@ -904,6 +904,40 @@ function modelEditRow(
   )
 }
 
+/**
+ * 「添加模型」表单留空时的默认值：取清单里已知模型中最大的 上下文/最大输出（同一家的
+ * 自定义模型按家里最能打的那档填，最贴近真实）；一个已知数都没有时回退保守值。
+ * 导出供离线测试钉住（空清单回退 / 取最大 / 非法值忽略）。
+ */
+export function resolveAddDefaults(rows: ModelEditRow[]): { ctx: string; max: string } {
+  var bestCtx = 0
+  var bestMax = 0
+  for (var i = 0; i < rows.length; i += 1) {
+    var row = rows[i]
+    var candidates = [row.knownContextWindow, parsePositiveInt(row.contextWindow)]
+    for (var c = 0; c < candidates.length; c += 1) {
+      if (typeof candidates[c] === 'number' && (candidates[c] as number) > bestCtx) bestCtx = candidates[c] as number
+    }
+    var maxCandidates = [row.knownMaxTokens, parsePositiveInt(row.maxTokens)]
+    for (var m = 0; m < maxCandidates.length; m += 1) {
+      if (typeof maxCandidates[m] === 'number' && (maxCandidates[m] as number) > bestMax) bestMax = maxCandidates[m] as number
+    }
+  }
+  return {
+    ctx: bestCtx > 0 ? String(bestCtx) : '131072',
+    max: bestMax > 0 ? String(bestMax) : '8192',
+  }
+}
+
+function parsePositiveInt(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw === null) return undefined
+  var trimmed = String(raw).trim()
+  if (trimmed === '') return undefined
+  var num = Number(trimmed)
+  if (!isFinite(num) || Math.floor(num) !== num || num <= 0) return undefined
+  return num
+}
+
 /** 编辑器初始行：当前生效的目录模型 + 目录里该 provider 的全部模型 + 路由声明过的模型。 */
 /** 导出供离线测试钉住初始勾选语义（跟随目录勾目录快照 / 自定义清单只勾声明条目）。 */
 export function buildEditRows(
@@ -975,7 +1009,7 @@ export function buildEditRows(
  * 语义四条（v0.1.3 起勾选改为即时生效）：
  *   勾选 —— 即时生效：直接写 settings 的 `llm-pi-ai.providers.<id>.models`，勾 = 已添加该模型；
  *   ✕ / 添加模型 —— 清单结构修改，先进草稿，点「保存清单」一次性落盘；
- *   保存清单 —— 只留勾上的；目录里没有的自定义 ID 必须填全上下文/最大输出（官方 strict 校验会拒）；
+ *   保存清单 —— 只留勾上的；目录里没有的自定义 ID 也要带上下文/最大输出（官方 strict 校验会拒），表单留空会按已知模型最大值自动补默认（resolveAddDefaults），填了按填的；
  *   还原清单 —— 删掉 models 键，回到 pi-ai 自带的模型清单。
  */
 function ModelListEditor(props: {
@@ -1014,7 +1048,9 @@ function ModelListEditor(props: {
       return prev.filter(function (row) { return row.id !== id })
     })
   }
-  /** 表单「添加」：校验通过就追加一行自定义条目（默认勾上，保存清单后才写盘）。 */
+  /** 表单「添加」：校验通过就追加一行自定义条目（默认勾上，保存清单后才生效）。
+   *  上下文/最大输出留空 = 自动按清单里已知模型的最大值填默认（没有已知值则回退保守值），
+   *  填进行里随时可改；填了但不是正整数才拦。 */
   function addFromForm() {
     var id = form.id.trim()
     if (id === '') { setError('先填模型 ID'); return }
@@ -1022,10 +1058,13 @@ function ModelListEditor(props: {
     for (var i = 0; i < rows.length; i += 1) if (rows[i].id === id) exists = true
     if (exists) { setError('「' + id + '」已经在清单里了'); return }
     if (lookupDetail(props.details, account.id, id) !== undefined) { setError('「' + id + '」已在 pi-ai 目录里，直接在清单里勾选即可'); return }
-    var ctxNum = Number(form.ctx.trim())
-    if (form.ctx.trim() === '' || !isFinite(ctxNum) || Math.floor(ctxNum) !== ctxNum || ctxNum <= 0) { setError('上下文窗口要填正整数'); return }
-    var maxNum = Number(form.max.trim())
-    if (form.max.trim() === '' || !isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) { setError('最大输出要填正整数'); return }
+    var defaults = resolveAddDefaults(rows)
+    var ctxRaw = form.ctx.trim() === '' ? defaults.ctx : form.ctx.trim()
+    var maxRaw = form.max.trim() === '' ? defaults.max : form.max.trim()
+    var ctxNum = Number(ctxRaw)
+    if (!isFinite(ctxNum) || Math.floor(ctxNum) !== ctxNum || ctxNum <= 0) { setError('上下文窗口要填正整数'); return }
+    var maxNum = Number(maxRaw)
+    if (!isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) { setError('最大输出要填正整数'); return }
     var name = form.name.trim()
     setRows(function (prev) {
       return prev.concat([{
@@ -1172,11 +1211,11 @@ function ModelListEditor(props: {
   var formEl = form.open !== true ? null : react.createElement(
     'div',
     { className: 'pv_meForm' },
-    react.createElement('div', { className: 'pv_meFormTitle' }, '新增自定义模型（保存清单后才写盘）'),
+    react.createElement('div', { className: 'pv_meFormTitle' }, '新增自定义模型（保存后才生效）'),
     formRow('模型 ID', formField('目录里没有的自定义 ID', form.id, 'id'), 'f-id'),
     formRow('显示名', formField('留空则同模型 ID', form.name, 'name'), 'f-name'),
-    formRow('上下文窗口', formField('如 1000000', form.ctx, 'ctx', true), 'f-ctx'),
-    formRow('最大输出', formField('如 384000', form.max, 'max', true), 'f-max'),
+    formRow('上下文窗口', formField('留空自动按已知模型填', form.ctx, 'ctx', true), 'f-ctx'),
+    formRow('最大输出', formField('留空自动按已知模型填', form.max, 'max', true), 'f-max'),
     react.createElement('div', { className: 'pv_line pv_row', key: 'f-caps' },
       react.createElement('span', null, '能力'),
       react.createElement('span', { className: 'pv_meFormCaps' },

@@ -472,13 +472,15 @@ try {
   await sleep(300)
   const emptyErr = await cdp.eval(`(document.querySelector('.pv_me .plan_badText') || {}).textContent || ''`)
   if (emptyErr === '') throw new Error('空 ID 没有报错')
+  // 上下文留空（自动按已知模型填默认 1000000）、最大输出显式填 100000（显式值优先）——
+  // 后面的 set-models 载荷断言同时钉住这两条路径
   await cdp.eval(`
     var q = function (sel) { return document.querySelector('.pv_meForm ' + sel) }
     var set = function (el, v) { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })) }
     set(q('input[placeholder="目录里没有的自定义 ID"]'), 'my-custom')
     set(q('input[placeholder="留空则同模型 ID"]'), 'My Custom')
-    set(q('input[placeholder="如 1000000"]'), '1000000')
-    set(q('input[placeholder="如 384000"]'), '100000')
+    var texts = document.querySelectorAll('.pv_meForm input[type=text]')
+    set(texts[3], '100000')
     q('.pv_meFormCaps label input').click()
   `)
   await sleep(300)
@@ -516,7 +518,7 @@ try {
   const payloadOk = payload !== null && payload.providerId === 'opencode-go' && JSON.stringify(payload.models) === JSON.stringify([
     { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', contextWindow: 1000000, maxTokens: 384000, input: ['text', 'image'], reasoningEfforts: { low: 'low', high: 'high', max: 'max' } },
     { id: 'kimi-k3' },
-    { id: 'my-custom', name: 'My Custom', contextWindow: 1000000, maxTokens: 100000, input: ['text', 'image'] },
+    { id: 'my-custom', name: 'My Custom', contextWindow: 1048576, maxTokens: 100000, input: ['text', 'image'] },
   ])
   if (payloadOk !== true) throw new Error('勾选保存载荷不对（声明原样 + 已知只写 id + 自定义全参数）：' + JSON.stringify(payload))
   shots.push(await cdp.shot('03-model-list-saved-toast'))

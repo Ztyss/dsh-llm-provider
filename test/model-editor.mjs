@@ -47,9 +47,10 @@ const {
   isDefaultCatalogEquivalent,
   modelListPayload,
   patchModelRow,
+  resolveAddDefaults,
   validateModelRows,
 } = moduleExports
-for (const [name, fn] of Object.entries({ addModelRow, buildEditRows, buildModelEditor, isDefaultCatalogEquivalent, modelListPayload, patchModelRow, validateModelRows })) {
+for (const [name, fn] of Object.entries({ addModelRow, buildEditRows, buildModelEditor, isDefaultCatalogEquivalent, modelListPayload, patchModelRow, resolveAddDefaults, validateModelRows })) {
   if (typeof fn !== 'function') {
     console.error(`lib/client.js 没有导出 ${name}（先 npm run build，并确认 src/client/index.ts 的导出名单）`)
     process.exit(2)
@@ -196,6 +197,24 @@ check('跟随目录 + 历史候选：候选行仍在清单里（可勾上变成�
 const declaredWithLegacy = buildEditRows(declaredAccount, catalog, legacyDetails)
 check('自定义清单 + 历史候选：只勾声明过的那一条', declaredWithLegacy.filter((r) => r.enabled).length === 1
   && declaredWithLegacy.find((r) => r.id === 'deepseek-v4-flash')?.enabled === true)
+
+// ---- 8. 「添加模型」表单留空时的默认值（取已知模型最大值，全无则回退保守值）----
+// 此前上下文/最大输出留空直接拦截「要填正整数」；改为自动填默认（用户要求），
+// 填进行里随时可改。deepseek 家里最能打的是 1M 窗口 / 384K 输出，默认就该是这档。
+const rowsForDefaults = [
+  { id: 'a', contextWindow: '1000000', maxTokens: '384000', knownContextWindow: undefined, knownMaxTokens: undefined },
+  { id: 'b', contextWindow: '', maxTokens: '', knownContextWindow: 65536, knownMaxTokens: 16384 },
+]
+check('默认值 = 已知模型里取最大（1000000/384000）',
+  resolveAddDefaults(rowsForDefaults).ctx === '1000000' && resolveAddDefaults(rowsForDefaults).max === '384000')
+check('没有任何已知值时回退保守值（131072/8192）', (() => {
+  const d = resolveAddDefaults([])
+  return d.ctx === '131072' && d.max === '8192'
+})())
+check('非法字符串忽略，不进默认值', (() => {
+  const d = resolveAddDefaults([{ id: 'x', contextWindow: 'abc', maxTokens: '-5', knownContextWindow: undefined, knownMaxTokens: undefined }])
+  return d.ctx === '131072' && d.max === '8192'
+})())
 
 console.log(failures === 0 ? '\n逐模型清单编辑测试全部通过' : `\n${failures} 个失败`)
 process.exit(failures === 0 ? 0 : 1)

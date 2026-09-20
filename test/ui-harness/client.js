@@ -2684,6 +2684,34 @@ window.__ModuleLoader__.load({
 				}
 			}, "✕"));
 		}
+		/**
+		* 「添加模型」表单留空时的默认值：取清单里已知模型中最大的 上下文/最大输出（同一家的
+		* 自定义模型按家里最能打的那档填，最贴近真实）；一个已知数都没有时回退保守值。
+		* 导出供离线测试钉住（空清单回退 / 取最大 / 非法值忽略）。
+		*/
+		function resolveAddDefaults(rows) {
+			var bestCtx = 0;
+			var bestMax = 0;
+			for (var i = 0; i < rows.length; i += 1) {
+				var row = rows[i];
+				var candidates = [row.knownContextWindow, parsePositiveInt(row.contextWindow)];
+				for (var c = 0; c < candidates.length; c += 1) if (typeof candidates[c] === "number" && candidates[c] > bestCtx) bestCtx = candidates[c];
+				var maxCandidates = [row.knownMaxTokens, parsePositiveInt(row.maxTokens)];
+				for (var m = 0; m < maxCandidates.length; m += 1) if (typeof maxCandidates[m] === "number" && maxCandidates[m] > bestMax) bestMax = maxCandidates[m];
+			}
+			return {
+				ctx: bestCtx > 0 ? String(bestCtx) : "131072",
+				max: bestMax > 0 ? String(bestMax) : "8192"
+			};
+		}
+		function parsePositiveInt(raw) {
+			if (raw === void 0 || raw === null) return void 0;
+			var trimmed = String(raw).trim();
+			if (trimmed === "") return void 0;
+			var num = Number(trimmed);
+			if (!isFinite(num) || Math.floor(num) !== num || num <= 0) return void 0;
+			return num;
+		}
 		/** 编辑器初始行：当前生效的目录模型 + 目录里该 provider 的全部模型 + 路由声明过的模型。 */
 		/** 导出供离线测试钉住初始勾选语义（跟随目录勾目录快照 / 自定义清单只勾声明条目）。 */
 		function buildEditRows(account, catalog, details) {
@@ -2801,7 +2829,9 @@ window.__ModuleLoader__.load({
 					});
 				});
 			}
-			/** 表单「添加」：校验通过就追加一行自定义条目（默认勾上，保存清单后才写盘）。 */
+			/** 表单「添加」：校验通过就追加一行自定义条目（默认勾上，保存清单后才生效）。
+			*  上下文/最大输出留空 = 自动按清单里已知模型的最大值填默认（没有已知值则回退保守值），
+			*  填进行里随时可改；填了但不是正整数才拦。 */
 			function addFromForm() {
 				var id = form.id.trim();
 				if (id === "") {
@@ -2818,13 +2848,16 @@ window.__ModuleLoader__.load({
 					setError("「" + id + "」已在 pi-ai 目录里，直接在清单里勾选即可");
 					return;
 				}
-				var ctxNum = Number(form.ctx.trim());
-				if (form.ctx.trim() === "" || !isFinite(ctxNum) || Math.floor(ctxNum) !== ctxNum || ctxNum <= 0) {
+				var defaults = resolveAddDefaults(rows);
+				var ctxRaw = form.ctx.trim() === "" ? defaults.ctx : form.ctx.trim();
+				var maxRaw = form.max.trim() === "" ? defaults.max : form.max.trim();
+				var ctxNum = Number(ctxRaw);
+				if (!isFinite(ctxNum) || Math.floor(ctxNum) !== ctxNum || ctxNum <= 0) {
 					setError("上下文窗口要填正整数");
 					return;
 				}
-				var maxNum = Number(form.max.trim());
-				if (form.max.trim() === "" || !isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) {
+				var maxNum = Number(maxRaw);
+				if (!isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) {
 					setError("最大输出要填正整数");
 					return;
 				}
@@ -2992,7 +3025,7 @@ window.__ModuleLoader__.load({
 					}
 				});
 			}
-			var formEl = form.open !== true ? null : react.default.createElement("div", { className: "pv_meForm" }, react.default.createElement("div", { className: "pv_meFormTitle" }, "新增自定义模型（保存清单后才写盘）"), formRow("模型 ID", formField("目录里没有的自定义 ID", form.id, "id"), "f-id"), formRow("显示名", formField("留空则同模型 ID", form.name, "name"), "f-name"), formRow("上下文窗口", formField("如 1000000", form.ctx, "ctx", true), "f-ctx"), formRow("最大输出", formField("如 384000", form.max, "max", true), "f-max"), react.default.createElement("div", {
+			var formEl = form.open !== true ? null : react.default.createElement("div", { className: "pv_meForm" }, react.default.createElement("div", { className: "pv_meFormTitle" }, "新增自定义模型（保存后才生效）"), formRow("模型 ID", formField("目录里没有的自定义 ID", form.id, "id"), "f-id"), formRow("显示名", formField("留空则同模型 ID", form.name, "name"), "f-name"), formRow("上下文窗口", formField("留空自动按已知模型填", form.ctx, "ctx", true), "f-ctx"), formRow("最大输出", formField("留空自动按已知模型填", form.max, "max", true), "f-max"), react.default.createElement("div", {
 				className: "pv_line pv_row",
 				key: "f-caps"
 			}, react.default.createElement("span", null, "能力"), react.default.createElement("span", { className: "pv_meFormCaps" }, react.default.createElement("label", {
@@ -4124,6 +4157,7 @@ window.__ModuleLoader__.load({
 		exports.refreshFailure = refreshFailure;
 		exports.relativeTime = relativeTime;
 		exports.resetCountdownText = resetCountdownText;
+		exports.resolveAddDefaults = resolveAddDefaults;
 		exports.routeYamlOf = routeYamlOf;
 		exports.setT = setT;
 		exports.shortWindowLabel = shortWindowLabel;
