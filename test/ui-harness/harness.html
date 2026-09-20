@@ -134,6 +134,14 @@
       window.__mutateCalls = (window.__mutateCalls || []).concat([args])
       return reply({ result: { ok: true, value: {} } })
     }
+    if (path.indexOf('/api/llm/discoverModels') === 0) {
+      return reply({ result: { ok: true, value: { models: [
+        { id: 'step-3.7-flash' },
+        { id: 'step-router-v1' },
+        { id: 'stepaudio-2.5-chat' },
+      ] } } })
+    }
+    if (path.indexOf('/api/credentials/set') === 0) return reply({ result: { ok: true, value: {} } })
     if (path.indexOf('/provider/refresh') === 0) return reply({ ok: true, account: PLAN.accounts[0] })
     if (path.indexOf('/provider/remove') === 0) { window.__lastRemove = body; return reply({ ok: true, keyCleared: true }) }
     if (path.indexOf('/provider/update') === 0) return reply({ ok: true, disabled: true, error: '本地版已停用 pi-ai 自动下载' })

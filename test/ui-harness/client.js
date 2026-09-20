@@ -2331,7 +2331,8 @@ window.__ModuleLoader__.load({
 			var setForm = formState[1];
 			var testState = react.default.useState({
 				phase: "idle",
-				message: ""
+				message: "",
+				models: []
 			});
 			var test = testState[0];
 			var setTest = testState[1];
@@ -2405,21 +2406,33 @@ window.__ModuleLoader__.load({
 				}).then(function(value) {
 					var models = Array.isArray(value) ? value : value !== null && typeof value === "object" && Array.isArray(value.models) ? value.models : [];
 					var names = [];
-					for (var i = 0; i < models.length && i < 3; i += 1) {
+					var discovered = [];
+					for (var i = 0; i < models.length; i += 1) {
 						var m = models[i];
-						names.push(typeof m === "string" ? m : String(m && (m.name || m.id) || "?"));
+						var mid = typeof m === "string" ? m : String(m && (m.id || m.name) || "");
+						if (mid === "") continue;
+						if (typeof m === "string") discovered.push({ id: mid });
+						else {
+							var rec = m;
+							var entry = { id: mid };
+							if (rec["name"] !== void 0 && rec["name"] !== null && String(rec["name"]) !== "") entry.name = String(rec["name"]);
+							discovered.push(entry);
+						}
+						if (names.length < 3) names.push(typeof m === "string" ? m : String(m && (m.name || m.id) || "?"));
 					}
 					setTest({
 						phase: "ok",
 						message: names.length === 0 ? tf("prov.testOk", { count: models.length }) : tf("prov.testOkNames", {
 							count: models.length,
 							names: models.length > 3 ? tf("prov.testOkMore", { names: names.join("、") }) : names.join("、")
-						})
+						}),
+						models: discovered
 					});
 				}).catch(function(cause) {
 					setTest({
 						phase: "fail",
-						message: "✗ " + String(cause && cause.message ? cause.message : cause)
+						message: "✗ " + String(cause && cause.message ? cause.message : cause),
+						models: []
 					});
 				});
 			}
@@ -2445,9 +2458,24 @@ window.__ModuleLoader__.load({
 				setBusy(true);
 				setNote(null);
 				var existed = isRouteConfigured(presets, routeId);
+				var ops = providerSaveOps(routeId, form);
+				if (existed !== true && Array.isArray(test.models) && test.models.length > 0) ops = ops.concat([{
+					op: "set",
+					path: [
+						"providers",
+						routeId,
+						"models"
+					],
+					value: test.models.map(function(m) {
+						return m.name !== void 0 ? {
+							id: m.id,
+							name: m.name
+						} : { id: m.id };
+					})
+				}]);
 				apiCall("settings/mutate", {
 					ns: "llm-pi-ai",
-					ops: providerSaveOps(routeId, form)
+					ops
 				}).then(function() {
 					return apiCall("credentials/set", {
 						ref: form.apiKeyEnv.trim(),

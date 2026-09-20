@@ -495,7 +495,9 @@ function AddProviderPanel(props: AddProviderPanelProps) {
   var formState = react.useState({ presetId: '', routeId: '', key: '', baseURL: '', api: '', apiKeyEnv: '', websiteUrl: undefined })
   var form = formState[0]
   var setForm = formState[1]
-  var testState = react.useState({ phase: 'idle', message: '' })
+  // 测试成功时把发现的模型一并留下：自定义网关（目录外路由）在 settings/mutate 时
+  // 必须带 models 清单，否则官方校验直接拒绝（"resolves no models"）
+  var testState = react.useState({ phase: 'idle', message: '', models: [] as { id: string; name?: string }[] })
   var test = testState[0]
   var setTest = testState[1]
   var busyState = react.useState(false)
@@ -574,9 +576,20 @@ function AddProviderPanel(props: AddProviderPanelProps) {
       .then(function (value) {
         var models = Array.isArray(value) ? value : (value !== null && typeof value === 'object' && Array.isArray(value.models) ? value.models : [])
         var names = []
-        for (var i = 0; i < models.length && i < 3; i += 1) {
+        var discovered: { id: string; name?: string }[] = []
+        for (var i = 0; i < models.length; i += 1) {
           var m = models[i]
-          names.push(typeof m === 'string' ? m : String((m && (m.name || m.id)) || '?'))
+          var mid = typeof m === 'string' ? m : String((m && (m.id || m.name)) || '')
+          if (mid === '') continue
+          if (typeof m === 'string') {
+            discovered.push({ id: mid })
+          } else {
+            var rec = m as AnyRecord
+            var entry: { id: string; name?: string } = { id: mid }
+            if (rec['name'] !== undefined && rec['name'] !== null && String(rec['name']) !== '') entry.name = String(rec['name'])
+            discovered.push(entry)
+          }
+          if (names.length < 3) names.push(typeof m === 'string' ? m : String((m && (m.name || m.id)) || '?'))
         }
         setTest({
           phase: 'ok',
@@ -588,10 +601,11 @@ function AddProviderPanel(props: AddProviderPanelProps) {
                 ? tf('prov.testOkMore', { names: names.join('、') })
                 : names.join('、'),
             }),
+          models: discovered,
         })
       })
       .catch(function (cause) {
-        setTest({ phase: 'fail', message: '✗ ' + String(cause && cause.message ? cause.message : cause) })
+        setTest({ phase: 'fail', message: '✗ ' + String(cause && cause.message ? cause.message : cause), models: [] })
       })
   }
   /**
@@ -617,7 +631,22 @@ function AddProviderPanel(props: AddProviderPanelProps) {
     setBusy(true)
     setNote(null)
     var existed = isRouteConfigured(presets, routeId)
-    apiCall('settings/mutate', { ns: 'llm-pi-ai', ops: providerSaveOps(routeId, form) })
+    var ops = providerSaveOps(routeId, form)
+    // 目录外的自定义网关必须带 models 清单（官方校验：catalog 不描述这条路由时，
+    // models 必须列在配置里，否则 "resolves no models" 整体拒绝——StepFun 就是它）。
+    // 「测试」成功后发现的模型就是现成清单：新路由自动随本次写入带上，
+    // 条目只写 {id, name?}，上下文/输出由路由默认值兜底（262144 / 32768）。
+    // 已存在的路由不动它的 models（避免覆盖手写清单），走逐模型编辑器改。
+    if (existed !== true && Array.isArray(test.models) && test.models.length > 0) {
+      ops = ops.concat([{
+        op: 'set',
+        path: ['providers', routeId, 'models'],
+        value: test.models.map(function (m: { id: string; name?: string }) {
+          return m.name !== undefined ? { id: m.id, name: m.name } : { id: m.id }
+        }),
+      }])
+    }
+    apiCall('settings/mutate', { ns: 'llm-pi-ai', ops: ops })
       .then(function () {
         return apiCall('credentials/set', { ref: form.apiKeyEnv.trim(), value: form.key.trim() })
       })

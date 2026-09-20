@@ -834,6 +834,85 @@ try {
   `)
   await sleep(200)
 
+  // 8) 自定义网关完整添加链：填端点/密钥 → 测试（发现 3 个模型）→ 添加到列表 →
+  //    mutate 必须携带 models 清单（目录外路由没有 models 会被官方校验整体拒绝，
+  //    用户在 StepFun 上报的就是它）。放在收尾：这段会真实写入，放在所有断言之后。
+  await cdp.eval(`
+    var b = document.querySelector('.pv_addBtn')
+    b.click()
+  `)
+  await cdp.waitFor('.pv_pick')
+  await sleep(200)
+  await cdp.eval(`
+    var t = document.querySelector('.pv_pick button')
+    t.click()
+  `)
+  await sleep(300)
+  await cdp.eval(`
+    var b = Array.from(document.querySelectorAll('.pv_pickList button')).find(function (x) { return x.textContent === 'Custom Gateway' })
+    b.click()
+  `)
+  await sleep(300)
+  await cdp.eval(`
+    var inputs = Array.from(document.querySelectorAll('.pv_line input'))
+    var set = function (el, v) { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })) }
+    var route = inputs.find(function (el) { return el.placeholder === 'custom-gateway' })
+    set(route, 'StepFun')
+    var key = inputs.find(function (el) { return el.type === 'password' })
+    set(key, 'sk-test-stepfun')
+    var base = inputs.find(function (el) { return el !== route && el.type === 'text' && el.value === '' })
+    set(base, 'https://api.stepfun.com/step_plan/v1')
+  `)
+  await sleep(300)
+  await cdp.eval(`
+    var b = Array.from(document.querySelectorAll('.pv_actRow button')).find(function (x) { return x.textContent === '测试' })
+    b.click()
+  `)
+  await sleep(500)
+  const addTest = await cdp.eval(`(function () {
+    var notes = Array.from(document.querySelectorAll('.pv_pcBody .plan_note'))
+    var msg = ''
+    for (var i = notes.length - 1; i >= 0; i -= 1) {
+      if (notes[i].textContent.indexOf('连通') !== -1) { msg = notes[i].textContent; break }
+    }
+    return { msg: msg }
+  })()`)
+  console.log('  添加供应商测试探针:', JSON.stringify(addTest))
+  if (addTest.msg.indexOf('连通') === -1 || addTest.msg.indexOf('3 个模型') === -1) {
+    throw new Error('添加面板测试没有发现模型：' + JSON.stringify(addTest))
+  }
+  await cdp.eval(`
+    var b = Array.from(document.querySelectorAll('.pv_actRow button')).find(function (x) { return x.textContent === '添加到列表' })
+    b.click()
+  `)
+  await sleep(500)
+  const added = await cdp.eval('window.__lastMutate ?? null')
+  console.log('  添加供应商 mutate:', JSON.stringify(added))
+  const addedOk = added !== null && added.ns === 'llm-pi-ai' && (function () {
+    var modelsOp = null
+    for (var i = 0; i < added.ops.length; i += 1) {
+      var op = added.ops[i]
+      if (op.path && op.path[2] === 'models') modelsOp = op
+    }
+    if (modelsOp === null) return false
+    return JSON.stringify(modelsOp.value) === JSON.stringify([
+      { id: 'step-3.7-flash' }, { id: 'step-router-v1' }, { id: 'stepaudio-2.5-chat' },
+    ])
+  })()
+  if (addedOk !== true) throw new Error('添加供应商没有带上 models 清单（目录外路由会被官方校验拒绝）：' + JSON.stringify(added))
+  // 添加成功的端到端信号：面板提示「已添加 StepFun」
+  await sleep(300)
+  const addedNote = await cdp.eval(`(function () {
+    var notes = Array.from(document.querySelectorAll('.pv_pcBody .plan_note'))
+    for (var i = notes.length - 1; i >= 0; i -= 1) {
+      if (notes[i].textContent.indexOf('已添加 StepFun') !== -1) return notes[i].textContent
+    }
+    return ''
+  })()`)
+  console.log('  添加成功提示:', addedNote)
+  if (addedNote.indexOf('已添加 StepFun') === -1) throw new Error('添加成功提示没出现：' + addedNote)
+  shots.push(await cdp.shot('07b-custom-provider-added'))
+
   // 相邻截图不允许完全相同——两张一样说明某个步骤没有真正切过去（01/02 曾这样，md5 都相同）
   const dup = []
   for (let i = 1; i < shots.length; i += 1) {
