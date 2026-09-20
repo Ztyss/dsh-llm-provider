@@ -781,6 +781,22 @@ try {
   if (customProbe.routeEditable !== true || customProbe.hint.indexOf('MY_GATEWAY_API_KEY') === -1) {
     throw new Error('自定义 provider 路由 ID 改不动或凭据名没跟随：' + JSON.stringify(customProbe))
   }
+  // 清空路由 ID：「供应商」必须仍显示 Custom Gateway（选中预设不随 routeId 清空而丢，
+  // 用户报的就是它——旧版会变回「选择供应商…」），密钥名回落为 _API_KEY 属预期
+  await cdp.eval(`
+    var input = Array.from(document.querySelectorAll('.pv_line input')).find(function (el) { return el.value === 'my-gateway' })
+    input.value = ''
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  `)
+  await sleep(300)
+  const clearProbe = await cdp.eval(`(function () {
+    var trigger = document.querySelector('.pv_pick button')
+    return { vendor: trigger === null ? null : trigger.textContent.trim() }
+  })()`)
+  console.log('  清空路由 ID 探针:', JSON.stringify(clearProbe))
+  if (clearProbe.vendor === null || clearProbe.vendor.indexOf('Custom Gateway') === -1) {
+    throw new Error('清空路由 ID 后供应商跟着丢了：' + JSON.stringify(clearProbe))
+  }
   shots.push(await cdp.shot('07-custom-gateway-editable'))
   await cdp.eval(`
     var b = Array.from(document.querySelectorAll('.pv_actRow button, .pv_line button')).find(function (x) { return x.textContent === '取消' })

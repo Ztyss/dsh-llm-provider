@@ -2509,7 +2509,7 @@ window.__ModuleLoader__.load({
 					setPickOpen(!pickOpen);
 					setPickFilter("");
 				}
-			}, react.default.createElement("span", null, form.routeId === "" ? t("prov.selectPlaceholder") : pickedLabel), react.default.createElement("span", { className: "pv_pcCaret" }, pickOpen ? "▾" : "▸")), pickOpen === false ? null : react.default.createElement("div", { className: "pv_pickMenu" }, react.default.createElement("input", {
+			}, react.default.createElement("span", null, pickedLabel === "" ? t("prov.selectPlaceholder") : pickedLabel), react.default.createElement("span", { className: "pv_pcCaret" }, pickOpen ? "▾" : "▸")), pickOpen === false ? null : react.default.createElement("div", { className: "pv_pickMenu" }, react.default.createElement("input", {
 				className: "pv_mFilter",
 				style: { width: "100%" },
 				type: "text",
@@ -2534,7 +2534,6 @@ window.__ModuleLoader__.load({
 			})), react.default.createElement("div", { className: "pv_line pv_row" }, react.default.createElement("span", null, t("prov.apiKey")), react.default.createElement("input", {
 				className: "pv_field pv_key",
 				type: "password",
-				placeholder: "sk-…",
 				value: form.key,
 				onChange: function(event) {
 					patchForm({ key: event.target.value });

@@ -688,7 +688,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
                 setPickFilter('')
               },
             },
-            react.createElement('span', null, form.routeId === '' ? t('prov.selectPlaceholder') : pickedLabel),
+            react.createElement('span', null, pickedLabel === '' ? t('prov.selectPlaceholder') : pickedLabel),
             react.createElement('span', { className: 'pv_pcCaret' }, pickOpen ? '▾' : '▸'),
           ),
           pickOpen === false
@@ -731,7 +731,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
         react.createElement('input', {
           className: 'pv_field pv_key',
           type: 'password',
-          placeholder: 'sk-…',
+          // 不放 sk-… 占位：自定义网关的密钥格式不一定是 sk 开头，别误导（用户要求）
           value: form.key,
           onChange: function (event: FieldEvent) { patchForm({ key: event.target.value }) },
         }),
