@@ -88,10 +88,14 @@ export function providerEditSaveOps(routeId: string, form: ProviderEditForm, ori
  * 只拦真正会出问题的输入，不做多余的格式审查：
  *   - `api` 必须是 pi-ai 认得的那两种之一——写错了适配器装不起来，而且报错很远；
  *   - `baseURL` 给了就必须是 http(s) 开头，否则请求会在很后面才失败；
- *   - `apiKeyEnv` 是环境变量名，限制成大写字母/数字/下划线（与新增面板的派生规则一致）。
+ *   - `apiKeyEnv` 是环境变量名，限制成大写字母/数字/下划线（与新增面板的派生规则一致）；
+ *   - 传了 `original` 时：api/baseURL/apiKeyEnv 改成空串不允许（用户要求：每一项都要有值，
+ *     清空无法保存；显示名除外——留空 = 沿用路由 ID）。不传 original（离线测试/无快照）
+ *     时退回只查格式。
  * @param form - 表单当前值。
+ * @param original - 打开编辑时的原值快照（可选）。
  */
-export function validateProviderEdit(form: ProviderEditForm): string | undefined {
+export function validateProviderEdit(form: ProviderEditForm, original?: ProviderEditForm): string | undefined {
   // 字段可能缺省（草稿按字段惰性创建）：undefined 一律按「没填」处理，不能误判成非法值
   const api = String(form.api ?? '')
   const baseURL = String(form.baseURL ?? '')
@@ -99,6 +103,12 @@ export function validateProviderEdit(form: ProviderEditForm): string | undefined
   if (api !== '' && PROVIDER_API_OPTIONS.indexOf(api) === -1) return 'edit.badApi'
   if (baseURL !== '' && !/^https?:\/\//i.test(baseURL)) return 'edit.badBaseUrl'
   if (apiKeyEnv !== '' && !/^[A-Z0-9_]+$/.test(apiKeyEnv)) return 'edit.badKeyEnv'
+  if (original !== undefined && original !== null) {
+    const mustKeep: (keyof ProviderEditForm)[] = ['api', 'baseURL', 'apiKeyEnv']
+    for (const field of mustKeep) {
+      if (String(form[field] ?? '').trim() === '' && String(original[field] ?? '').trim() !== '') return 'edit.emptyBlocked'
+    }
+  }
   return undefined
 }
 

@@ -277,16 +277,19 @@ try {
   const edit1 = await cdp.eval(`(function () {
     var box = document.querySelector('.pv_editActs')
     if (box === null) return null
+    var buttons = Array.from(box.querySelectorAll('button'))
+    var cancel = buttons.find(function (b) { return b.textContent === '取消' })
     return {
-      buttons: Array.from(box.querySelectorAll('button')).map(function (b) { return b.textContent + (b.disabled ? '(disabled)' : '') }),
+      buttons: buttons.map(function (b) { return b.textContent + (b.disabled ? '(disabled)' : '') }),
       hint: (document.querySelector('.pv_editHint') || {}).textContent || '',
       hintOutsideActs: box.querySelector('.plan_note') === null,
+      cancelRightAligned: cancel === undefined ? false : Math.abs(box.getBoundingClientRect().right - cancel.getBoundingClientRect().right) <= 2,
     }
   })()`)
   console.log('  就地编辑·草稿:', JSON.stringify(edit1))
-  if (edit1 === null || JSON.stringify(edit1.buttons) !== '["保存修改","取消"]' || edit1.hint.indexOf('清空') === -1
-    || edit1.hintOutsideActs !== true || edit1.hint.indexOf('官方默认') !== -1) {
-    throw new Error('草稿态操作区不对（提示要独立成行；自定义网关用短提示）：' + JSON.stringify(edit1))
+  if (edit1 === null || JSON.stringify(edit1.buttons) !== '["保存修改","取消"]' || edit1.hint.indexOf('沿用路由 ID') === -1
+    || edit1.hintOutsideActs !== true || edit1.cancelRightAligned !== true) {
+    throw new Error('草稿态操作区不对（提示独立成行、取消右对齐）：' + JSON.stringify(edit1))
   }
   shots.push(await cdp.shot('01b-provider-edit-dirty'))
 
@@ -334,6 +337,25 @@ try {
   console.log('  校验报错本页可见:', JSON.stringify(noteVisible))
   if (noteVisible.present !== true || noteVisible.text.indexOf('端点必须以') === -1 || noteVisible.underTabs !== true) {
     throw new Error('校验报错没有在服务商页渲染出来：' + JSON.stringify(noteVisible))
+  }
+
+  // 清空已配置的端点：同样不允许保存（用户要求：每一项都要有值，显示名除外）
+  await cdp.eval(`
+    var el = document.querySelector('.pv_row input[placeholder="留空回到官方默认端点"]')
+    el.value = ''
+    el.dispatchEvent(new Event('change', { bubbles: true }))
+  `)
+  await sleep(300)
+  await cdp.eval(`
+    var b = Array.from(document.querySelectorAll('.pv_editActs button')).find(function (x) { return x.textContent === '保存修改' })
+    b.click()
+  `)
+  await sleep(400)
+  const mutCount2 = await cdp.eval('(window.__mutateCalls || []).length')
+  const emptyNote = await cdp.eval(`(document.querySelector('.pv_pageNote') || {}).textContent || ''`)
+  console.log('  清空端点被拦:', JSON.stringify({ mutCount2: mutCount2, emptyNote: emptyNote }))
+  if (mutCount2 !== 1 || emptyNote.indexOf('每一项都要有值') === -1) {
+    throw new Error('清空端点没有被拦下：' + JSON.stringify({ mutCount2: mutCount2, emptyNote: emptyNote }))
   }
 
   // 取消：草稿丢弃，字段回落

@@ -2144,7 +2144,7 @@ export function ProviderSettingsSection() {
   function saveProviderEdit(account: PlanAccount) {
     var form = (editForms[account.id] !== undefined ? editForms[account.id] : {}) as ProviderEditForm
     var origin = providerEditForm(routesById[account.id] !== undefined ? routesById[account.id] : account)
-    var bad = validateProviderEdit(form)
+    var bad = validateProviderEdit(form, origin)
     if (bad !== undefined) {
       setNote(t(bad))
       return
@@ -2359,11 +2359,10 @@ export function ProviderSettingsSection() {
         // 凭据名行已删（用户要求）：密钥的写入目标固定是这条路由的 apiKeyEnv，
         // 在「API 密钥」行输入新值即写入该凭据名，界面上不再允许改凭据名本身。
         // 有改动才出现操作区。提示独立成行、按钮行留呼吸距（用户报原来太挤）；
-        // 自定义网关（写了 baseURL）没有「官方默认端点」可回，提示语相应缩短（用户要求）
+        // 取消右对齐、保存修改居左（用户要求）；字段不允许清空（显示名除外，留空沿用路由 ID）
         if (editDirty || busyEdit) {
           bodyRows.push(
-            react.createElement('div', { className: 'plan_note pv_editHint', key: 'edit-hint' },
-              editOrigin.baseURL !== '' ? t('edit.emptyHintCustom') : t('edit.emptyHint')),
+            react.createElement('div', { className: 'plan_note pv_editHint', key: 'edit-hint' }, t('edit.dirtyHint')),
           )
           bodyRows.push(
             react.createElement(
@@ -2385,7 +2384,6 @@ export function ProviderSettingsSection() {
                 {
                   type: 'button',
                   className: 'pv_action',
-                  style: { marginLeft: '0' },
                   disabled: busyEdit,
                   onClick: function () {
                     // 取消 = 丢弃草稿，字段回落到 route 快照（操作区随之隐藏）；

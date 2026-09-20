@@ -121,8 +121,8 @@ window.__ModuleLoader__.load({
 				"edit.apiDefault": "（默认）",
 				"edit.baseUrl": "端点",
 				"edit.baseUrlPlaceholder": "留空回到官方默认端点",
-				"edit.emptyHint": "清空某项 = 移除该配置键（不是写入空值）；留空端点即回到官方默认。",
-				"edit.emptyHintCustom": "清空某项 = 移除该配置键（不是写入空值）。",
+				"edit.dirtyHint": "显示名留空 = 自动沿用路由 ID；其余各项必须有值。",
+				"edit.emptyBlocked": "每一项都要有值：清空后无法保存。",
 				"edit.save": "保存修改",
 				"edit.saving": "保存中…",
 				"edit.saved": "已更新 {id}（只写入改过的字段，手写的 models / compat 原样保留）",
@@ -293,8 +293,8 @@ window.__ModuleLoader__.load({
 				"edit.apiDefault": "(default)",
 				"edit.baseUrl": "Endpoint",
 				"edit.baseUrlPlaceholder": "Leave empty to use the official default endpoint",
-				"edit.emptyHint": "Clearing a field removes that config key (it does not write an empty value); an empty endpoint falls back to the official default.",
-				"edit.emptyHintCustom": "Clearing a field removes that config key (it does not write an empty value).",
+				"edit.dirtyHint": "Leave the display name empty to inherit the route ID; the other fields must keep a value.",
+				"edit.emptyBlocked": "Every field must keep a value; cleared fields cannot be saved.",
 				"edit.save": "Save changes",
 				"edit.saving": "Saving…",
 				"edit.saved": "Updated {id} (only changed fields are written; hand-written models / compat are preserved)",
@@ -1952,16 +1952,27 @@ window.__ModuleLoader__.load({
 		* 只拦真正会出问题的输入，不做多余的格式审查：
 		*   - `api` 必须是 pi-ai 认得的那两种之一——写错了适配器装不起来，而且报错很远；
 		*   - `baseURL` 给了就必须是 http(s) 开头，否则请求会在很后面才失败；
-		*   - `apiKeyEnv` 是环境变量名，限制成大写字母/数字/下划线（与新增面板的派生规则一致）。
+		*   - `apiKeyEnv` 是环境变量名，限制成大写字母/数字/下划线（与新增面板的派生规则一致）；
+		*   - 传了 `original` 时：api/baseURL/apiKeyEnv 改成空串不允许（用户要求：每一项都要有值，
+		*     清空无法保存；显示名除外——留空 = 沿用路由 ID）。不传 original（离线测试/无快照）
+		*     时退回只查格式。
 		* @param form - 表单当前值。
+		* @param original - 打开编辑时的原值快照（可选）。
 		*/
-		function validateProviderEdit(form) {
+		function validateProviderEdit(form, original) {
 			const api = String(form.api ?? "");
 			const baseURL = String(form.baseURL ?? "");
 			const apiKeyEnv = String(form.apiKeyEnv ?? "");
 			if (api !== "" && PROVIDER_API_OPTIONS.indexOf(api) === -1) return "edit.badApi";
 			if (baseURL !== "" && !/^https?:\/\//i.test(baseURL)) return "edit.badBaseUrl";
 			if (apiKeyEnv !== "" && !/^[A-Z0-9_]+$/.test(apiKeyEnv)) return "edit.badKeyEnv";
+			if (original !== void 0 && original !== null) {
+				for (const field of [
+					"api",
+					"baseURL",
+					"apiKeyEnv"
+				]) if (String(form[field] ?? "").trim() === "" && String(original[field] ?? "").trim() !== "") return "edit.emptyBlocked";
+			}
 		}
 		/**
 		* 表单里有没有实质改动（用于决定"保存"按钮是否可点）。
@@ -3798,7 +3809,7 @@ window.__ModuleLoader__.load({
 			function saveProviderEdit(account) {
 				var form = editForms[account.id] !== void 0 ? editForms[account.id] : {};
 				var origin = providerEditForm(routesById[account.id] !== void 0 ? routesById[account.id] : account);
-				var bad = validateProviderEdit(form);
+				var bad = validateProviderEdit(form, origin);
 				if (bad !== void 0) {
 					setNote(t(bad));
 					return;
@@ -3971,7 +3982,7 @@ window.__ModuleLoader__.load({
 						bodyRows.push(react.default.createElement("div", {
 							className: "plan_note pv_editHint",
 							key: "edit-hint"
-						}, editOrigin.baseURL !== "" ? t("edit.emptyHintCustom") : t("edit.emptyHint")));
+						}, t("edit.dirtyHint")));
 						bodyRows.push(react.default.createElement("div", {
 							className: "pv_editActs",
 							key: "edit-acts"
@@ -3986,7 +3997,6 @@ window.__ModuleLoader__.load({
 						}, busyEdit ? t("edit.saving") : t("edit.save")), react.default.createElement("button", {
 							type: "button",
 							className: "pv_action",
-							style: { marginLeft: "0" },
 							disabled: busyEdit,
 							onClick: function() {
 								setNote(null);

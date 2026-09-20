@@ -134,6 +134,13 @@ for (const [name, fn] of Object.entries({ providerEditForm, providerEditSaveOps,
   check('partial 草稿（缺省字段）算合法', validateProviderEdit({ displayName: '我的网关' }) === undefined)
   check('partial 草稿 + 非法端点仍拦截', validateProviderEdit({ baseURL: 'ftp://bad' }) === 'edit.badBaseUrl')
   check('partial 草稿 + 非法凭据名仍拦截', validateProviderEdit({ apiKeyEnv: 'bad' }) === 'edit.badKeyEnv')
+  // 传了 original 快照（就地编辑）时：端点/协议/凭据名清空不允许（用户要求：每一项都要有值，
+  // 显示名除外——留空沿用路由 ID）。原值本来就为空的字段不受影响（官方默认端点场景）。
+  const seededOriginal = { displayName: 'OpenCode Go', api: 'openai-completions', baseURL: 'https://opencode.ai/zen/go/v1', apiKeyEnv: 'OPENCODE_GO_API_KEY' }
+  check('清空已配置端点被拦下（edit.emptyBlocked）', validateProviderEdit({ ...seededOriginal, baseURL: '' }, seededOriginal) === 'edit.emptyBlocked')
+  check('清空已配置协议被拦下', validateProviderEdit({ ...seededOriginal, api: '' }, seededOriginal) === 'edit.emptyBlocked')
+  check('清空显示名合法（留空沿用路由 ID）', validateProviderEdit({ ...seededOriginal, displayName: '' }, seededOriginal) === undefined)
+  check('原值为空的字段保持为空仍合法', validateProviderEdit({ ...good }, { ...good, displayName: 'X' }) === undefined)
 }
 
 // ---- 6. dirty 判定 ----
