@@ -15,12 +15,15 @@
 
 ## 构建与测试
 
-- **源码在 `src/`（TypeScript），`lib/` 是构建产物、不入库。** 改完要 `npm run build`
-  （= `tsdown`）。插件是 profile 里 `link:` 进来的，跑的就是 `lib/`，忘了构建就是跑旧代码。
-- 自测 = `npm test`（= `npm run build` + `test/*.mjs` 七个离线测试，都在 command line 跑、
+- **源码在 `src/`（TypeScript），`lib/` 是构建产物、随仓库分发**（github 安装直接跑 `lib/`，
+  没有 prepare 脚本）。改完要 `npm run build`（= `tsdown`），并把 `lib/` 与 `src/` 放进**同一个
+  commit**——忘了构建、或构建了没一起提交，装的就不是这份源码跑出来的产物。
+- 自测 = `npm test`（= `npm run build` + `test/*.mjs` 离线测试链，都在 command line 跑、
   不起 dsh）。dev-finish 和 dev-merge 都会跑它。
 - `npm run typecheck`（= `tsc --noEmit`）是类型检查，`npm test` 不含它——构建不报类型错，
-  类型错了要单独跑才看得见。
+  类型错了要单独跑才看得见。宿主 app 的 `node_modules` 被打包剥掉了 `.md`/`.d.ts`，
+  `@deepseek-ai/schemastery` 的类型由 `src/schemastery.d.ts` 垫片提供（只声明用到的最小面，
+  别往里加货）。
 - 要开界面看效果：`scripts/test-profile.sh`（在 worktree 里跑就是起这个 worktree 的实例，插件目录按脚本位置定位）。这个脚本会写 `~/.dsh/profiles/`、还要开浏览器，**由用户本人在真实终端跑**，代理别在沙箱里试。
 - 测试实例默认 3081 端口、`plan-test` profile——**一次只能跑一个**。要并行各起一个：
   `PORT=3082 PROFILE=plan-test-foo LOG=/tmp/dsh-plan-foo.log scripts/test-profile.sh`。
