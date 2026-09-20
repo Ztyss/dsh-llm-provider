@@ -225,6 +225,12 @@ var css =
   'input.pv_key{background:var(--dsw-alias-bg-layer-1,#fff);' +
   'border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}' +
   '.pv_actRow{display:flex;gap:10px;align-items:center;padding:8px 0 4px}' +
+  // 「发现模型」后的可勾选清单：滚动区域，默认全勾，取消的不写入
+  '.pv_modelPick{max-height:180px;overflow:auto;border:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));' +
+  'border-radius:8px;padding:4px 10px;display:flex;flex-direction:column;gap:2px;margin:4px 0 2px}' +
+  '.pv_modelPickItem{display:flex;align-items:center;gap:8px;padding:3px 2px;cursor:pointer;' +
+  'font:inherit;font-size:12px;color:var(--dsw-alias-label-primary)}' +
+  '.pv_modelPickItem input{margin:0;cursor:pointer}' +
   // ---- 供应商可过滤下拉 ----
   '.pv_pick{flex:1;min-width:0;position:relative}' +
   '.pv_pickBtn{width:100%;cursor:pointer;justify-content:space-between;gap:8px}' +

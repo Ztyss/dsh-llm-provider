@@ -495,11 +495,15 @@ function AddProviderPanel(props: AddProviderPanelProps) {
   var formState = react.useState({ presetId: '', routeId: '', key: '', baseURL: '', api: '', apiKeyEnv: '', websiteUrl: undefined })
   var form = formState[0]
   var setForm = formState[1]
-  // 测试成功时把发现的模型一并留下：自定义网关（目录外路由）在 settings/mutate 时
+  // 「发现模型」成功时把发现的模型一并留下：自定义网关（目录外路由）在 settings/mutate 时
   // 必须带 models 清单，否则官方校验直接拒绝（"resolves no models"）
   var testState = react.useState({ phase: 'idle', message: '', models: [] as { id: string; name?: string }[] })
   var test = testState[0]
   var setTest = testState[1]
+  // 发现的模型的勾选态（id → 是否加入）；用户要求：发现模型后弹出清单供选择，不自动全加
+  var modelPickState = react.useState({} as AnyRecord)
+  var modelPick = modelPickState[0]
+  var setModelPick = modelPickState[1]
   var busyState = react.useState(false)
   var busy = busyState[0]
   var setBusy = busyState[1]
@@ -603,6 +607,10 @@ function AddProviderPanel(props: AddProviderPanelProps) {
             }),
           models: discovered,
         })
+        // 发现后默认全部勾选，由用户逐个取消（用户要求：弹出清单供选择，不自动全加）
+        var initialPick: AnyRecord = {}
+        for (var pi = 0; pi < discovered.length; pi += 1) initialPick[discovered[pi].id] = true
+        setModelPick(initialPick)
       })
       .catch(function (cause) {
         setTest({ phase: 'fail', message: '✗ ' + String(cause && cause.message ? cause.message : cause), models: [] })
@@ -634,14 +642,21 @@ function AddProviderPanel(props: AddProviderPanelProps) {
     var ops = providerSaveOps(routeId, form)
     // 目录外的自定义网关必须带 models 清单（官方校验：catalog 不描述这条路由时，
     // models 必须列在配置里，否则 "resolves no models" 整体拒绝——StepFun 就是它）。
-    // 「测试」成功后发现的模型就是现成清单：新路由自动随本次写入带上，
-    // 条目只写 {id, name?}，上下文/输出由路由默认值兜底（262144 / 32768）。
+    // 「发现模型」成功后弹出的清单里，只把用户勾选的写进去（条目 {id, name?}，
+    // 上下文/输出由路由默认值兜底 262144 / 32768）。
     // 已存在的路由不动它的 models（避免覆盖手写清单），走逐模型编辑器改。
     if (existed !== true && Array.isArray(test.models) && test.models.length > 0) {
+      var chosen = test.models.filter(function (m: { id: string; name?: string }) {
+        return modelPick[m.id] !== false
+      })
+      if (chosen.length === 0) {
+        setNote(t('prov.pickSomeModels'))
+        return
+      }
       ops = ops.concat([{
         op: 'set',
         path: ['providers', routeId, 'models'],
-        value: test.models.map(function (m: { id: string; name?: string }) {
+        value: chosen.map(function (m: { id: string; name?: string }) {
           return m.name !== undefined ? { id: m.id, name: m.name } : { id: m.id }
         }),
       }])
@@ -833,7 +848,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
         'div',
         { className: 'pv_actRow' },
         react.createElement('button', { type: 'button', className: 'pv_action', style: { marginLeft: '0' }, disabled: test.phase === 'run', onClick: runTest },
-          test.phase === 'run' ? t('prov.testingShort') : t('prov.test')),
+          test.phase === 'run' ? t('prov.discovering') : t('prov.discover')),
         react.createElement('button', {
           type: 'button',
           className: 'pv_action',
@@ -846,6 +861,28 @@ function AddProviderPanel(props: AddProviderPanelProps) {
       test.message === ''
         ? null
         : react.createElement('div', { className: 'plan_note' + (test.phase === 'fail' ? ' plan_badText' : '') }, test.message),
+      // 发现模型后弹出可勾选清单（用户要求）：默认全勾，不想要的取消勾选，
+      // 「添加到列表」只写勾选中的；没有 pi-ai 元数据的模型由路由默认值兜底参数
+      test.phase === 'ok' && test.models.length > 0
+        ? react.createElement(
+            'div',
+            { className: 'pv_modelPick' },
+            test.models.map(function (m: { id: string; name?: string }, i: number) {
+              return react.createElement(
+                'label',
+                { key: m.id, className: 'pv_modelPickItem' },
+                react.createElement('input', {
+                  type: 'checkbox',
+                  checked: modelPick[m.id] !== false,
+                  onChange: function () {
+                    setModelPick(function (prev: AnyRecord) { return withKeys(prev, { [m.id]: modelPick[m.id] === false }) })
+                  },
+                }),
+                react.createElement('span', null, m.name !== undefined && m.name !== '' ? m.name + '（' + m.id + '）' : m.id),
+              )
+            }),
+          )
+        : null,
       !note ? null : react.createElement('div', { className: 'plan_note' }, note),
     ),
   )

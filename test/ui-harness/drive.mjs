@@ -865,7 +865,7 @@ try {
   `)
   await sleep(300)
   await cdp.eval(`
-    var b = Array.from(document.querySelectorAll('.pv_actRow button')).find(function (x) { return x.textContent === '测试' })
+    var b = Array.from(document.querySelectorAll('.pv_actRow button')).find(function (x) { return x.textContent === '发现模型' })
     b.click()
   `)
   await sleep(500)
@@ -875,12 +875,33 @@ try {
     for (var i = notes.length - 1; i >= 0; i -= 1) {
       if (notes[i].textContent.indexOf('连通') !== -1) { msg = notes[i].textContent; break }
     }
-    return { msg: msg }
+    var items = Array.from(document.querySelectorAll('.pv_modelPickItem'))
+    return {
+      msg: msg,
+      pickItems: items.length,
+      picked: items.filter(function (el) { return el.querySelector('input').checked }).length,
+    }
   })()`)
   console.log('  添加供应商测试探针:', JSON.stringify(addTest))
   if (addTest.msg.indexOf('连通') === -1 || addTest.msg.indexOf('3 个模型') === -1) {
-    throw new Error('添加面板测试没有发现模型：' + JSON.stringify(addTest))
+    throw new Error('添加面板发现模型失败：' + JSON.stringify(addTest))
   }
+  // 用户要求：发现后弹出清单供选择（默认全勾），不自动全加
+  await cdp.eval(`
+    var items = Array.from(document.querySelectorAll('.pv_modelPickItem'))
+    var drop = items.find(function (el) { return el.textContent.indexOf('step-router-v1') !== -1 })
+    drop.querySelector('input').click()
+  `)
+  await sleep(300)
+  const afterUnpick = await cdp.eval(`(function () {
+    var items = Array.from(document.querySelectorAll('.pv_modelPickItem'))
+    return items.map(function (el) { return { id: el.textContent, on: el.querySelector('input').checked } })
+  })()`)
+  console.log('  取消勾选探针:', JSON.stringify(afterUnpick))
+  shots.push(await cdp.shot('07c-model-pick-list'))
+  const unpickedOk = afterUnpick.length === 3 && afterUnpick.filter(function (x) { return x.on }).length === 2
+    && afterUnpick.find(function (x) { return x.id.indexOf('step-router-v1') !== -1 }).on === false
+  if (unpickedOk !== true) throw new Error('取消勾选没生效：' + JSON.stringify(afterUnpick))
   await cdp.eval(`
     var b = Array.from(document.querySelectorAll('.pv_actRow button')).find(function (x) { return x.textContent === '添加到列表' })
     b.click()
@@ -896,10 +917,10 @@ try {
     }
     if (modelsOp === null) return false
     return JSON.stringify(modelsOp.value) === JSON.stringify([
-      { id: 'step-3.7-flash' }, { id: 'step-router-v1' }, { id: 'stepaudio-2.5-chat' },
+      { id: 'step-3.7-flash' }, { id: 'stepaudio-2.5-chat' },
     ])
   })()
-  if (addedOk !== true) throw new Error('添加供应商没有带上 models 清单（目录外路由会被官方校验拒绝）：' + JSON.stringify(added))
+  if (addedOk !== true) throw new Error('添加供应商没有按勾选写入 models（取消的 step-router-v1 不应出现）：' + JSON.stringify(added))
   // 添加成功的端到端信号：面板提示「已添加 StepFun」
   await sleep(300)
   const addedNote = await cdp.eval(`(function () {
