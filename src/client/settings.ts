@@ -1947,26 +1947,29 @@ export function ProviderSettingsSection() {
             }),
           ),
         )
-        // API 密钥行：配好了显示掩码提示（宿主派生前3+后4，值不出宿主）；
-        // 只有路由、还没密钥时这里就是唯一能补 key 的地方（官方 Models 页已被本插件的
-        // cordis.patch.yml 禁用，别处没有入口）。原生路由（source: native）也走同一条
-        // credentials/set：凭据名就是它的 apiKeyEnv。
-        var keyless = account.authConfigured === false && typeof account.apiKeyEnv === 'string' && account.apiKeyEnv !== ''
+        // API 密钥行：始终可编辑——输入新值点「保存」= 写进凭据仓库（credentials/set），
+        // 凭据名就是这条路由的 apiKeyEnv（如 OPENCODE_GO_API_KEY），值不落 settings.yaml。
+        // 已配置的把掩码（宿主派生前3+后4，真值不出宿主）放在占位符里；留空提交不了 = 不动。
+        // 官方 Models 页已被 cordis.patch.yml 禁用，这里是界面上改 key 的唯一入口。
+        // 路由没绑凭据名时没有写入目标，只读提示。
+        var keyRef = typeof account.apiKeyEnv === 'string' && account.apiKeyEnv !== '' ? String(account.apiKeyEnv) : undefined
+        var keyDraft = keyDrafts[account.id] === undefined ? '' : String(keyDrafts[account.id])
         bodyRows.push(
           react.createElement(
             'div',
             { className: 'pv_line pv_row', key: 'key' },
             react.createElement('span', null, t('prov.apiKey')),
-            keyless
-              ? react.createElement(
+            keyRef === undefined
+              ? react.createElement('span', { className: 'pv_field' }, tf('toast.noCredentialRef', { name: shortName(account) }))
+              : react.createElement(
                   'span',
                   { className: 'pv_pick', style: { display: 'inline-flex', alignItems: 'center', gap: '6px', flex: '1 1 auto' } },
                   react.createElement('input', {
                     className: 'pv_field pv_key',
                     style: { flex: '1 1 auto' },
                     type: 'password',
-                    placeholder: 'sk-…',
-                    value: keyDrafts[account.id] === undefined ? '' : String(keyDrafts[account.id]),
+                    placeholder: account.keyHint !== undefined ? String(account.keyHint) : 'sk-…',
+                    value: keyDraft,
                     disabled: savingKey[account.id] === true,
                     onChange: function (event: FieldEvent) {
                       var next = event.target.value
@@ -1977,15 +1980,10 @@ export function ProviderSettingsSection() {
                     type: 'button',
                     className: 'pv_action',
                     style: { marginLeft: '0', flex: '0 0 auto' },
-                    disabled: savingKey[account.id] === true,
-                    title: tf('prov.saveKeyTip', { ref: account.apiKeyEnv }),
+                    disabled: savingKey[account.id] === true || keyDraft.trim() === '',
+                    title: tf('prov.saveKeyTip', { ref: keyRef }),
                     onClick: function () { saveKey(account) },
                   }, savingKey[account.id] === true ? t('prov.saving') : t('prov.save')),
-                )
-              : react.createElement(
-                  'span',
-                  { className: 'pv_field' },
-                  account.keyHint !== undefined ? account.keyHint : t('prov.credential'),
                 ),
           ),
         )
@@ -2024,22 +2022,8 @@ export function ProviderSettingsSection() {
             ),
           ),
         )
-        // 凭据名（密钥存为哪个环境变量）。值本身不在这里改：凭据走 credentials 通道，
-        // 卡片上方的补录框 / 右上角刷新才是值入口。
-        bodyRows.push(
-          react.createElement(
-            'div',
-            { className: 'pv_line pv_row', key: 'ref' },
-            react.createElement('span', null, t('edit.keyEnv')),
-            react.createElement('input', {
-              className: 'pv_field pv_key',
-              type: 'text',
-              value: editForm.apiKeyEnv,
-              placeholder: account.id.toUpperCase() + '_API_KEY',
-              onChange: function (event: FieldEvent) { setEditField(account.id, 'apiKeyEnv', event.target.value) },
-            }),
-          ),
-        )
+        // 凭据名行已删（用户要求）：密钥的写入目标固定是这条路由的 apiKeyEnv，
+        // 在「API 密钥」行输入新值即写入该凭据名，界面上不再允许改凭据名本身。
         // 有改动才出现操作区：写清「清空」的语义（删键，不是写空串）
         if (editDirty || busyEdit) {
           bodyRows.push(

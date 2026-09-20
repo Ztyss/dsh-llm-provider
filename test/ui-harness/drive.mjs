@@ -238,6 +238,28 @@ try {
   console.log('  就地编辑·初始:', JSON.stringify(edit0))
   if (edit0.initial !== '' || edit0.actsGone !== true || edit0.noPencil !== true) throw new Error('就地编辑初始态不对：' + JSON.stringify(edit0))
 
+  // 密钥行：始终可编辑（密码框，占位 = 掩码）+ 保存按钮（空草稿禁用）；凭据名行不再出现。
+  // 此前已配置的路由只显示掩码文本，实质改不了 key（用户报的就是它）
+  const keyRow = await cdp.eval(`(function () {
+    var rows = Array.from(document.querySelectorAll('.pv_pcBody .pv_row'))
+    var row = rows.find(function (r) { return r.textContent.indexOf('API 密钥') !== -1 })
+    if (row === undefined) return null
+    var input = row.querySelector('input[type=password]')
+    var btn = row.querySelector('button')
+    return {
+      hasPassword: input !== null,
+      placeholder: input === null ? '' : input.placeholder,
+      saveDisabled: btn === null ? null : btn.disabled,
+      saveLabel: btn === null ? '' : btn.textContent,
+      credNameRowGone: rows.every(function (r) { return r.textContent.indexOf('凭据名') === -1 }),
+    }
+  })()`)
+  console.log('  密钥行探针:', JSON.stringify(keyRow))
+  if (keyRow === null || keyRow.hasPassword !== true || keyRow.placeholder !== 'sk-****abcd'
+    || keyRow.saveDisabled !== true || keyRow.saveLabel !== '保存' || keyRow.credNameRowGone !== true) {
+    throw new Error('密钥行不对（要可编辑、掩码占位、空草稿禁用、无凭据名行）：' + JSON.stringify(keyRow))
+  }
+
   // 只改显示名 → 操作区浮出（保存修改可点 + 取消 + 清空语义提示）
   await cdp.eval(`
     var el = document.querySelector('.pv_row input[placeholder="opencode-go"]')

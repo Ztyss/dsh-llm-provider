@@ -117,7 +117,6 @@ window.__ModuleLoader__.load({
 				"edit.apiDefault": "（默认）",
 				"edit.baseUrl": "端点",
 				"edit.baseUrlPlaceholder": "留空回到官方默认端点",
-				"edit.keyEnv": "凭据名",
 				"edit.emptyHint": "清空某项 = 移除该配置键（不是写入空值）；留空端点即回到官方默认。",
 				"edit.save": "保存修改",
 				"edit.saving": "保存中…",
@@ -129,7 +128,6 @@ window.__ModuleLoader__.load({
 				"prov.save": "保存",
 				"prov.saving": "保存中…",
 				"prov.saveKeyTip": "存进 {ref} 并立刻实测一次余量",
-				"prov.credential": "已配置",
 				"prov.modelsLoading": "模型目录加载中…",
 				"prov.usageLoading": "正在刷新用量…",
 				"prov.noModels": "目录里没有这个 provider 的模型",
@@ -286,7 +284,6 @@ window.__ModuleLoader__.load({
 				"edit.apiDefault": "(default)",
 				"edit.baseUrl": "Endpoint",
 				"edit.baseUrlPlaceholder": "Leave empty to use the official default endpoint",
-				"edit.keyEnv": "Credential name",
 				"edit.emptyHint": "Clearing a field removes that config key (it does not write an empty value); an empty endpoint falls back to the official default.",
 				"edit.save": "Save changes",
 				"edit.saving": "Saving…",
@@ -298,7 +295,6 @@ window.__ModuleLoader__.load({
 				"prov.save": "Save",
 				"prov.saving": "Saving…",
 				"prov.saveKeyTip": "Store into {ref} and probe the quota right away",
-				"prov.credential": "Configured",
 				"prov.modelsLoading": "Loading model catalog…",
 				"prov.usageLoading": "Refreshing usage…",
 				"prov.noModels": "The catalog has no models for this provider",
@@ -3552,11 +3548,12 @@ window.__ModuleLoader__.load({
 							setEditField(account.id, "displayName", event.target.value);
 						}
 					})));
-					var keyless = account.authConfigured === false && typeof account.apiKeyEnv === "string" && account.apiKeyEnv !== "";
+					var keyRef = typeof account.apiKeyEnv === "string" && account.apiKeyEnv !== "" ? String(account.apiKeyEnv) : void 0;
+					var keyDraft = keyDrafts[account.id] === void 0 ? "" : String(keyDrafts[account.id]);
 					bodyRows.push(react.default.createElement("div", {
 						className: "pv_line pv_row",
 						key: "key"
-					}, react.default.createElement("span", null, t("prov.apiKey")), keyless ? react.default.createElement("span", {
+					}, react.default.createElement("span", null, t("prov.apiKey")), keyRef === void 0 ? react.default.createElement("span", { className: "pv_field" }, tf("toast.noCredentialRef", { name: shortName(account) })) : react.default.createElement("span", {
 						className: "pv_pick",
 						style: {
 							display: "inline-flex",
@@ -3568,8 +3565,8 @@ window.__ModuleLoader__.load({
 						className: "pv_field pv_key",
 						style: { flex: "1 1 auto" },
 						type: "password",
-						placeholder: "sk-…",
-						value: keyDrafts[account.id] === void 0 ? "" : String(keyDrafts[account.id]),
+						placeholder: account.keyHint !== void 0 ? String(account.keyHint) : "sk-…",
+						value: keyDraft,
 						disabled: savingKey[account.id] === true,
 						onChange: function(event) {
 							var next = event.target.value;
@@ -3584,12 +3581,12 @@ window.__ModuleLoader__.load({
 							marginLeft: "0",
 							flex: "0 0 auto"
 						},
-						disabled: savingKey[account.id] === true,
-						title: tf("prov.saveKeyTip", { ref: account.apiKeyEnv }),
+						disabled: savingKey[account.id] === true || keyDraft.trim() === "",
+						title: tf("prov.saveKeyTip", { ref: keyRef }),
 						onClick: function() {
 							saveKey(account);
 						}
-					}, savingKey[account.id] === true ? t("prov.saving") : t("prov.save"))) : react.default.createElement("span", { className: "pv_field" }, account.keyHint !== void 0 ? account.keyHint : t("prov.credential"))));
+					}, savingKey[account.id] === true ? t("prov.saving") : t("prov.save")))));
 					bodyRows.push(react.default.createElement("div", {
 						className: "pv_line pv_row",
 						key: "url"
@@ -3617,18 +3614,6 @@ window.__ModuleLoader__.load({
 							key: option
 						}, option);
 					}))));
-					bodyRows.push(react.default.createElement("div", {
-						className: "pv_line pv_row",
-						key: "ref"
-					}, react.default.createElement("span", null, t("edit.keyEnv")), react.default.createElement("input", {
-						className: "pv_field pv_key",
-						type: "text",
-						value: editForm.apiKeyEnv,
-						placeholder: account.id.toUpperCase() + "_API_KEY",
-						onChange: function(event) {
-							setEditField(account.id, "apiKeyEnv", event.target.value);
-						}
-					})));
 					if (editDirty || busyEdit) bodyRows.push(react.default.createElement("div", {
 						className: "pv_editActs",
 						key: "edit-acts"
