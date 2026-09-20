@@ -1147,9 +1147,9 @@ function ModelListEditor(props: {
     react.createElement('span', { key: 'h-del' }),
   )
 
-  // 「添加模型」表单：仿添加供应商面板——标签在左、输入在右，一次填全自定义模型的参数
+  // 「添加模型」表单：仿添加供应商面板——标签在左、输入在右，同一套 pv_line/pv_row 行样式
   function formRow(label: string, control: unknown, key: string) {
-    return react.createElement('div', { className: 'pv_row', key: key }, react.createElement('span', null, label), control)
+    return react.createElement('div', { className: 'pv_line pv_row', key: key }, react.createElement('span', null, label), control)
   }
   function formField(placeholder: string, value: string, key: string, numeric?: boolean) {
     return react.createElement('input', {
@@ -1172,7 +1172,7 @@ function ModelListEditor(props: {
     formRow('显示名', formField('留空则同模型 ID', form.name, 'name'), 'f-name'),
     formRow('上下文窗口', formField('如 1000000', form.ctx, 'ctx', true), 'f-ctx'),
     formRow('最大输出', formField('如 384000', form.max, 'max', true), 'f-max'),
-    react.createElement('div', { className: 'pv_row', key: 'f-caps' },
+    react.createElement('div', { className: 'pv_line pv_row', key: 'f-caps' },
       react.createElement('span', null, '能力'),
       react.createElement('span', { className: 'pv_meFormCaps' },
         react.createElement('label', {
@@ -1199,12 +1199,12 @@ function ModelListEditor(props: {
         }), '视频'),
       ),
     ),
-    react.createElement('div', { className: 'pv_meActs', key: 'f-acts' },
+    react.createElement('div', { className: 'pv_actRow', key: 'f-acts' },
       react.createElement('button', { type: 'button', className: 'pv_action', style: { marginLeft: '0' }, disabled: busy, onClick: addFromForm }, '添加'),
       react.createElement('button', {
         type: 'button',
         className: 'pv_action',
-        style: { marginLeft: '0' },
+        style: { marginLeft: 'auto' },
         disabled: busy,
         onClick: function () { setForm(emptyForm) },
       }, '取消'),

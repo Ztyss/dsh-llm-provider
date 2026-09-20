@@ -350,12 +350,12 @@ var css =
   '.pv_meCap input{margin:0;cursor:pointer}' +
   '.pv_capOff{opacity:.6;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1,rgba(0,0,0,.15))}' +
   // 「添加模型」表单：仿添加供应商面板（标签在左、输入在右的 pv_row 行 + 底部按钮行）
-  '.pv_meForm{display:flex;flex-direction:column;gap:4px;padding:8px 10px;margin-top:2px;' +
+  // 度量与 pv_pcBody 对齐（13px 行 / 6px 间距 / 18px 内边距），输入随行宽伸展，不再限 320px
+  '.pv_meForm{display:flex;flex-direction:column;gap:6px;padding:10px 18px;margin-top:2px;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;' +
   'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.02))}' +
   '.pv_meFormTitle{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}' +
-  '.pv_meForm .pv_row{font-size:12px;line-height:20px}' +
-  '.pv_meForm .pv_field{min-width:0;flex:1;max-width:320px}' +
+  '.pv_meForm .pv_field{min-width:0;flex:1}' +
   '.pv_meFormCaps{display:inline-flex;align-items:center;gap:6px}' +
   // 用量快照加载占位：打开页面时「正在刷新用量…」居中一行（转圈 + 文案）
   // pv_pcBody 是纵向 flex，这里必须改回横向行，转圈和文案才并排居中

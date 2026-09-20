@@ -423,6 +423,7 @@ try {
     q('.pv_meFormCaps label input').click()
   `)
   await sleep(300)
+  shots.push(await cdp.shot('02a1-add-model-form'))
   await cdp.eval(`
     var add = Array.from(document.querySelectorAll('.pv_meForm button')).find(function (x) { return x.textContent === '添加' })
     add.click()
