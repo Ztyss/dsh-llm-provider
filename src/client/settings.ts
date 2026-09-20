@@ -800,13 +800,18 @@ function AddProviderPanel(props: AddProviderPanelProps) {
 /**
  * 逐模型编辑器的一行：列序固定（勾选 | 模型 ID | 能力 | 上下文 | 最大输出 | 移除），
  * 与表头共用同一套网格列宽，逐列严格对齐。不设名称列——模型 ID 本身就是唯一标识，
- * 完整换行展示（title 兜底）。现有条目（目录收录 / 已声明）只读展示——清单只做
+ * 单行省略号截断（title 兜底）。现有条目（目录收录 / 已声明）只读展示——清单只做
  * 新增与移除；自定义条目才有输入框和能力开关。
+ *
+ * 勾选语义（v0.1.3 起）：勾选即时生效，直接写 settings.yaml（= 已添加/移出该模型）；
+ * ✕ 把这一条从清单草稿里删掉，属于结构修改，要点「保存清单」才落盘。
  */
 function modelEditRow(
   row: ModelEditRow,
   patch: (id: string, next: AnyRecord) => void,
   remove: (id: string) => void,
+  onToggle: (row: ModelEditRow, checked: boolean) => void,
+  busy: boolean,
 ) {
   var known = row.known === true
   // 能力列：现有条目给只读徽章（与显示清单同款）；自定义条目给可点的开关（写 input 模态）
@@ -853,8 +858,9 @@ function modelEditRow(
       type: 'checkbox',
       className: 'pv_meCheck',
       checked: row.enabled,
-      title: row.enabled ? '取消勾选 = 保存后不再服务这个模型' : '勾上 = 让这家服务这个模型',
-      onChange: function (event: FieldEvent) { patch(row.id, { enabled: event.target.checked === true }) },
+      disabled: busy,
+      title: row.enabled ? '取消勾选 = 立即不再服务这个模型（直接写入 settings.yaml）' : '勾上 = 立即添加这个模型（直接写入 settings.yaml）',
+      onChange: function (event: FieldEvent) { onToggle(row, event.target.checked === true) },
     }),
     react.createElement(
       'span',
@@ -887,18 +893,14 @@ function modelEditRow(
           value: row.maxTokens,
           onChange: function (event: FieldEvent) { patch(row.id, { maxTokens: event.target.value }) },
         }),
-    // 便捷删除：已配置（勾选）的模型与自定义条目给 ✕，一键从清单去掉（保存后生效）；
-    // 未勾选的目录候选本就不在服务清单里，不给 ✕（勾上即新增）
-    (row.enabled === true || known === false)
-      ? react.createElement('button', {
-          type: 'button',
-          className: 'pv_iconBtn',
-          title: known
-            ? '从已配置清单里删除这个模型（保存后生效）'
-            : '把这行自定义条目从清单里去掉',
-          onClick: function () { remove(row.id) },
-        }, '✕')
-      : react.createElement('span', { key: 'del-slot' }),
+    // ✕ 每行都有：把这一条从清单草稿里删掉（结构修改，点「保存清单」后落盘）
+    react.createElement('button', {
+      type: 'button',
+      className: 'pv_iconBtn',
+      disabled: busy,
+      title: '把这一条从模型清单里删掉（点「保存清单」后生效）',
+      onClick: function () { remove(row.id) },
+    }, '✕')
   )
 }
 
@@ -962,13 +964,14 @@ export function buildEditRows(
  *
  * 官方 Models 页被本插件禁用（cordis.patch.yml），而它独有的「逐模型清单编辑」没有替代，
  * 于是「只想留 DeepSeek 三个模型里的一个」这类需求在界面上无处可做。这里补上：
- * 勾选 → 保存 → 写 settings 的 `llm-pi-ai.providers.<id>.models`（与官方 Models 页同一条写路径，
+ * 勾选（即时生效）或「保存清单」→ 写 settings 的 `llm-pi-ai.providers.<id>.models`（与官方 Models 页同一条写路径，
  * 官方 adapter 的 resolveRouteModels 认这个键，`models` 非空就替换整份服务目录）。
  *
- * 语义三条：
- *   初始勾选 —— 当前真正生效的那份：配置了 models 只勾声明条目，跟随目录则目录全量都勾（见 buildEditRows）；
+ * 语义四条（v0.1.3 起勾选改为即时生效）：
+ *   勾选 —— 即时生效：直接写 settings 的 `llm-pi-ai.providers.<id>.models`，勾 = 已添加该模型；
+ *   ✕ / 添加模型 —— 清单结构修改，先进草稿，点「保存清单」一次性落盘；
  *   保存清单 —— 只留勾上的；目录里没有的自定义 ID 必须填全上下文/最大输出（官方 strict 校验会拒）；
- *   跟随目录 —— 删掉 models 键，回到「pi-ai 目录收录什么就服务什么」。
+ *   还原清单 —— 删掉 models 键，回到 pi-ai 自带的模型清单。
  */
 function ModelListEditor(props: {
   account: PlanAccount
@@ -987,7 +990,7 @@ function ModelListEditor(props: {
   var errorState = react.useState(null)
   var error = errorState[0] as string | null
   var setError = errorState[1] as (next: string | null) => void
-  var declaredCount = Array.isArray(account.models) ? account.models.length : 0
+  var enabledCount = rows.filter(function (r) { return r.enabled === true }).length
   // 「添加模型」表单（仿添加供应商：点按钮浮出填写面板，各参数一次填全）
   var formState = react.useState(function () { return { open: false, id: '', name: '', ctx: '', max: '', vision: false, video: false } })
   var form = formState[0] as { open: boolean; id: string; name: string; ctx: string; max: string; vision: boolean; video: boolean }
@@ -1042,16 +1045,16 @@ function ModelListEditor(props: {
   }
 
   /**
-   * 当前编辑结果 → settings 的 models 数组；形状不合法时返回 undefined 并写好错误提示。
+   * 给定行列表 → settings 的 models 数组；形状不合法时返回 undefined 并写好错误提示。
    *
    * 清单只做「新增 / 移除」，不改现有条目的字段：
    *   现有条目（路由声明过的 / 目录收录的）——原样保留：声明过的整条带回去，目录收录的只写 {id}；
    *   自定义条目（目录里没有）——上下文 / 最大输出必填，能力开关写进 input 模态。
    */
-  function payload(): DeclaredModel[] | undefined {
+  function payloadFrom(list: ModelEditRow[]): DeclaredModel[] | undefined {
     var out: DeclaredModel[] = []
-    for (var i = 0; i < rows.length; i += 1) {
-      var row = rows[i]
+    for (var i = 0; i < list.length; i += 1) {
+      var row = list[i]
       if (row.enabled !== true) continue
       if (row.declared !== undefined) {
         out.push({ ...row.declared, id: row.id })
@@ -1081,30 +1084,56 @@ function ModelListEditor(props: {
       entry.input = input
       out.push(entry)
     }
-    if (out.length === 0) { setError('至少留一个模型；要让这家回到「目录全量」请点「跟随目录（还原）」'); return undefined }
+    if (out.length === 0) { setError('至少留一个模型；要让这家回到 pi-ai 自带清单请点「还原清单」'); return undefined }
     return out
   }
 
-  function submit(models: DeclaredModel[] | null, done: string) {
+  function payload(): DeclaredModel[] | undefined {
+    return payloadFrom(rows)
+  }
+
+  /**
+   * 勾选即时生效：直接把「勾选后的清单」写进 settings.yaml（= 已添加/移出该模型），
+   * 不必再点「保存清单」。写失败时把行状态回滚（勾选框弹回原位）。
+   */
+  function toggleInstant(row: ModelEditRow, checked: boolean) {
+    if (busy === true) return
+    var previous = rows
+    var next = rows.map(function (r) {
+      return r.id === row.id ? withKeys(r as unknown as AnyRecord, { enabled: checked }) as unknown as ModelEditRow : r
+    })
+    var list = payloadFrom(next)
+    if (list === undefined) {
+      // 触发一次重渲染让受控勾选框弹回原位（比如取消最后一个模型被拦下）
+      setRows(function () { return previous.slice() })
+      return
+    }
+    setRows(function () { return next })
+    submit(list, (checked ? '✓ 已添加 ' : '✓ 已移除 ') + row.id, { keepEditor: true, revert: function () { setRows(function () { return previous }) } })
+  }
+
+  function submit(models: DeclaredModel[] | null, done: string, opts?: { keepEditor?: boolean; revert?: () => void }) {
     setBusy(true)
     setError(null)
     postJson('/provider/set-models', { providerId: account.id, models: models })
       .then(function (res) {
         if (res === null || res === undefined || res.ok !== true) {
           setError('保存失败：' + String((res && res.error) || '未知错误'))
+          if (opts !== undefined && opts.revert !== undefined) opts.revert()
           return
         }
         props.onSaved(done)
-        props.onClose()
+        if (opts === undefined || opts.keepEditor !== true) props.onClose()
       })
       .catch(function (cause) {
         setError('保存失败：' + String(cause && cause.message ? cause.message : cause))
+        if (opts !== undefined && opts.revert !== undefined) opts.revert()
       })
       .then(function () { setBusy(false) })
   }
 
   var rows_ = []
-  for (var r = 0; r < rows.length; r += 1) rows_.push(modelEditRow(rows[r], patch, remove))
+  for (var r = 0; r < rows.length; r += 1) rows_.push(modelEditRow(rows[r], patch, remove, toggleInstant, busy))
 
   // 列头（模型 ID / 能力 / 上下文 / 最大输出）与数据行共用同一套网格列宽，逐列严格对齐
   var colHead = react.createElement(
@@ -1188,9 +1217,7 @@ function ModelListEditor(props: {
     react.createElement(
       'div',
       { className: 'pv_hint' },
-      declaredCount > 0
-        ? '当前只服务清单里的 ' + String(declaredCount) + ' 个模型'
-        : '当前跟随 pi-ai 目录（' + String(rows.length) + ' 个可用）',
+      '当前已添加' + String(enabledCount) + '个模型',
     ),
     react.createElement('div', { className: 'pv_meList' }, [colHead].concat(rows_)),
     react.createElement(
@@ -1224,9 +1251,9 @@ function ModelListEditor(props: {
         className: 'pv_action',
         style: { marginLeft: 'auto' },
         disabled: busy,
-        title: '还原：删掉这条路由的 models 键，回到「pi-ai 目录收录什么就服务什么」',
-        onClick: function () { submit(null, '✓ ' + shortName(account) + ' 已回到目录全量') },
-      }, '跟随目录（还原）'),
+        title: '还原清单：删掉这条路由的 models 键，回到 pi-ai 自带的模型清单',
+        onClick: function () { submit(null, '✓ ' + shortName(account) + ' 已还原为 pi-ai 自带清单') },
+      }, '还原清单'),
     ),
     formEl,
     error === null ? null : react.createElement('div', { className: 'plan_note plan_badText' }, error),

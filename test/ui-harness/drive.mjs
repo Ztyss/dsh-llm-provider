@@ -357,10 +357,8 @@ try {
         return s.whiteSpace === 'nowrap' && s.textOverflow === 'ellipsis'
       })(),
       noFilter: document.querySelector('.pv_mFilter') === null,
-      delBtnOnConfiguredOnly: rows.every(function (el) {
-        var configured = el.querySelector('.pv_meCheck').checked || el.querySelector('.pv_capDeclared') !== null
-        return (el.querySelector('.pv_iconBtn') !== null) === configured
-      }),
+      // ✕ 每行都有（勾选即时生效后，✕ 的职责 = 把该条目从清单草稿删掉，保存清单落盘）
+      delOnEveryRow: rows.every(function (el) { return el.querySelector('.pv_iconBtn') !== null }),
       // 名称列删除：无 .pv_meName，表头 6 列
       noNameCol: document.querySelector('.pv_meName') === null && document.querySelectorAll('.pv_meHeadRow > span').length === 6,
       // 只预勾 settings.yaml 声明过的模型（夹具里 opencode-go 只声明 deepseek-flash）
@@ -381,10 +379,26 @@ try {
     }
   })()`)
   console.log('  清单探针:', JSON.stringify(editorProbe))
-  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.knownRowsReadOnly !== true || editorProbe.idTruncates !== true || editorProbe.noFilter !== true || editorProbe.delBtnOnConfiguredOnly !== true || editorProbe.noNameCol !== true || editorProbe.declaredOnly !== true || editorProbe.noCounter !== true || editorProbe.noInlineAdd !== true || editorProbe.ctxMaxShown !== true || editorProbe.colAligned !== true) {
+  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.knownRowsReadOnly !== true || editorProbe.idTruncates !== true || editorProbe.noFilter !== true || editorProbe.delOnEveryRow !== true || editorProbe.noNameCol !== true || editorProbe.declaredOnly !== true || editorProbe.noCounter !== true || editorProbe.noInlineAdd !== true || editorProbe.ctxMaxShown !== true || editorProbe.colAligned !== true) {
     throw new Error('模型清单结构没满足：' + JSON.stringify(editorProbe))
   }
   shots.push(await cdp.shot('02b-model-list-editor'))
+
+  // 2pre) 勾上一个未配置的目录模型：**勾选即时生效**，直接发 set-models（声明条目原样 + 已知模型只写 {id}）。
+  //       放在「添加模型」之前：此时草稿里还没有自定义行，即时载荷就是干净的「原清单 + 新勾的这条」
+  //       （两步分开点，同一 eval 里连点会命中重渲染前的旧闭包——真实 UI 的两次点击在不同任务里）
+  await cdp.eval(`
+    var boxes = document.querySelectorAll('.pv_meRow .pv_meCheck');
+    boxes[1].click();
+  `)
+  await sleep(400)
+  const instant = await cdp.eval('window.__lastSetModels ?? null')
+  console.log('  勾选即时写载荷:', JSON.stringify(instant))
+  const instantOk = instant !== null && instant.providerId === 'opencode-go' && JSON.stringify(instant.models) === JSON.stringify([
+    { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', contextWindow: 1000000, maxTokens: 384000, input: ['text', 'image'], reasoningEfforts: { low: 'low', high: 'high', max: 'max' } },
+    { id: 'kimi-k3' },
+  ])
+  if (instantOk !== true) throw new Error('勾选没有即时写入（声明原样 + 已知只写 id）：' + JSON.stringify(instant))
 
   // 2a) 「添加模型」表单：空 ID 报错 → 填全参数 → 行追加（草稿态，保存才落盘）
   await cdp.eval(`
@@ -431,13 +445,7 @@ try {
   }
   shots.push(await cdp.shot('02c-model-added'))
 
-  // 2b) 勾上一个未配置的目录模型再保存：声明条目原样保留 + 已知模型只写 {id} + 自定义带全参数
-  //     （两步分开点，同一 eval 里连点会命中重渲染前的旧闭包——真实 UI 的两次点击在不同任务里）
-  await cdp.eval(`
-    var boxes = document.querySelectorAll('.pv_meRow .pv_meCheck');
-    boxes[1].click();
-  `)
-  await sleep(300)
+  // 2b+) 添加自定义条目后点「保存清单」才落盘：✕ / 添加模型是草稿操作，保存 = 修改整个清单
   await cdp.eval(`
     var n = Array.from(document.querySelectorAll('.pv_meActs button')).find(function (b) { return b.textContent.indexOf('保存清单') !== -1 });
     n.click();
@@ -499,7 +507,7 @@ try {
     }
   })()`)
   console.log('  跟随目录预勾探针:', JSON.stringify(followPick))
-  if (followPick.rows !== 2 || JSON.stringify(followPick.checked) !== JSON.stringify(['glm-5.3-flash', 'deepseek/deepseek-v4-flash-0731:patch']) || followPick.hint.indexOf('跟随') === -1) {
+  if (followPick.rows !== 2 || JSON.stringify(followPick.checked) !== JSON.stringify(['glm-5.3-flash', 'deepseek/deepseek-v4-flash-0731:patch']) || followPick.hint.indexOf('已添加') === -1) {
     throw new Error('跟随目录的 provider 编辑器没有把目录模型全部预勾：' + JSON.stringify(followPick))
   }
   if (followPick.geom === null || followPick.geom.singleLine !== true || followPick.geom.clipped !== true || followPick.geom.noOverlap !== true) {

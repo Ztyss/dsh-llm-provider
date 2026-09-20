@@ -276,7 +276,8 @@ var css =
   'color:var(--dsw-alias-label-tertiary)}' +
   '.pv_capIcons{display:inline-flex;gap:6px;font-size:12px;line-height:16px}' +
   '.pv_capMini{font-size:11px;line-height:16px;padding:0 7px;border-radius:999px;white-space:nowrap}' +
-  '.pv_mHead{display:flex;align-items:center;gap:6px;flex:1;min-width:0;font:inherit;font-size:13px;font-weight:600;' +
+  // 「模型（N）」标题：字重与表单标签一致（不加粗），别在框里显得像另一种字体
+  '.pv_mHead{display:flex;align-items:center;gap:6px;flex:1;min-width:0;font:inherit;font-size:13px;font-weight:normal;' +
   'line-height:18px;padding:0;border:0;background:0 0;cursor:pointer;color:var(--dsw-alias-label-primary);text-align:left}' +
   '.pv_mHead:hover{color:var(--dsw-alias-label-secondary)}' +
   // 模型区头部（仿父卡片）：标题左、过滤器右、Chevron 最右；列表区分割线 = 折叠态下边缘（零外边距）
