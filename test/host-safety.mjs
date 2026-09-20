@@ -4,9 +4,10 @@
  * 背景（真实事故，第二次）：插件把 `vendor/llm-bridge/node_modules/@earendil-works/pi-ai`
  * 挂成 junction，目标直接指向 dsh 自带那份 pi-ai。插件包目录
  * （`profiles/<profile>/node_modules/<插件>`）是**别人会整棵递归删除**的地方——包管理器、插件市场、
- * 宿主都会删它重建。而 Node 24.15 起（本机实测：DSH 自带运行时 electron 43.3.0 / node 24.18.1）
- * 递归删除容器目录时会**顺着 junction 把目标内容一起清空**。于是：卸载/重装插件 → dsh 自带
- * pi-ai 被清空 → 官方 llm-pi-ai 入口加载失败 → 重启后 dsh 起不来（日志：`Cannot find package
+ * 宿主都会删它重建。有的运行时递归删除容器目录时会**顺着 junction 把目标内容一起清空**。
+ * 到底会不会，版本号说了不算（node >= 24.15 的猜测在本机 24.16.0 上就不成立），
+ * 这个文件开头会现场量一次，断言跟着实测走。于是：卸载/重装插件 → 一旦真有运行时连坐，
+ * dsh 自带 pi-ai 被清空 → 官方 llm-pi-ai 入口加载失败 → 重启后 dsh 起不来（日志：`Cannot find package
  * '<app>\node_modules\@earendil-works\pi-ai\index.js'`）。
  *
  * 现在的不变量：
@@ -53,17 +54,32 @@ const isLink = (path) => {
 const inside = (child, parent) => child === parent || child.startsWith(parent + sep)
 
 /**
- * 递归删除会不会跟进 junction —— 跟运行时版本有关。
+ * 递归删除会不会跟进 junction —— 不按 node 版本猜，现场量。
  *
- * 实测：node 24.14.0 安全；DSH 自带运行时 electron 43.3.0 / node 24.18.1 会连坐目标。
- * 所以「被连坐的是副本」这条断言只在危险运行时上成立；安全运行时副本完好也是对的。
+ * 之前这里是个版本启发式（node >= 24.15 即判「会连坐」），结果在本机 node 24.16.0 上
+ * 判成危险、可同进程实测 rmSync 根本没跟进 junction，★ 断言自己错杀（21 通过 / 1 失败）。
+ * 版本号说明不了行为，删一遍才知道。探测只用牺牲目录：造一个目标 + 指向它的 junction，
+ * rmSync 掉容器，看目标死没死——跟被测的安全区副本、dsh 自带那份都不沾边。
  */
-const nodeParts = process.versions.node.split('.').map((part) => Number(part) || 0)
-const destructiveRuntime = (nodeParts[0] ?? 0) > 24
-  || ((nodeParts[0] ?? 0) === 24 && (nodeParts[1] ?? 0) >= 15)
+function measureRecursiveDeletion() {
+  const base = join(tmpdir(), `host-safety-probe-${Date.now()}-${Math.random().toString(16).slice(2)}`)
+  const target = makePiAi(join(base, 'probe-target'))
+  const container = join(base, 'probe-container')
+  const linkDir = join(container, 'node_modules', '@earendil-works')
+  mkdirSync(linkDir, { recursive: true })
+  symlinkSync(target, join(linkDir, 'pi-ai'), 'junction')
+  rmSync(container, { recursive: true, force: true })
+  const destructive = !intact(target)
+  // 清场：目标可能已被连坐（残目录）或完好（真目录），两种都按普通递归删掉
+  rmSync(target, { recursive: true, force: true })
+  rmSync(base, { recursive: true, force: true })
+  return destructive
+}
+
+const destructiveRuntime = measureRecursiveDeletion()
 
 console.log(`\n运行环境：node ${process.version}${process.versions.electron ? ` / electron ${process.versions.electron}` : ''}（platform ${process.platform}）`)
-console.log(`运行时判定：${destructiveRuntime ? '递归删除会跟进 junction（危险，本机 DSH 就是这样）' : '递归删除不跟进 junction（安全运行时，破坏性断言按此调整）'}`)
+console.log(`运行时判定（实测）：${destructiveRuntime ? '递归删除会跟进 junction（危险）' : '递归删除不跟进 junction（安全运行时）'}`)
 
 const base = join(tmpdir(), `host-safety-${Date.now()}`)
 mkdirSync(base, { recursive: true })
