@@ -492,7 +492,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
   var openState = react.useState(false)
   var open = openState[0]
   var setOpen = openState[1]
-  var formState = react.useState({ routeId: '', key: '', baseURL: '', api: '', apiKeyEnv: '', websiteUrl: undefined })
+  var formState = react.useState({ presetId: '', routeId: '', key: '', baseURL: '', api: '', apiKeyEnv: '', websiteUrl: undefined })
   var form = formState[0]
   var setForm = formState[1]
   var testState = react.useState({ phase: 'idle', message: '' })
@@ -538,6 +538,9 @@ function AddProviderPanel(props: AddProviderPanelProps) {
     var preset = findById(presets, id)
     if (preset === undefined) return
     patchForm({
+      // presetId 单独记「选中的是哪个预设」：customPicked 靠它判断。此前用 routeId 反查，
+      // 用户一改自定义路由 ID，反查就落空，输入框立刻变回只读——字打到一半就被锁死
+      presetId: preset.id,
       routeId: preset.id,
       baseURL: preset.baseURL,
       api: preset.api,
@@ -631,7 +634,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
   }
 
   // 供应商可过滤下拉：fuzzyMatch 复用模型过滤那套（缩写/错拼都行）
-  var pickedPreset = findById(presets, form.routeId)
+  var pickedPreset = findById(presets, form.presetId !== '' ? form.presetId : form.routeId)
   var pickedLabel = pickedPreset === undefined ? form.routeId : pickedPreset.label
   var customPicked = pickedPreset !== undefined && pickedPreset.custom === true
   var pickItems = []

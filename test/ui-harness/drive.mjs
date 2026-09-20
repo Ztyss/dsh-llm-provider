@@ -730,6 +730,60 @@ try {
   }
   shots.push(await cdp.shot('06-seat-model-panel-modlens-vision'))
 
+  // 7) 添加供应商：选「Custom Gateway」后，路由 ID 必须可编辑（改 id 时凭据名跟随大写化）。
+  //    此前 readOnly 与「routeId 反查预设」绑定，改一个字符就锁死输入框（用户报的就是它）。
+  //    上一步导航去了 seat.html，这里先回 harness 页等重新挂载。
+  await cdp.send('Page.navigate', { url: 'file:///' + join(here, 'harness.html').replace(/\\/g, '/') })
+  await cdp.waitFor('.pv_addBtn')
+  await sleep(400)
+  await cdp.eval(`
+    var t = document.querySelector('.ms_trigger')
+    if (t !== null) t.click()
+  `)
+  await sleep(300)
+  await cdp.eval(`
+    var b = document.querySelector('.pv_addBtn')
+    b.click()
+  `)
+  await cdp.waitFor('.pv_pick')
+  await sleep(200)
+  await cdp.eval(`
+    var t = document.querySelector('.pv_pick button')
+    t.click()
+  `)
+  await sleep(300)
+  await cdp.eval(`
+    var b = Array.from(document.querySelectorAll('.pv_pickList button')).find(function (x) { return x.textContent === 'Custom Gateway' })
+    b.click()
+  `)
+  await sleep(300)
+  await cdp.eval(`
+    var input = document.querySelector('input[title*="路由 ID 可自定义"], .pv_line input.pv_key[value="custom-gateway"]') || Array.from(document.querySelectorAll('.pv_line input.pv_key')).find(function (el) { return el.value === 'custom-gateway' })
+    input.focus()
+    input.value = 'my-gateway'
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  `)
+  await sleep(300)
+  const customProbe = await cdp.eval(`(function () {
+    var hint = (document.querySelector('.pv_hint') || {}).textContent || ''
+    var inputs = Array.from(document.querySelectorAll('.pv_line input'))
+    var routeInput = inputs.find(function (el) { return el.value === 'my-gateway' })
+    return {
+      routeEditable: routeInput !== undefined && routeInput.readOnly === false,
+      hint: hint,
+    }
+  })()`)
+  console.log('  自定义供应商探针:', JSON.stringify(customProbe))
+  if (customProbe.routeEditable !== true || customProbe.hint.indexOf('MY_GATEWAY_API_KEY') === -1) {
+    throw new Error('自定义 provider 路由 ID 改不动或凭据名没跟随：' + JSON.stringify(customProbe))
+  }
+  shots.push(await cdp.shot('07-custom-gateway-editable'))
+  await cdp.eval(`
+    var b = Array.from(document.querySelectorAll('.pv_actRow button, .pv_line button')).find(function (x) { return x.textContent === '取消' })
+    if (b !== undefined) b.click()
+  `)
+  await sleep(200)
+
   // 相邻截图不允许完全相同——两张一样说明某个步骤没有真正切过去（01/02 曾这样，md5 都相同）
   const dup = []
   for (let i = 1; i < shots.length; i += 1) {

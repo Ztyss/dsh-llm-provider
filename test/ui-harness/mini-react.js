@@ -126,6 +126,9 @@
       if (key === 'value') { if (el.value !== String(value)) el.value = String(value); continue }
       if (key === 'checked') { el.checked = value === true; continue }
       if (key === 'disabled') { el.disabled = value === true; continue }
+      // readOnly 必须走属性开关（false 也要能摘掉），不能落进下面的「false 就跳过」分支：
+      // 跳过会让上一轮渲染设上的 readonly 永远留在元素上（输入框被锁死）
+      if (key === 'readOnly') { el.readOnly = value === true; continue }
       if (/^on[A-Z]/.test(key)) {
         if (typeof value !== 'function') continue
         var eventName = key === 'onClick' ? 'click' : (key === 'onKeyDown' ? 'keydown' : (key === 'onInput' ? 'input' : 'change'))
