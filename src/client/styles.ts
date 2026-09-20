@@ -362,7 +362,7 @@ var css =
   '.pv_usageLoading{flex-direction:row;align-items:center;justify-content:center;gap:8px;padding:22px 0;' +
   'color:var(--dsw-alias-label-tertiary)}' +
   '.pv_usageLoading .pv_spin{font-size:16px;color:var(--dsw-alias-label-secondary)}' +
-  // 清单页的「修改模型」入口行：底部留足呼吸距，别让按钮贴着模型框下边框
+  // 清单页的「编辑模型」入口行：底部留足呼吸距，别让按钮贴着模型框下边框
   '.pv_mEditRow{display:flex;align-items:center;padding:9px 0 12px}' +
   '.pv_meActs{display:flex;align-items:center;gap:8px}' +
   // ---- 本地版新增：删除确认弹层（issue #3）----

@@ -347,7 +347,7 @@ try {
   if (noteGone !== true) throw new Error('取消后校验报错还在（报错应跟着草稿一起清）')
 
 
-  // 2) 模型框展开 → 先是「当前清单」只读页；点「修改模型」才进勾选编辑器
+  // 2) 模型框展开 → 先是「当前清单」只读页；点「编辑模型」才进勾选编辑器
   await cdp.eval(`document.querySelector('.pv_pc .pv_mHead').click()`)
   await sleep(300)
   await cdp.waitFor('.pv_mRow')
@@ -359,7 +359,7 @@ try {
     return {
       listRows: box.querySelectorAll('.pv_mRow').length,
       listHead: head !== null,
-      editBtn: Array.from(box.querySelectorAll('button')).some(function (b) { return b.textContent === '修改模型' }),
+      editBtn: Array.from(box.querySelectorAll('button')).some(function (b) { return b.textContent === '编辑模型' }),
       editorHidden: document.querySelector('.pv_meRow') === null,
       // 列改版：不放名称列，补最大输出列（表头 + 数据行都在）
       noNameCol: box.querySelector('.pv_mName') === null && head.textContent.indexOf('名称') === -1,
@@ -367,7 +367,7 @@ try {
       maxShown: maxCell !== null && maxCell.textContent !== '',
       // 模型 ID 超长时单行省略号截断（完整 ID 走 title 悬停）——绝不换行挤高行、更不叠到徽标上
       idTruncates: idCell !== null && getComputedStyle(idCell).whiteSpace === 'nowrap' && getComputedStyle(idCell).textOverflow === 'ellipsis',
-      // 「修改模型」按钮与模型框下边框留了呼吸距
+      // 「编辑模型」按钮与模型框下边框留了呼吸距
       btnBreath: (function () {
         var row = box.querySelector('.pv_mEditRow')
         var boxRect = box.getBoundingClientRect()
@@ -380,11 +380,11 @@ try {
   console.log('  清单页探针:', JSON.stringify(listProbe))
   if (listProbe.listRows === 0 || listProbe.listHead !== true || listProbe.editBtn !== true || listProbe.editorHidden !== true
     || listProbe.noNameCol !== true || listProbe.maxCol !== true || listProbe.maxShown !== true || listProbe.idTruncates !== true || listProbe.btnBreath !== true) {
-    throw new Error('清单页结构没满足（只读清单 + 修改模型 + 列改版 + ID 截断 + 按钮呼吸距）：' + JSON.stringify(listProbe))
+    throw new Error('清单页结构没满足（只读清单 + 编辑模型 + 列改版 + ID 截断 + 按钮呼吸距）：' + JSON.stringify(listProbe))
   }
   shots.push(await cdp.shot('02-model-list-page'))
   await cdp.eval(`
-    var b = Array.from(document.querySelectorAll('.pv_mBox')[0].querySelectorAll('button')).find(function (x) { return x.textContent === '修改模型' })
+    var b = Array.from(document.querySelectorAll('.pv_mBox')[0].querySelectorAll('button')).find(function (x) { return x.textContent === '编辑模型' })
     b.click()
   `)
   await cdp.waitFor('.pv_meRow')
@@ -416,8 +416,14 @@ try {
         return s.whiteSpace === 'nowrap' && s.textOverflow === 'ellipsis'
       })(),
       noFilter: document.querySelector('.pv_mFilter') === null,
-      // ✕ 每行都有（勾选即时生效后，✕ 的职责 = 把该条目从清单草稿删掉，保存清单落盘）
-      delOnEveryRow: rows.every(function (el) { return el.querySelector('.pv_iconBtn') !== null }),
+      // ✕ 只在「添加模型」加进来的行上：夹具里只有已声明的 deepseek-flash 配 ✕，
+      // 目录候选（kimi-k3 / glm-5.3）不配（用户要求）
+      delRows: rows.filter(function (el) { return el.querySelector('.pv_iconBtn') !== null })
+        .map(function (el) { return (el.querySelector('.pv_mId') || {}).textContent }),
+      delOnDeclaredOnly: (function () {
+        var del = rows.filter(function (el) { return el.querySelector('.pv_iconBtn') !== null })
+        return del.length === 1 && (del[0].querySelector('.pv_mId') || {}).textContent === 'deepseek-flash'
+      })(),
       // 名称列删除：无 .pv_meName，表头 6 列
       noNameCol: document.querySelector('.pv_meName') === null && document.querySelectorAll('.pv_meHeadRow > span').length === 6,
       // 只预勾 settings.yaml 声明过的模型（夹具里 opencode-go 只声明 deepseek-flash）
@@ -438,13 +444,47 @@ try {
     }
   })()`)
   console.log('  清单探针:', JSON.stringify(editorProbe))
-  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.knownRowsReadOnly !== true || editorProbe.idTruncates !== true || editorProbe.noFilter !== true || editorProbe.delOnEveryRow !== true || editorProbe.noNameCol !== true || editorProbe.declaredOnly !== true || editorProbe.noCounter !== true || editorProbe.noInlineAdd !== true || editorProbe.ctxMaxShown !== true || editorProbe.colAligned !== true) {
+  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.knownRowsReadOnly !== true || editorProbe.idTruncates !== true || editorProbe.noFilter !== true || editorProbe.delOnDeclaredOnly !== true || editorProbe.noNameCol !== true || editorProbe.declaredOnly !== true || editorProbe.noCounter !== true || editorProbe.noInlineAdd !== true || editorProbe.ctxMaxShown !== true || editorProbe.colAligned !== true) {
     throw new Error('模型清单结构没满足：' + JSON.stringify(editorProbe))
   }
   shots.push(await cdp.shot('02b-model-list-editor'))
 
-  // 2pre) 勾上一个未配置的目录模型：**勾选即时生效**，直接发 set-models（声明条目原样 + 已知模型只写 {id}）。
-  //       放在「添加模型」之前：此时草稿里还没有自定义行，即时载荷就是干净的「原清单 + 新勾的这条」
+  // 2mid) 表头复选框 = 一键全选 / 全不选（用户要求）。全不选后手动把 deepseek-flash 勾回来，
+  //       保持后续步骤的草稿基线（deepseek-flash + kimi-k3 + my-custom）。
+  await cdp.eval(`
+    var head = document.querySelector('.pv_meHeadRow input.pv_meCheck')
+    head.click()
+  `)
+  await sleep(300)
+  const allSel = await cdp.eval(`(function () {
+    var boxes = document.querySelectorAll('.pv_meRow .pv_meCheck')
+    var all = true
+    for (var i = 0; i < boxes.length; i += 1) if (boxes[i].checked !== true) all = false
+    return { all: all, hint: (document.querySelector('.pv_hint') || {}).textContent || '' }
+  })()`)
+  console.log('  一键全选探针:', JSON.stringify(allSel))
+  if (allSel.all !== true || allSel.hint.indexOf('3') === -1) throw new Error('一键全选没生效：' + JSON.stringify(allSel))
+  await cdp.eval(`
+    var head = document.querySelector('.pv_meHeadRow input.pv_meCheck')
+    head.click()
+  `)
+  await sleep(300)
+  await cdp.eval(`
+    document.querySelectorAll('.pv_meRow .pv_meCheck')[0].click()
+  `)
+  await sleep(300)
+  const afterUnsel = await cdp.eval(`(function () {
+    var boxes = document.querySelectorAll('.pv_meRow .pv_meCheck')
+    var states = []
+    for (var i = 0; i < boxes.length; i += 1) states.push(boxes[i].checked)
+    return { states: states, first: boxes[0].checked }
+  })()`)
+  console.log('  一键全不选探针:', JSON.stringify(afterUnsel))
+  // 全不选后重新勾回 deepseek-flash（恢复后续步骤的草稿基线）：期望恰好 [true,false,false]
+  if (JSON.stringify(afterUnsel.states) !== JSON.stringify([true, false, false]) || afterUnsel.first !== true) throw new Error('一键全不选没生效：' + JSON.stringify(afterUnsel))
+
+  // 2pre) 勾上一个未配置的目录模型：只改草稿，不落盘（此前版本是即时写入，用户要求改回草稿制）。
+  //       放在「添加模型」之前：此时草稿里还没有自定义行，保存载荷就是干净的「原清单 + 新勾的这条」
   //       （两步分开点，同一 eval 里连点会命中重渲染前的旧闭包——真实 UI 的两次点击在不同任务里）
   await cdp.eval(`
     var boxes = document.querySelectorAll('.pv_meRow .pv_meCheck');
@@ -452,12 +492,9 @@ try {
   `)
   await sleep(400)
   const instant = await cdp.eval('window.__lastSetModels ?? null')
-  console.log('  勾选即时写载荷:', JSON.stringify(instant))
-  const instantOk = instant !== null && instant.providerId === 'opencode-go' && JSON.stringify(instant.models) === JSON.stringify([
-    { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', contextWindow: 1000000, maxTokens: 384000, input: ['text', 'image'], reasoningEfforts: { low: 'low', high: 'high', max: 'max' } },
-    { id: 'kimi-k3' },
-  ])
-  if (instantOk !== true) throw new Error('勾选没有即时写入（声明原样 + 已知只写 id）：' + JSON.stringify(instant))
+  const kimiChecked = await cdp.eval(`document.querySelectorAll('.pv_meRow .pv_meCheck')[1].checked`)
+  console.log('  勾选草稿探针:', JSON.stringify({ noWrite: instant === null, kimiChecked: kimiChecked }))
+  if (instant !== null || kimiChecked !== true) throw new Error('勾选居然落盘了或没勾上：' + JSON.stringify({ instant: instant, kimiChecked: kimiChecked }))
 
   // 2a) 「添加模型」表单：空 ID 报错 → 填全参数 → 行追加（草稿态，保存才落盘）
   await cdp.eval(`
@@ -498,18 +535,38 @@ try {
       lastId: (last.querySelector('.pv_mId') || {}).textContent,
       lastCustom: last.querySelector('.pv_capDeclared') !== null,
       lastEnabled: last.querySelector('.pv_meCheck').checked,
+      lastHasDel: last.querySelector('.pv_iconBtn') !== null,
       formClosed: document.querySelector('.pv_meForm') === null,
     }
   })()`)
   console.log('  添加模型探针:', JSON.stringify(addProbe))
-  if (addProbe.rows !== 4 || addProbe.lastId !== 'my-custom' || addProbe.lastCustom !== true || addProbe.lastEnabled !== true || addProbe.formClosed !== true) {
+  if (addProbe.rows !== 4 || addProbe.lastId !== 'my-custom' || addProbe.lastCustom !== true || addProbe.lastEnabled !== true || addProbe.lastHasDel !== true || addProbe.formClosed !== true) {
     throw new Error('添加模型表单没按预期追加行：' + JSON.stringify(addProbe))
   }
   shots.push(await cdp.shot('02c-model-added'))
 
-  // 2b+) 添加自定义条目后点「保存清单」才落盘：✕ / 添加模型是草稿操作，保存 = 修改整个清单
+  // 2b+) 添加自定义条目后点「保存」才落盘：勾选 / ✕ / 添加模型都是草稿操作，保存 = 修改整个清单。
+  //      「保存」按钮右对齐（用户要求）；「还原清单」按钮已删（用户要求）。
+  const saveProbe = await cdp.eval(`(function () {
+    var acts = document.querySelector('.pv_meActs')
+    var save = null
+    var names = []
+    Array.from(acts.querySelectorAll('button')).forEach(function (b) {
+      names.push(b.textContent)
+      if (b.textContent === '保存') save = b
+    })
+    var rightGap = null
+    if (save !== null) {
+      rightGap = Math.abs(acts.getBoundingClientRect().right - save.getBoundingClientRect().right)
+    }
+    return { names: names, saveFound: save !== null, rightGap: rightGap, noRevert: names.indexOf('还原清单') === -1 }
+  })()`)
+  console.log('  保存按钮探针:', JSON.stringify(saveProbe))
+  if (saveProbe.saveFound !== true || saveProbe.rightGap > 2 || saveProbe.noRevert !== true) {
+    throw new Error('保存按钮没右对齐或还原清单还在：' + JSON.stringify(saveProbe))
+  }
   await cdp.eval(`
-    var n = Array.from(document.querySelectorAll('.pv_meActs button')).find(function (b) { return b.textContent.indexOf('保存清单') !== -1 });
+    var n = Array.from(document.querySelectorAll('.pv_meActs button')).find(function (b) { return b.textContent === '保存' });
     n.click();
   `)
   await sleep(600)
@@ -537,7 +594,7 @@ try {
   await sleep(300)
   await cdp.eval(`
     var cards = document.querySelectorAll('.pv_pc')
-    var b = Array.from(cards[cards.length - 1].querySelectorAll('button')).find(function (x) { return x.textContent === '修改模型' })
+    var b = Array.from(cards[cards.length - 1].querySelectorAll('button')).find(function (x) { return x.textContent === '编辑模型' })
     b.click()
   `)
   await cdp.waitFor('.pv_meRow')

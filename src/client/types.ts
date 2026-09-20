@@ -89,6 +89,8 @@ export interface ModelEditRow {
   originVideo: boolean
   /** 本来就在路由声明里的原始条目（保存时以它为底，保住 reasoningEfforts/compat 等字段）。 */
   declared: DeclaredModel | undefined
+  /** 本会话经「添加模型」表单新加的行：唯一允许 ✕ 删除的目录外来源（声明过的行也允许 ✕）。 */
+  added?: boolean
 }
 
 /** /plan/status 的 accounts 项：额度快照里的一家 provider（宿主在通用字段外还会带几个）。 */

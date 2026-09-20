@@ -2588,8 +2588,9 @@ window.__ModuleLoader__.load({
 		* 单行省略号截断（title 兜底）。现有条目（目录收录 / 已声明）只读展示——清单只做
 		* 新增与移除；自定义条目才有输入框和能力开关。
 		*
-		* 勾选语义（v0.1.3 起）：勾选即时生效，直接写 settings.yaml（= 已添加/移出该模型）；
-		* ✕ 把这一条从清单草稿里删掉，属于结构修改，要点「保存清单」才落盘。
+		* 勾选语义（回归草稿制）：勾选 / 取消只改草稿，点「保存」一次性写入 settings.yaml；
+		* ✕ 只出现在「添加模型」加进来的行上（本会话新加的 + 路由声明里已有的条目），
+		* 目录候选行没有 ✕——不想要就不勾。
 		*/
 		function modelEditRow(row, patch, remove, onToggle, busy) {
 			var known = row.known === true;
@@ -2638,7 +2639,7 @@ window.__ModuleLoader__.load({
 				className: "pv_meCheck",
 				checked: row.enabled,
 				disabled: busy,
-				title: row.enabled ? "取消勾选 = 立即不再服务这个模型（直接写入 settings.yaml）" : "勾上 = 立即添加这个模型（直接写入 settings.yaml）",
+				title: "勾选 / 取消只改草稿，点「保存」后写入 settings.yaml",
 				onChange: function(event) {
 					onToggle(row, event.target.checked === true);
 				}
@@ -2674,15 +2675,15 @@ window.__ModuleLoader__.load({
 				onChange: function(event) {
 					patch(row.id, { maxTokens: event.target.value });
 				}
-			}), react.default.createElement("button", {
+			}), row.declared !== void 0 || row.added === true ? react.default.createElement("button", {
 				type: "button",
 				className: "pv_iconBtn",
 				disabled: busy,
-				title: "把这一条从模型清单里删掉（点「保存清单」后生效）",
+				title: "把这一条从模型清单里删掉（点「保存」后生效）",
 				onClick: function() {
 					remove(row.id);
 				}
-			}, "✕"));
+			}, "✕") : null);
 		}
 		/**
 		* 「添加模型」表单留空时的默认值：取清单里已知模型中最大的 上下文/最大输出（同一家的
@@ -2766,14 +2767,15 @@ window.__ModuleLoader__.load({
 		*
 		* 官方 Models 页被本插件禁用（cordis.patch.yml），而它独有的「逐模型清单编辑」没有替代，
 		* 于是「只想留 DeepSeek 三个模型里的一个」这类需求在界面上无处可做。这里补上：
-		* 勾选（即时生效）或「保存清单」→ 写 settings 的 `llm-pi-ai.providers.<id>.models`（与官方 Models 页同一条写路径，
+		* 勾选 / 取消 / ✕ / 添加模型都只改草稿，点「保存」→ 写 settings 的 `llm-pi-ai.providers.<id>.models`（与官方 Models 页同一条写路径，
 		* 官方 adapter 的 resolveRouteModels 认这个键，`models` 非空就替换整份服务目录）。
 		*
-		* 语义四条（v0.1.3 起勾选改为即时生效）：
-		*   勾选 —— 即时生效：直接写 settings 的 `llm-pi-ai.providers.<id>.models`，勾 = 已添加该模型；
-		*   ✕ / 添加模型 —— 清单结构修改，先进草稿，点「保存清单」一次性落盘；
-		*   保存清单 —— 只留勾上的；目录里没有的自定义 ID 必须填全上下文/最大输出（官方 strict 校验会拒）；
-		*   还原清单 —— 删掉 models 键，回到 pi-ai 自带的模型清单。
+		* 语义（回归草稿制）：
+		*   勾选 / 取消 / ✕ / 添加模型 —— 都只改草稿，不落盘；
+		*   保存 —— 把草稿里勾上的行一次性写 settings 的 `llm-pi-ai.providers.<id>.models`（与官方 Models 页同一条写路径），
+		*       目录里没有的自定义 ID 也要带上下文/最大输出（官方 strict 校验会拒），表单留空会按已知模型最大值自动补默认（resolveAddDefaults），填了按填的；
+		*   ✕ —— 只在「添加模型」加进来的行上（本会话新加的 + 路由声明里已有的条目），目录候选行不配 ✕；
+		*   还原清单按钮已删（用户要求）——要回到跟随目录需手改 settings.yaml 删掉 models 键。
 		*/
 		function ModelListEditor(props) {
 			var account = props.account;
@@ -2829,7 +2831,7 @@ window.__ModuleLoader__.load({
 					});
 				});
 			}
-			/** 表单「添加」：校验通过就追加一行自定义条目（默认勾上，保存清单后才生效）。
+			/** 表单「添加」：校验通过就追加一行自定义条目（默认勾上，保存后才生效）。
 			*  上下文/最大输出留空 = 自动按清单里已知模型的最大值填默认（没有已知值则回退保守值），
 			*  填进行里随时可改；填了但不是正整数才拦。 */
 			function addFromForm() {
@@ -2877,7 +2879,8 @@ window.__ModuleLoader__.load({
 						knownReasoning: false,
 						originVision: form.vision === true,
 						originVideo: form.video === true,
-						declared: void 0
+						declared: void 0,
+						added: true
 					}]);
 				});
 				setForm(emptyForm);
@@ -2937,7 +2940,7 @@ window.__ModuleLoader__.load({
 					out.push(entry);
 				}
 				if (out.length === 0) {
-					setError("至少留一个模型；要让这家回到 pi-ai 自带清单请点「还原清单」");
+					setError("至少要勾选一个模型（全部不勾的清单无法保存）");
 					return;
 				}
 				return out;
@@ -2946,35 +2949,27 @@ window.__ModuleLoader__.load({
 				return payloadFrom(rows);
 			}
 			/**
-			* 勾选即时生效：直接把「勾选后的清单」写进 settings.yaml（= 已添加/移出该模型），
-			* 不必再点「保存清单」。写失败时把行状态回滚（勾选框弹回原位）。
+			* 勾选 / 取消只改草稿：点「保存」时把「勾选后的清单」一次性写进 settings.yaml。
+			* （曾经做过「勾选即时落盘」，用户要求改回草稿制——见「保存」按钮。）
 			*/
-			function toggleInstant(row, checked) {
+			function toggleDraft(row, checked) {
 				if (busy === true) return;
-				var previous = rows;
-				var next = rows.map(function(r) {
-					return r.id === row.id ? withKeys(r, { enabled: checked }) : r;
-				});
-				var list = payloadFrom(next);
-				if (list === void 0) {
-					setRows(function() {
-						return previous.slice();
+				setRows(function(prev) {
+					return prev.map(function(r) {
+						return r.id === row.id ? withKeys(r, { enabled: checked }) : r;
 					});
-					return;
-				}
-				setRows(function() {
-					return next;
-				});
-				submit(list, (checked ? "✓ 已添加 " : "✓ 已移除 ") + row.id, {
-					keepEditor: true,
-					revert: function() {
-						setRows(function() {
-							return previous;
-						});
-					}
 				});
 			}
-			function submit(models, done, opts) {
+			/** 一键全选 / 全不选（表头复选框）。 */
+			function toggleAll(enabled) {
+				if (busy === true) return;
+				setRows(function(prev) {
+					return prev.map(function(r) {
+						return r.enabled === enabled ? r : withKeys(r, { enabled });
+					});
+				});
+			}
+			function submit(models, done) {
 				setBusy(true);
 				setError(null);
 				postJson("/provider/set-models", {
@@ -2983,24 +2978,36 @@ window.__ModuleLoader__.load({
 				}).then(function(res) {
 					if (res === null || res === void 0 || res.ok !== true) {
 						setError("保存失败：" + String(res && res.error || "未知错误"));
-						if (opts !== void 0 && opts.revert !== void 0) opts.revert();
 						return;
 					}
 					props.onSaved(done);
-					if (opts === void 0 || opts.keepEditor !== true) props.onClose();
+					props.onClose();
 				}).catch(function(cause) {
 					setError("保存失败：" + String(cause && cause.message ? cause.message : cause));
-					if (opts !== void 0 && opts.revert !== void 0) opts.revert();
 				}).then(function() {
 					setBusy(false);
 				});
 			}
 			var rows_ = [];
-			for (var r = 0; r < rows.length; r += 1) rows_.push(modelEditRow(rows[r], patch, remove, toggleInstant, busy));
+			for (var r = 0; r < rows.length; r += 1) rows_.push(modelEditRow(rows[r], patch, remove, toggleDraft, busy));
+			var allEnabled = rows.length > 0;
+			for (var ar = 0; ar < rows.length; ar += 1) if (rows[ar].enabled !== true) {
+				allEnabled = false;
+				break;
+			}
 			var colHead = react.default.createElement("div", {
 				className: "pv_meHeadRow",
 				key: "colhead"
-			}, react.default.createElement("span", { key: "h-check" }), react.default.createElement("span", {
+			}, react.default.createElement("span", { key: "h-check" }, react.default.createElement("input", {
+				type: "checkbox",
+				className: "pv_meCheck",
+				checked: allEnabled,
+				disabled: busy,
+				title: allEnabled ? "全不选" : "全选",
+				onChange: function() {
+					toggleAll(allEnabled !== true);
+				}
+			})), react.default.createElement("span", {
 				key: "h-id",
 				style: { fontFamily: "inherit" }
 			}, t("prov.modelId")), react.default.createElement("span", { key: "h-caps" }, t("prov.caps")), react.default.createElement("span", { key: "h-ctx" }, t("prov.ctx")), react.default.createElement("span", { key: "h-max" }, t("cap.maxTokens")), react.default.createElement("span", { key: "h-del" }));
@@ -3085,24 +3092,16 @@ window.__ModuleLoader__.load({
 			}, "添加模型"), react.default.createElement("button", {
 				type: "button",
 				className: "pv_action",
-				style: { marginLeft: "0" },
+				style: { marginLeft: "auto" },
 				disabled: busy,
+				title: "把草稿里的勾选与增删一次性写入 settings.yaml",
 				onClick: function() {
 					setError(null);
 					var models = payload();
 					if (models === void 0) return;
 					submit(models, "✓ " + shortName(account) + " 的模型清单已保存（" + String(models.length) + " 个）");
 				}
-			}, busy ? "保存中…" : "保存清单"), react.default.createElement("button", {
-				type: "button",
-				className: "pv_action",
-				style: { marginLeft: "auto" },
-				disabled: busy,
-				title: "还原清单：删掉这条路由的 models 键，回到 pi-ai 自带的模型清单",
-				onClick: function() {
-					submit(null, "✓ " + shortName(account) + " 已还原为 pi-ai 自带清单");
-				}
-			}, "还原清单")), formEl, error === null ? null : react.default.createElement("div", { className: "plan_note plan_badText" }, error));
+			}, busy ? "保存中…" : "保存")), formEl, error === null ? null : react.default.createElement("div", { className: "plan_note plan_badText" }, error));
 		}
 		/**
 		* 删除 provider 的确认弹层（本地版新增，实现 issue #3）。
@@ -3758,13 +3757,13 @@ window.__ModuleLoader__.load({
 								type: "button",
 								className: "pv_action",
 								style: { marginLeft: "0" },
-								title: "打开逐模型清单编辑：勾选 / 添加 / 删除，保存清单后写进 settings.yaml",
+								title: "打开逐模型清单编辑：勾选 / 添加 / 删除，点「保存」后写进 settings.yaml",
 								onClick: function() {
 									setOpenMap(function(prev) {
 										return withKey(prev, account.id + ":models-edit", true);
 									});
 								}
-							}, "修改模型")));
+							}, "编辑模型")));
 						}
 						bodyRows.push(react.default.createElement("div", {
 							className: "pv_mBox",
