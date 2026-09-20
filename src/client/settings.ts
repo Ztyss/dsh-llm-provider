@@ -230,9 +230,13 @@ export function modelTip(model: CatalogModel, account: PlanAccount, detail: Mode
   rows.push(tipLine(t('prov.modelId'), model.id, 'id'))
   var capIds = capabilityKeysOf(detail)
   if (capIds.length > 0) {
-    rows.push(react.createElement('div', { className: 'pv_tipCaps', key: 'c' }, capIds.map(function (id) {
-      return tipCap(t(CAP_KEYS[id].label), capClassOf(id))
-    })))
+    // 能力行与其它行同构：左侧「能力」标签 + 右侧徽章（用户要求：标签列对齐）
+    rows.push(react.createElement('div', { className: 'pv_tipRow', key: 'c' },
+      react.createElement('span', { className: 'pv_tipLabel' }, t('prov.caps')),
+      react.createElement('span', { className: 'pv_tipCaps' }, capIds.map(function (id) {
+        return tipCap(t(CAP_KEYS[id].label), capClassOf(id))
+      })),
+    ))
   }
   // 能力没出处就明说：写「关闭」等于替用户断言它不支持，比留白更误导
   if (!capabilitiesKnown(detail)) {

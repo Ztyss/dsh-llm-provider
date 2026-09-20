@@ -726,6 +726,37 @@ try {
     cards[cards.length - 1].querySelector('.pv_mHead').click()
   `)
   await sleep(300)
+  // 2d0) 悬浮详情卡：真实鼠标移到模型行上 → 能力行左侧要有「能力」标签（与供应商/模型 ID 对齐）
+  const tipRect = await cdp.eval(`(function () {
+    var cards = document.querySelectorAll('.pv_pc')
+    var row = cards[cards.length - 1].querySelector('.pv_mRow')
+    var r = row.getBoundingClientRect()
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+  })()`)
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: tipRect.x, y: tipRect.y })
+  await sleep(300)
+  const tipProbe = await cdp.eval(`(function () {
+    var rows = Array.from(document.querySelectorAll('.pv_mRow'))
+    for (var i = 0; i < rows.length; i += 1) {
+      var tip = rows[i].querySelector('.pv_tip')
+      if (tip !== null && getComputedStyle(tip).display !== 'none') {
+        var labels = Array.from(tip.querySelectorAll('.pv_tipLabel')).map(function (x) { return x.textContent })
+        var capsRow = Array.from(tip.querySelectorAll('.pv_tipRow')).find(function (r) { return (r.querySelector('.pv_tipLabel') || {}).textContent === '能力' })
+        return {
+          found: true,
+          labels: labels,
+          hasCapsLabel: labels.indexOf('能力') !== -1,
+          capsRowIsTipRow: capsRow !== undefined && capsRow.querySelector('.pv_tipCaps') !== null,
+        }
+      }
+    }
+    return { found: false }
+  })()`)
+  console.log('  悬浮卡能力标签:', JSON.stringify(tipProbe))
+  if (tipProbe.found !== true || tipProbe.hasCapsLabel !== true || tipProbe.capsRowIsTipRow !== true) {
+    throw new Error('悬浮详情卡能力行没有「能力」标签：' + JSON.stringify(tipProbe))
+  }
+  shots.push(await cdp.shot('02d1-model-tip-caps-label'))
   await cdp.eval(`
     var cards = document.querySelectorAll('.pv_pc')
     var b = Array.from(cards[cards.length - 1].querySelectorAll('button')).find(function (x) { return x.textContent === '编辑模型' })

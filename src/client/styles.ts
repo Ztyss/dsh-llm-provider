@@ -331,7 +331,7 @@ var css =
   '.pv_tipRow{display:flex;gap:10px;font-size:12px;line-height:18px}' +
   '.pv_tipLabel{flex:none;width:60px;color:var(--dsw-alias-label-tertiary)}' +
   '.pv_tipDim{font-size:11px;color:var(--dsw-alias-label-tertiary)}' +
-  '.pv_tipCaps{display:flex;gap:6px;flex-wrap:wrap}' +
+  '.pv_tipCaps{flex:1;min-width:0;display:flex;gap:6px;flex-wrap:wrap;align-items:center}' +
   '.pv_cap{font-size:11px;padding:1px 8px;border-radius:999px}' +
   '.pv_capVision{color:#2f9e44;background:rgba(47,158,68,.12)}' +
   '.pv_capVideo{color:#7c3aed;background:rgba(124,58,237,.12)}' +
