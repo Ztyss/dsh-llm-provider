@@ -8,16 +8,28 @@
  * 环境变量：CLIENT_SRC 覆盖被测 client.js，CHROME 覆盖浏览器路径。
  */
 import { createHash } from 'node:crypto'
-import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const outDir = process.argv[2] ?? 'D:/桌面/dsh-lp-evidence'
-const clientSrc = process.env.CLIENT_SRC ?? 'C:/Users/39244/.dsh/profiles/web/node_modules/@ztyss/dsh-llm-provider/lib/client.js'
-const chromePath = process.env.CHROME ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe'
+// 默认值全部可移植：证据输出进系统临时目录，被测 client.js 取本机 profile 里装好的那份，
+// 浏览器按常见安装位探测（Chrome → Edge）——不再硬编码某一台机器的路径
+const outDir = process.argv[2] ?? join(tmpdir(), 'dsh-lp-evidence')
+const clientSrc = process.env.CLIENT_SRC
+  ?? join(homedir(), '.dsh', 'profiles', 'web', 'node_modules', '@ztyss', 'dsh-llm-provider', 'lib', 'client.js')
+const chromePath = process.env.CHROME
+  ?? [
+    'C:/Program Files/Google/Chrome/Application/chrome.exe',
+    'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+    join(process.env.LOCALAPPDATA ?? '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+    'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
+  ].find((candidate) => candidate !== '' && existsSync(candidate))
+if (chromePath === undefined || chromePath === '') throw new Error('找不到 Chrome/Edge，用 CHROME 环境变量指定浏览器路径')
+if (!existsSync(clientSrc)) throw new Error(`找不到被测 client.js：${clientSrc}（用 CLIENT_SRC 指定，或先把插件装进 web profile）`)
 const PORT = Number(process.env.CDP_PORT ?? 9333)
 
 mkdirSync(outDir, { recursive: true })
@@ -173,8 +185,7 @@ try {
   await sleep(300)
   const chips = await cdp.eval(`Array.from(document.querySelectorAll('.pv_pc .pv_chipItem')).map(function (el) { return el.textContent.trim() })`)
   console.log('  卡片头部 chips:', JSON.stringify(chips))
-  await cdp.eval(`document.querySelector('.pv_pc .pv_mHead').click()`)
-  await sleep(300)
+  // 模型框保持折叠——展开是第 2 步的事；此前这里提前展开，01/02 曾截出两张逐字节相同的图
   await cdp.eval(`window.scrollTo(0, 0)`)
   shots.push(await cdp.shot('01-provider-card-30d-chip'))
   // 1b) Provider 卡就地编辑：无改动无编辑痕迹；有草稿浮出操作区；只写改动过的字段；校验拦截；取消回落
@@ -241,6 +252,21 @@ try {
   const mutCount = await cdp.eval('(window.__mutateCalls || []).length')
   if (mutCount !== 1) throw new Error('非法端点竟然发起了 mutate（次数 ' + mutCount + '）')
   console.log('  非法端点被校验拦下，mutate 次数仍为 1')
+  // 报错必须在本页看得见（提示行渲染在标签栏正下方）——此前它的唯一渲染位在桥接页 body 里，
+  // 服务商页点「保存修改」像没反应一样，报错要切到桥接页才冒出来
+  const noteVisible = await cdp.eval(`(function () {
+    var el = document.querySelector('.pv_pageNote')
+    return {
+      present: el !== null,
+      text: el ? el.textContent : '',
+      inBody: document.body.textContent.indexOf('端点必须以') !== -1,
+      underTabs: el !== null && el.previousElementSibling !== null && el.previousElementSibling.className.indexOf('pv_tabs') !== -1,
+    }
+  })()`)
+  console.log('  校验报错本页可见:', JSON.stringify(noteVisible))
+  if (noteVisible.present !== true || noteVisible.text.indexOf('端点必须以') === -1 || noteVisible.underTabs !== true) {
+    throw new Error('校验报错没有在服务商页渲染出来：' + JSON.stringify(noteVisible))
+  }
 
   // 取消：草稿丢弃，字段回落
   await cdp.eval(`
@@ -256,9 +282,15 @@ try {
   })()`)
   console.log('  就地编辑·取消:', JSON.stringify(edit2))
   if (edit2.actsGone !== true || edit2.urlValue !== '') throw new Error('取消后没回落：' + JSON.stringify(edit2))
+  // 取消 = 丢弃草稿，草稿的校验报错要跟着一起清掉
+  const noteGone = await cdp.eval(`document.querySelector('.pv_pageNote') === null && document.body.textContent.indexOf('端点必须以') === -1`)
+  console.log('  取消后报错已清:', noteGone)
+  if (noteGone !== true) throw new Error('取消后校验报错还在（报错应跟着草稿一起清）')
 
 
   // 2) 模型框展开 → 先是「当前清单」只读页；点「修改模型」才进勾选编辑器
+  await cdp.eval(`document.querySelector('.pv_pc .pv_mHead').click()`)
+  await sleep(300)
   await cdp.waitFor('.pv_mRow')
   const listProbe = await cdp.eval(`(function () {
     var box = document.querySelectorAll('.pv_mBox')[0]
@@ -414,6 +446,16 @@ try {
   await cdp.waitFor('.pv_line')
   await sleep(400)
   const bridgeText = await cdp.eval(`document.querySelector('.pv_stack').textContent`)
+  // 切标签要清掉上一页的提示行——此前服务商页的报错会原样漏到桥接页冒出一句没来由的话
+  const bridgeNote = await cdp.eval(`({
+    pageNoteGone: document.querySelector('.pv_pageNote') === null,
+    strayText: document.body.textContent.indexOf('端点必须以') !== -1,
+    strayNoteInCard: document.querySelector('.pv_pcBody .plan_note') !== null,
+  })`)
+  console.log('  桥接页无跨标签残留:', JSON.stringify(bridgeNote))
+  if (bridgeNote.pageNoteGone !== true || bridgeNote.strayText !== false || bridgeNote.strayNoteInCard !== false) {
+    throw new Error('桥接页还有跨标签漏过来的提示：' + JSON.stringify(bridgeNote))
+  }
   shots.push(await cdp.shot('05-bridge-tab-updates-disabled'))
 
   // 5) 座位模型面板：modlens 合成 provider 的视觉徽标（2026-09-17 用户报「还是没有」）
@@ -446,6 +488,16 @@ try {
     })`))
   }
   shots.push(await cdp.shot('06-seat-model-panel-modlens-vision'))
+
+  // 相邻截图不允许完全相同——两张一样说明某个步骤没有真正切过去（01/02 曾这样，md5 都相同）
+  const dup = []
+  for (let i = 1; i < shots.length; i += 1) {
+    const a = createHash('md5').update(readFileSync(shots[i - 1])).digest('hex')
+    const b = createHash('md5').update(readFileSync(shots[i])).digest('hex')
+    if (a === b) dup.push(shots[i - 1].split(/[\\/]/).pop() + ' == ' + shots[i].split(/[\\/]/).pop())
+  }
+  if (dup.length > 0) throw new Error('相邻截图完全相同（步骤没真正切视图）：' + dup.join('; '))
+  console.log('  相邻截图去重自检: ' + shots.length + ' 张两两相邻皆不同')
 
   console.log(`\n请求记录: ${JSON.stringify(await cdp.eval('window.__calls'), null, 0)}`)
   console.log(`渲染错误: ${JSON.stringify(await cdp.eval('window.__errors ?? []'))}`)
