@@ -492,6 +492,52 @@ try {
   }
   shots.push(await cdp.shot('02b-model-list-editor'))
 
+  // 2a0) 点击目录外模型的 ID → 行内编辑面板：预填原值 → 改最大输出 → 完成收起（草稿态）
+  await cdp.eval(`
+    var first = document.querySelector('.pv_meRow')
+    first.querySelector('.pv_mIdEdit').click()
+  `)
+  await cdp.waitFor('.pv_meEditPanel')
+  const panelProbe = await cdp.eval(`(function () {
+    var panel = document.querySelector('.pv_meEditPanel')
+    var texts = Array.from(panel.querySelectorAll('input[type=text]'))
+    var caps = Array.from(panel.querySelectorAll('.pv_meCap input'))
+    return {
+      name: texts[0].value,
+      ctx: texts[1].value,
+      max: texts[2].value,
+      visionOn: caps[0].checked,
+      reasonOn: caps[2].checked,
+      piAiRowClickable: (function () {
+        var kimi = Array.from(document.querySelectorAll('.pv_meRow')).find(function (el) { return el.textContent.indexOf('kimi-k3') !== -1 })
+        return kimi !== undefined && kimi.querySelector('.pv_mIdEdit') !== null
+      })(),
+    }
+  })()`)
+  console.log('  行内编辑探针:', JSON.stringify(panelProbe))
+  if (panelProbe.name !== 'DeepSeek V4.1 Flash' || panelProbe.ctx !== '1000000' || panelProbe.max !== '384000'
+    || panelProbe.visionOn !== true || panelProbe.reasonOn !== false || panelProbe.piAiRowClickable !== false) {
+    throw new Error('行内编辑面板没按预期预填：' + JSON.stringify(panelProbe))
+  }
+  await cdp.eval(`
+    var texts = Array.from(document.querySelectorAll('.pv_meEditPanel input[type=text]'))
+    var set = function (el, v) { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })) }
+    set(texts[2], '200000')
+    var done = Array.from(document.querySelectorAll('.pv_meEditPanel button')).find(function (b) { return b.textContent === '完成' })
+    done.click()
+  `)
+  await sleep(300)
+  const editedCell = await cdp.eval(`(function () {
+    var row = Array.from(document.querySelectorAll('.pv_meRow'))[0]
+    return {
+      panelGone: document.querySelector('.pv_meEditPanel') === null,
+      maxCell: (row.querySelector('.pv_mMax') || {}).textContent,
+    }
+  })()`)
+  console.log('  行内编辑改参:', JSON.stringify(editedCell))
+  if (editedCell.panelGone !== true || editedCell.maxCell !== '200K') throw new Error('行内编辑改参没生效：' + JSON.stringify(editedCell))
+  shots.push(await cdp.shot('02b1-model-inline-edited'))
+
   // 2mid) 表头复选框 = 一键全选 / 全不选（用户要求）。全不选后手动把 deepseek-flash 勾回来，
   //       保持后续步骤的草稿基线（deepseek-flash + kimi-k3 + my-custom）。
   await cdp.eval(`
@@ -639,11 +685,11 @@ try {
   const payload = await cdp.eval('window.__lastSetModels ?? null')
   console.log('  set-models 载荷:', JSON.stringify(payload))
   const payloadOk = payload !== null && payload.providerId === 'opencode-go' && JSON.stringify(payload.models) === JSON.stringify([
-    { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', contextWindow: 1000000, maxTokens: 384000, input: ['text', 'image'], reasoningEfforts: { low: 'low', high: 'high', max: 'max' } },
+    { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', contextWindow: 1000000, maxTokens: 200000, input: ['text', 'image'], reasoningEfforts: { low: 'low', high: 'high', max: 'max' } },
     { id: 'kimi-k3' },
     { id: 'my-custom', name: 'My Custom', contextWindow: 1000000, maxTokens: 100000, input: ['text', 'image'], reasoning: true },
   ])
-  if (payloadOk !== true) throw new Error('勾选保存载荷不对（声明原样 + 已知只写 id + 自定义全参数含推理）：' + JSON.stringify(payload))
+  if (payloadOk !== true) throw new Error('勾选保存载荷不对（行内编辑覆盖 + reasoningEfforts 原样保留 + 已知只写 id + 自定义全参数含推理）：' + JSON.stringify(payload))
   shots.push(await cdp.shot('03-model-list-saved-toast'))
 
   // 2d) 跟随目录的 provider（夹具里 zai 没配 models）：编辑器必须把目录里的模型全部预勾——

@@ -239,6 +239,18 @@ var css =
   '.pv_modelPickName{flex:none;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
   'color:var(--dsw-alias-label-tertiary)}' +
   '.pv_pickNone{color:var(--dsw-alias-label-tertiary)}' +
+  // 行内编辑：目录外条目的 ID 可点击（虚线下划线 + 笔尖标记），展开参数面板
+  '.pv_mIdEdit{cursor:pointer;text-decoration:underline dotted;' +
+  'text-underline-offset:3px;color:var(--dsw-alias-label-secondary)}' +
+  '.pv_mIdEdit:hover{color:var(--dsw-alias-label-primary)}' +
+  '.pv_mIdOpen{color:var(--dsw-alias-label-primary)}' +
+  '.pv_mIdPen{font-size:10px;color:var(--dsw-alias-label-tertiary);cursor:pointer;flex:none}' +
+  '.pv_meEditPanel{display:flex;flex-direction:column;gap:6px;padding:8px 10px;margin:2px 0 4px 18px;' +
+  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;' +
+  'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.02))}' +
+  '.pv_meEditPanel .pv_row{font-size:12px;line-height:20px}' +
+  '.pv_meEditPanel .pv_field{min-width:0;flex:1;max-width:320px}' +
+  '.pv_mePanelCaps{display:inline-flex;align-items:center;gap:6px}' +
   // ---- 供应商可过滤下拉 ----
   '.pv_pick{flex:1;min-width:0;position:relative}' +
   '.pv_pickBtn{width:100%;cursor:pointer;justify-content:space-between;gap:8px}' +

@@ -95,6 +95,9 @@ export interface ModelEditRow {
   declared: DeclaredModel | undefined
   /** 本会话经「添加模型」表单新加的行：唯一允许 ✕ 删除的目录外来源（声明过的行也允许 ✕）。 */
   added?: boolean
+  /** 经行内编辑面板改过参数（点击模型 ID 进入）：保存时把改过的参数覆盖进声明条目，
+   *  其余手写字段（reasoningEfforts / compat）原样保留。 */
+  edited?: boolean
   /** 自定义条目的思维链标记：添加表单勾选「推理」时为 true，保存时写进声明条目 reasoning: true。 */
   reasoning?: boolean
 }

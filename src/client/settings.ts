@@ -964,8 +964,11 @@ function modelEditRow(
   remove: (id: string) => void,
   onToggle: (row: ModelEditRow, checked: boolean) => void,
   busy: boolean,
+  expanded: boolean,
+  onToggleExpand: (id: string) => void,
 ) {
   var known = row.known === true
+  var editable = row.inPiAi !== true
   // 能力列：统一只读徽章（与显示清单同款）。推理标记：目录条目来自元数据，
   // 自定义条目来自添加表单的勾选（保存时写进声明条目的 reasoning: true）。
   var caps = [
@@ -987,12 +990,29 @@ function modelEditRow(
     react.createElement(
       'span',
       { className: 'pv_meIdBox' },
-      react.createElement('span', { className: 'pv_mId', title: row.id }, row.id),
+      // 目录外条目（自定义 provider 的模型 / 手写模型）的 ID 可点击进入行内编辑；
+      // pi-ai 目录收录的参数以上游目录为准，ID 不可点。笔尖标记是兄弟节点，
+      // 不进 .pv_mId 的 textContent（探针和载荷比较都用纯 id）
+      react.createElement('span', {
+        className: 'pv_mIdPen',
+        title: editable ? '点击编辑这条模型的显示名 / 上下文 / 最大输出 / 能力' : undefined,
+        onClick: editable ? function () { onToggleExpand(row.id) } : undefined,
+      }, editable ? '✎' : null),
+      react.createElement(
+        'span',
+        {
+          className: 'pv_mId' + (editable ? ' pv_mIdEdit' : '') + (expanded ? ' pv_mIdOpen' : ''),
+          title: editable ? '点击编辑这条模型的显示名 / 上下文 / 最大输出 / 能力' : row.id,
+          onClick: editable ? function () { onToggleExpand(row.id) } : undefined,
+        },
+        row.id,
+      ),
     ),
     react.createElement('span', { className: 'pv_mCaps' }, caps),
-    // 上下文 / 最大输出统一只读展示：目录条目显示元数据值，自定义条目显示添加时填的值
-    react.createElement('span', { className: 'pv_mCtx', title: '上下文窗口' }, known ? (formatContext(row.knownContextWindow) ?? '') : (formatContext(parsePositiveInt(row.contextWindow)) ?? '')),
-    react.createElement('span', { className: 'pv_mMax', title: '最大输出' }, known ? (formatContext(row.knownMaxTokens) ?? '') : (formatContext(parsePositiveInt(row.maxTokens)) ?? '')),
+    // 上下文 / 最大输出统一只读展示：目录条目显示元数据值，自定义条目显示添加/行内编辑后的值
+    // （行内编辑过的行显示草稿值，否则改了参数单元格数字不动，看着像没生效）
+    react.createElement('span', { className: 'pv_mCtx', title: '上下文窗口' }, known && row.edited !== true ? (formatContext(row.knownContextWindow) ?? '') : (formatContext(parsePositiveInt(row.contextWindow)) ?? '')),
+    react.createElement('span', { className: 'pv_mMax', title: '最大输出' }, known && row.edited !== true ? (formatContext(row.knownMaxTokens) ?? '') : (formatContext(parsePositiveInt(row.maxTokens)) ?? '')),
     // ✕ 只给「pi-ai 目录之外」的行：known 只说明"有元数据可显示"，元数据可能是 declared
     // （settings 声明兜底）或 adapter（网关自报）——这些目录外条目同样必须有 ✕（用户要求：
     // 手写进 settings.yaml 的自定义 id 目录没收录，也必须能删）。pi-ai 目录收录的（inPiAi）
@@ -1257,9 +1277,11 @@ function ModelListEditor(props: {
   /**
    * 给定行列表 → settings 的 models 数组；形状不合法时返回 undefined 并写好错误提示。
    *
-   * 清单只做「新增 / 移除」，不改现有条目的字段：
-   *   现有条目（路由声明过的 / 目录收录的）——原样保留：声明过的整条带回去，目录收录的只写 {id}；
-   *   自定义条目（目录里没有）——上下文 / 最大输出必填，能力开关写进 input 模态。
+   * 清单做「新增 / 移除 / 行内编辑」：
+   *   声明过的条目 —— 以声明原文为底；行内编辑过的参数（显示名/上下文/最大输出/能力）
+   *     覆盖回条目，其余手写字段（reasoningEfforts / compat）原样保留；
+   *   目录收录的条目 —— 只写 {id}（参数以上游目录为准）；
+   *   自定义条目（目录里没有）—— 上下文 / 最大输出必填，能力开关写进 input 模态。
    */
   function payloadFrom(list: ModelEditRow[]): DeclaredModel[] | undefined {
     var out: DeclaredModel[] = []
@@ -1267,7 +1289,33 @@ function ModelListEditor(props: {
       var row = list[i]
       if (row.enabled !== true) continue
       if (row.declared !== undefined) {
-        out.push({ ...row.declared, id: row.id })
+        var declared: DeclaredModel = { ...row.declared, id: row.id }
+        if (row.edited === true) {
+          // 行内编辑过的参数覆盖回声明条目。留空的字段保留声明原值；填了但不是正整数要拦。
+          var name = typeof row.name === 'string' ? row.name.trim() : ''
+          if (name !== '' && name !== row.id) declared.name = name
+          var ctxRaw = row.contextWindow.trim()
+          if (ctxRaw !== '') {
+            var ctxVal = parsePositiveInt(ctxRaw)
+            if (ctxVal === undefined) { setError('「' + row.id + '」的上下文窗口要填正整数'); return undefined }
+            declared.contextWindow = ctxVal
+          }
+          var maxRaw = row.maxTokens.trim()
+          if (maxRaw !== '') {
+            var maxVal = parsePositiveInt(maxRaw)
+            if (maxVal === undefined) { setError('「' + row.id + '」的最大输出要填正整数'); return undefined }
+            declared.maxTokens = maxVal
+          }
+          var modalities = Array.isArray(declared.input) ? declared.input.filter(function (x) { return x !== 'image' && x !== 'video' }) : ['text']
+          if (modalities.indexOf('text') === -1) modalities.unshift('text')
+          if (row.vision === true && modalities.indexOf('image') === -1) modalities.push('image')
+          if (row.vision !== true) modalities = modalities.filter(function (x) { return x !== 'image' })
+          if (row.video === true && modalities.indexOf('video') === -1) modalities.push('video')
+          if (row.video !== true) modalities = modalities.filter(function (x) { return x !== 'video' })
+          declared.input = modalities
+          if (row.reasoning !== undefined) declared.reasoning = row.reasoning === true
+        }
+        out.push(declared)
         continue
       }
       if (row.known === true) {
@@ -1344,8 +1392,70 @@ function ModelListEditor(props: {
       .then(function () { setBusy(false) })
   }
 
+  /** 行内编辑：点击「目录外」模型的 ID 展开，一次只展开一行（编辑只改草稿，保存才落盘）。 */
+  var editIdState = react.useState(null)
+  var editId = editIdState[0] as string | null
+  var setEditId = editIdState[1]
+  /** 行内编辑面板：目录外条目的参数编辑（显示名 / 上下文 / 最大输出 / 能力）。改动只进草稿。 */
+  function rowEditPanel(row: ModelEditRow) {
+    function panelField(label: string, value: string, onInput: (next: string) => void, key: string, placeholder?: string) {
+      return react.createElement('div', { className: 'pv_line pv_row', key: key },
+        react.createElement('span', null, label),
+        react.createElement('input', {
+          className: 'pv_field',
+          type: 'text',
+          value: value,
+          placeholder: placeholder,
+          onChange: function (event: FieldEvent) { onInput(event.target.value) },
+        }),
+      )
+    }
+    function capToggle(labelText: string, field: string, on: boolean, tip: string, onClass: string) {
+      return react.createElement('label', {
+        key: field,
+        className: 'pv_meCap' + (on ? ' ' + onClass : ' pv_capOff'),
+        title: tip,
+      }, react.createElement('input', {
+        type: 'checkbox',
+        checked: on,
+        onChange: function (event: FieldEvent) { patch(row.id, { [field]: event.target.checked === true, edited: true }) },
+      }), labelText)
+    }
+    return react.createElement(
+      'div',
+      { className: 'pv_meEditPanel', key: 'panel-' + row.id },
+      react.createElement('div', { className: 'pv_meFormTitle' }, '编辑模型参数（只改草稿，点「保存」落盘）'),
+      panelField('显示名', row.name !== row.id ? row.name : '', function (next) {
+        var trimmed = next.trim()
+        patch(row.id, { name: trimmed !== '' ? trimmed : row.id, edited: true })
+      }, 'p-name', '留空则同模型 ID'),
+      panelField('上下文窗口', row.contextWindow, function (next) {
+        patch(row.id, { contextWindow: next, edited: true })
+      }, 'p-ctx', '如 1000000'),
+      panelField('最大输出', row.maxTokens, function (next) {
+        patch(row.id, { maxTokens: next, edited: true })
+      }, 'p-max', '如 384000'),
+      react.createElement('div', { className: 'pv_line pv_row', key: 'p-caps' },
+        react.createElement('span', null, '能力'),
+        react.createElement('span', { className: 'pv_mePanelCaps' },
+          capToggle('视觉', 'vision', row.vision === true, '支持图片输入（写进模型的 input 模态）', 'pv_capVision'),
+          capToggle('视频', 'video', row.video === true, '支持视频输入（写进模型的 input 模态）', 'pv_capVideo'),
+          capToggle('推理', 'reasoning', row.reasoning === true, '支持思维链（声明条目写 reasoning: true）', 'pv_capReason'),
+        ),
+      ),
+      react.createElement('div', { className: 'pv_meActs', key: 'p-acts' },
+        react.createElement('button', { type: 'button', className: 'pv_action', style: { marginLeft: '0' }, onClick: function () { setEditId(null) } }, '完成'),
+      ),
+    )
+  }
   var rows_ = []
-  for (var r = 0; r < rows.length; r += 1) rows_.push(modelEditRow(rows[r], patch, remove, toggleDraft, busy))
+  for (var r = 0; r < rows.length; r += 1) {
+    var rowItem = rows[r]
+    rows_.push(modelEditRow(rowItem, patch, remove, toggleDraft, busy, editId === rowItem.id, function (id: string) {
+      setEditId(function (prev: string | null) { return prev === id ? null : id })
+    }))
+    if (editId === rowItem.id && rowItem.inPiAi !== true) rows_.push(rowEditPanel(rowItem))
+  }
 
   // 列头（模型 ID / 能力 / 上下文 / 最大输出）与数据行共用同一套网格列宽，逐列严格对齐。
   // 表头的复选框 = 一键全选 / 全不选。
