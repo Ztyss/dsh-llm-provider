@@ -346,6 +346,23 @@ try {
   console.log('  取消后报错已清:', noteGone)
   if (noteGone !== true) throw new Error('取消后校验报错还在（报错应跟着草稿一起清）')
 
+  // 协议下拉：占位/选项显式左对齐（宿主样式可能把 select 文本居中）
+  const selProbe = await cdp.eval(`(function () {
+    var s = document.querySelector('select.pv_field')
+    if (s === null) return { found: false }
+    var opt = s.querySelector('option')
+    return {
+      found: true,
+      textAlign: getComputedStyle(s).textAlign,
+      optAlign: opt !== null ? getComputedStyle(opt).textAlign : null,
+      firstOption: opt !== null ? opt.textContent : '',
+    }
+  })()`)
+  console.log('  协议下拉对齐:', JSON.stringify(selProbe))
+  if (selProbe.found !== true || selProbe.textAlign !== 'left' || selProbe.optAlign !== 'left' || selProbe.firstOption !== '（默认）') {
+    throw new Error('协议下拉没左对齐：' + JSON.stringify(selProbe))
+  }
+
 
   // 2) 模型框展开 → 先是「当前清单」只读页；点「编辑模型」才进勾选编辑器
   await cdp.eval(`document.querySelector('.pv_pc .pv_mHead').click()`)

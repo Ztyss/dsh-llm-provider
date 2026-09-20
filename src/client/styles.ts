@@ -218,7 +218,9 @@ var css =
   'color:var(--dsw-alias-label-secondary)}' +
   '.pv_addBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.03))}' +
   'input.pv_field{cursor:text}' +
-  'select.pv_field{cursor:pointer}' +
+  // select 文本与下拉选项显式左对齐：宿主样式可能把 select 居中（协议「（默认）」占位被顶到中间）
+  'select.pv_field{cursor:pointer;text-align:left}' +
+  'select.pv_field option{text-align:left}' +
   // 预置字段（路由 ID/端点/协议）：灰底只读；密钥/待填项：白底提示可输入
   'input.pv_ro{background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.05));' +
   'color:var(--dsw-alias-label-tertiary);cursor:default}' +
@@ -249,7 +251,7 @@ var css =
   // ---- 模型选择器行：模型 + 思考强度 ----
   '.pv_msRow{display:flex;align-items:center;gap:8px}' +
   '.pv_msMain{flex:1;min-width:0;display:flex;align-items:center;gap:8px;text-align:left}' +
-  'select.pv_msEff{flex:none;font:inherit;font-size:12px;padding:3px 8px;cursor:pointer;' +
+  'select.pv_msEff{flex:none;font:inherit;font-size:12px;padding:3px 8px;cursor:pointer;text-align:left;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:6px;' +
   'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-secondary)}' +
   // ---- Provider 页内二级标签 ----
