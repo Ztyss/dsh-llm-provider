@@ -2023,7 +2023,9 @@ export function ProviderSettingsSection() {
                   className: 'pv_action',
                   disabled: busyEdit,
                   onClick: function () {
-                    // 取消 = 丢弃草稿，字段回落到 route 快照（操作区随之隐藏）
+                    // 取消 = 丢弃草稿，字段回落到 route 快照（操作区随之隐藏）；
+                    // 草稿的校验报错一并清掉——报错是跟着草稿走的，草稿没了就该消失
+                    setNote(null)
                     setEditForms(function (prev: AnyRecord) {
                       var next: AnyRecord = {}
                       for (var key in prev) if (key !== account.id) next[key] = prev[key]
@@ -2294,25 +2296,27 @@ export function ProviderSettingsSection() {
   // 页内二级标签：Provider（配置的 provider 卡片）/ pi-ai 桥接
   var tabProviders = react.createElement(
     'button',
-    { type: 'button', className: 'pv_tab' + (tab === 'providers' ? ' pv_tabOn' : ''), onClick: function () { setTab('providers') } },
+    { type: 'button', className: 'pv_tab' + (tab === 'providers' ? ' pv_tabOn' : ''), onClick: function () { setNote(null); setTab('providers') } },
     t('tabProviders'),
   )
   var tabBridge = react.createElement(
     'button',
-    { type: 'button', className: 'pv_tab' + (tab === 'bridge' ? ' pv_tabOn' : ''), onClick: function () { setTab('bridge') } },
+    { type: 'button', className: 'pv_tab' + (tab === 'bridge' ? ' pv_tabOn' : ''), onClick: function () { setNote(null); setTab('bridge') } },
     t('bridge.tab'),
   )
   return react.createElement(
     'div',
     { className: 'pv_stack' },
     react.createElement('div', { className: 'pv_tabs' }, tabProviders, tabBridge),
+    // 提示行放在标签栏正下方，两个标签页都看得见。此前它的唯一渲染位在桥接页 body 里：
+    // 服务商页的校验失败/保存结果/导出结果全都「点了没反应」，还会漏到桥接页冒出一句没来由的话
+    !note ? null : react.createElement('div', { className: 'plan_note pv_pageNote' }, note),
     tab === 'bridge'
       ? react.createElement(
           'div',
           { className: 'pv_pc' },
           react.createElement('div', { className: 'pv_pcBody', style: { borderTop: '0', padding: '10px 18px', justifyContent: 'center' } },
-            bridgeLines,
-            !note ? null : react.createElement('div', { className: 'plan_note' }, note)),
+            bridgeLines),
         )
       : usageWait === true && plan === null
         ? // 用量快照还没就绪：先给「正在刷新用量…」占位，刷新完再渲染 provider 界面

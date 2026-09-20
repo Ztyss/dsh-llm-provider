@@ -253,6 +253,8 @@ var css =
   'color:var(--dsw-alias-label-secondary);border-bottom:2px solid transparent;margin-bottom:-1px}' +
   '.pv_tab:hover{color:var(--dsw-alias-label-primary)}' +
   '.pv_tabOn{color:var(--dsw-alias-label-primary);border-bottom-color:var(--dsw-alias-brand-primary,#3b5bdb);font-weight:600}' +
+  // 标签栏正下方的提示行（note）：两个标签页共用一个渲染位，与卡片内容的 18px 内边距对齐
+  '.pv_pageNote{padding:0 18px}' +
   // ---- Provider 卡片：CC Switch 式名称+链接两行布局 ----
   '.pv_pcLead{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}' +
   '.pv_pcLeadRow{display:flex;align-items:center;gap:8px}' +
