@@ -306,8 +306,8 @@ try {
       noNameCol: box.querySelector('.pv_mName') === null && head.textContent.indexOf('名称') === -1,
       maxCol: head.textContent.indexOf('最大输出') !== -1,
       maxShown: maxCell !== null && maxCell.textContent !== '',
-      // 模型 ID 完整可见：换行而非省略号
-      idWraps: idCell !== null && getComputedStyle(idCell).whiteSpace === 'normal',
+      // 模型 ID 超长时单行省略号截断（完整 ID 走 title 悬停）——绝不换行挤高行、更不叠到徽标上
+      idTruncates: idCell !== null && getComputedStyle(idCell).whiteSpace === 'nowrap' && getComputedStyle(idCell).textOverflow === 'ellipsis',
       // 「修改模型」按钮与模型框下边框留了呼吸距
       btnBreath: (function () {
         var row = box.querySelector('.pv_mEditRow')
@@ -320,8 +320,8 @@ try {
   })()`)
   console.log('  清单页探针:', JSON.stringify(listProbe))
   if (listProbe.listRows === 0 || listProbe.listHead !== true || listProbe.editBtn !== true || listProbe.editorHidden !== true
-    || listProbe.noNameCol !== true || listProbe.maxCol !== true || listProbe.maxShown !== true || listProbe.idWraps !== true || listProbe.btnBreath !== true) {
-    throw new Error('清单页结构没满足（只读清单 + 修改模型 + 列改版 + ID 完整 + 按钮呼吸距）：' + JSON.stringify(listProbe))
+    || listProbe.noNameCol !== true || listProbe.maxCol !== true || listProbe.maxShown !== true || listProbe.idTruncates !== true || listProbe.btnBreath !== true) {
+    throw new Error('清单页结构没满足（只读清单 + 修改模型 + 列改版 + ID 截断 + 按钮呼吸距）：' + JSON.stringify(listProbe))
   }
   shots.push(await cdp.shot('02-model-list-page'))
   await cdp.eval(`
@@ -350,7 +350,12 @@ try {
         var custom = el.querySelector('.pv_capDeclared') !== null
         return custom ? el.querySelector('.pv_meNum') !== null : el.querySelector('.pv_meNum') === null
       }),
-      wrapId: rows.length > 0 && getComputedStyle(rows[0].querySelector('.pv_mId')).whiteSpace === 'normal',
+      // 长 ID 单行省略号截断（v0.1.1 的「换行完整可见」按用户反馈改成截断：省略号好过挤高行/叠徽标）
+      idTruncates: rows.length > 0 && (function () {
+        var el = rows[0].querySelector('.pv_mId')
+        var s = getComputedStyle(el)
+        return s.whiteSpace === 'nowrap' && s.textOverflow === 'ellipsis'
+      })(),
       noFilter: document.querySelector('.pv_mFilter') === null,
       delBtnOnConfiguredOnly: rows.every(function (el) {
         var configured = el.querySelector('.pv_meCheck').checked || el.querySelector('.pv_capDeclared') !== null
@@ -376,7 +381,7 @@ try {
     }
   })()`)
   console.log('  清单探针:', JSON.stringify(editorProbe))
-  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.knownRowsReadOnly !== true || editorProbe.wrapId !== true || editorProbe.noFilter !== true || editorProbe.delBtnOnConfiguredOnly !== true || editorProbe.noNameCol !== true || editorProbe.declaredOnly !== true || editorProbe.noCounter !== true || editorProbe.noInlineAdd !== true || editorProbe.ctxMaxShown !== true || editorProbe.colAligned !== true) {
+  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.knownRowsReadOnly !== true || editorProbe.idTruncates !== true || editorProbe.noFilter !== true || editorProbe.delBtnOnConfiguredOnly !== true || editorProbe.noNameCol !== true || editorProbe.declaredOnly !== true || editorProbe.noCounter !== true || editorProbe.noInlineAdd !== true || editorProbe.ctxMaxShown !== true || editorProbe.colAligned !== true) {
     throw new Error('模型清单结构没满足：' + JSON.stringify(editorProbe))
   }
   shots.push(await cdp.shot('02b-model-list-editor'))
@@ -469,16 +474,36 @@ try {
   await sleep(300)
   const followPick = await cdp.eval(`(function () {
     var rows = Array.from(document.querySelectorAll('.pv_meRow'))
+    var long = null
+    for (var i = 0; i < rows.length; i += 1) {
+      if ((rows[i].querySelector('.pv_mId') || {}).textContent === 'deepseek/deepseek-v4-flash-0731:patch') long = rows[i]
+    }
+    var geom = null
+    if (long !== null) {
+      var idEl = long.querySelector('.pv_mId')
+      var capsEl = long.querySelector('.pv_mCaps')
+      var r1 = idEl.getBoundingClientRect()
+      var r2 = capsEl.getBoundingClientRect()
+      geom = {
+        singleLine: r1.height <= 20,
+        clipped: idEl.scrollWidth > idEl.clientWidth,
+        noOverlap: r1.right <= r2.left + 0.5,
+      }
+    }
     return {
       rows: rows.length,
       checked: rows.filter(function (el) { return el.querySelector('.pv_meCheck').checked })
         .map(function (el) { return (el.querySelector('.pv_mId') || {}).textContent }),
       hint: (document.querySelector('.pv_hint') || {}).textContent || '',
+      geom: geom,
     }
   })()`)
   console.log('  跟随目录预勾探针:', JSON.stringify(followPick))
-  if (followPick.rows !== 1 || JSON.stringify(followPick.checked) !== '["glm-5.3-flash"]' || followPick.hint.indexOf('跟随') === -1) {
+  if (followPick.rows !== 2 || JSON.stringify(followPick.checked) !== JSON.stringify(['glm-5.3-flash', 'deepseek/deepseek-v4-flash-0731:patch']) || followPick.hint.indexOf('跟随') === -1) {
     throw new Error('跟随目录的 provider 编辑器没有把目录模型全部预勾：' + JSON.stringify(followPick))
+  }
+  if (followPick.geom === null || followPick.geom.singleLine !== true || followPick.geom.clipped !== true || followPick.geom.noOverlap !== true) {
+    throw new Error('长 ID 没有按「单行省略号截断、不与能力徽标重叠」处理：' + JSON.stringify(followPick.geom))
   }
   shots.push(await cdp.shot('02d-follow-catalog-prechecked'))
   // 收起 zai 的模型框，别影响后面的删除弹层步骤

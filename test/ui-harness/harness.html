@@ -77,6 +77,9 @@
       ] },
       { provider: 'zai-coding-cn', name: 'Z.ai Coding', models: [
         { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', contextWindow: 1000000 },
+        // 超长 ID（用户真实场景：deepseek 官方目录全是 deepseek/deepseek-v4-flash-0731:patch 这类）：
+        // 钉住「ID 单行省略号截断、不与能力徽标重叠」的回归
+        { id: 'deepseek/deepseek-v4-flash-0731:patch', name: '0731 Patch', contextWindow: 1000000 },
       ] },
     ],
     default: { provider: 'opencode-go', model: 'deepseek-flash' },

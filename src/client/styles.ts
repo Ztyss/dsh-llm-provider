@@ -263,8 +263,8 @@ var css =
   '.pv_pcLink:hover{color:var(--dsw-alias-label-secondary);text-decoration:underline}' +
   // ---- 模型行悬浮详情卡（Cherry Studio 式）----
   '.pv_mRow{position:relative;display:flex;align-items:center;gap:8px;padding:3px 0}' +
-  // ID 占满弹性宽并允许换行：模型 ID 是路由键，省略号截断等于不可辨认（长 ID 如 deepseek-v4-flash-vision-exp）
-  '.pv_mId{flex:1;min-width:0;white-space:normal;word-break:break-all;' +
+  // ID 占满弹性宽，超长单行省略号截断（title 兜底完整 ID），绝不溢出画到能力徽标上
+  '.pv_mId{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
   'font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);' +
   'font-family:ui-monospace,Menlo,Consolas,monospace}' +
   '.pv_mHeadRow{display:flex;align-items:center;gap:8px;padding:5px 0 4px;font-size:12px;' +
@@ -329,9 +329,9 @@ var css =
   '.pv_meRow:last-child{border-bottom:0}' +
   '.pv_meRowOff{opacity:.45}' +
   '.pv_meCheck{margin:0;cursor:pointer}' +
-  // 长 ID 在列内换行，完整可见（title 兜底）
-  '.pv_meIdBox{display:inline-flex;align-items:flex-start;gap:6px;min-width:0}' +
-  '.pv_meRow .pv_mId{width:auto;max-width:none;overflow:visible;white-space:normal;word-break:break-all;text-align:left}' +
+  // 长 ID 单行省略号截断（截断好过换行挤高行/叠到能力徽标上），完整 ID 走 title 悬停
+  '.pv_meIdBox{display:inline-flex;align-items:center;gap:6px;min-width:0}' +
+  '.pv_meRow .pv_mId{width:auto;max-width:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}' +
   '.pv_meNum{box-sizing:border-box;width:100%;padding:3px 8px;font:inherit;font-size:12px;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:7px;outline:0;' +
   'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-primary)}' +

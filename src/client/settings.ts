@@ -1189,8 +1189,8 @@ function ModelListEditor(props: {
       'div',
       { className: 'pv_hint' },
       declaredCount > 0
-        ? '当前只服务清单里的 ' + String(declaredCount) + ' 个模型。'
-        : '当前跟随 pi-ai 目录（' + String(rows.length) + ' 个可用）。',
+        ? '当前只服务清单里的 ' + String(declaredCount) + ' 个模型'
+        : '当前跟随 pi-ai 目录（' + String(rows.length) + ' 个可用）',
     ),
     react.createElement('div', { className: 'pv_meList' }, [colHead].concat(rows_)),
     react.createElement(
