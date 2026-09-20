@@ -541,7 +541,9 @@ function AddProviderPanel(props: AddProviderPanelProps) {
       // presetId 单独记「选中的是哪个预设」：customPicked 靠它判断。此前用 routeId 反查，
       // 用户一改自定义路由 ID，反查就落空，输入框立刻变回只读——字打到一半就被锁死
       presetId: preset.id,
-      routeId: preset.id,
+      // 自定义网关（custom: true）的路由 ID 是「建议值」不是预填值：留空让用户输入，
+      // 输入框里以 placeholder 展示建议（custom-gateway），一旦输入即覆盖（对齐密钥框行为）
+      routeId: preset.custom === true ? '' : preset.id,
       baseURL: preset.baseURL,
       api: preset.api,
       apiKeyEnv: preset.apiKeyEnv,
@@ -552,7 +554,10 @@ function AddProviderPanel(props: AddProviderPanelProps) {
     setNote(null)
   }
   function runTest() {
-    if (form.routeId.trim() === '' || form.baseURL.trim() === '' || form.key.trim() === '') {
+    // 路由 ID 留空时（自定义网关的建议值形态）不拦测试——探测的是端点+密钥，
+    // provider 名只是请求里的标签，用预设建议值顶上即可
+    var providerId = form.routeId.trim() !== '' ? form.routeId.trim() : (pickedPreset !== undefined ? pickedPreset.id : '')
+    if (providerId === '' || form.baseURL.trim() === '' || form.key.trim() === '') {
       setTest({ phase: 'fail', message: t('prov.addManualHint') })
       return
     }
@@ -560,7 +565,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
     apiCall('llm/discoverModels', {
       settingsNs: 'llm-pi-ai',
       request: {
-        provider: form.routeId.trim(),
+        provider: providerId,
         baseURL: form.baseURL.trim(),
         api: form.api,
         apiKey: form.key.trim(),
@@ -603,9 +608,14 @@ function AddProviderPanel(props: AddProviderPanelProps) {
    * 所以这里不需要分「新建 / 已存在」两条路径。
    */
   function add() {
+    var routeId = form.routeId.trim()
+    if (routeId === '') {
+      // 自定义网关的路由 ID 是建议值形态（留空待填），空着就添加会写出残缺路由
+      setNote(t('prov.routeIdRequired'))
+      return
+    }
     setBusy(true)
     setNote(null)
-    var routeId = form.routeId.trim()
     var existed = isRouteConfigured(presets, routeId)
     apiCall('settings/mutate', { ns: 'llm-pi-ai', ops: providerSaveOps(routeId, form) })
       .then(function () {
@@ -637,6 +647,9 @@ function AddProviderPanel(props: AddProviderPanelProps) {
   var pickedPreset = findById(presets, form.presetId !== '' ? form.presetId : form.routeId)
   var pickedLabel = pickedPreset === undefined ? form.routeId : pickedPreset.label
   var customPicked = pickedPreset !== undefined && pickedPreset.custom === true
+  // 自定义网关的建议值：路由 ID 用预设 id（custom-gateway），清空路由后凭据名回落到预设建议值
+  var suggestedId = pickedPreset !== undefined && customPicked ? pickedPreset.id : ''
+  var suggestedEnv = pickedPreset !== undefined && customPicked ? pickedPreset.apiKeyEnv : ''
   var pickItems = []
   for (var pk = 0; pk < presets.length; pk += 1) {
     ;(function (preset) {
@@ -717,10 +730,19 @@ function AddProviderPanel(props: AddProviderPanelProps) {
           className: customPicked ? 'pv_field pv_key' : 'pv_field pv_ro',
           value: form.routeId,
           readOnly: customPicked !== true,
+          // 自定义网关：路由 ID 是建议值（placeholder 展示），一旦输入即覆盖；
+          // 清空则凭据名回落到预设建议值（CUSTOM_GATEWAY_API_KEY），不产生 _API_KEY 这种残缺名
+          placeholder: suggestedId,
           title: customPicked ? t('prov.routeIdHintCustom') : t('prov.routeIdHintFixed'),
           onChange: function (event: FieldEvent) {
             if (customPicked !== true) return
-            patchForm({ routeId: event.target.value, apiKeyEnv: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '_') + '_API_KEY' })
+            var next = event.target.value
+            if (next.trim() === '') {
+              // 清空 = 回到建议状态：凭据名也回落到预设自带的建议值
+              patchForm({ routeId: '', apiKeyEnv: suggestedEnv })
+              return
+            }
+            patchForm({ routeId: next, apiKeyEnv: next.toUpperCase().replace(/[^A-Z0-9]/g, '_') + '_API_KEY' })
           },
         }),
       ),

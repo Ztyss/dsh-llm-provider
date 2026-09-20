@@ -734,8 +734,9 @@ try {
   }
   shots.push(await cdp.shot('06-seat-model-panel-modlens-vision'))
 
-  // 7) 添加供应商：选「Custom Gateway」后，路由 ID 必须可编辑（改 id 时凭据名跟随大写化）。
-  //    此前 readOnly 与「routeId 反查预设」绑定，改一个字符就锁死输入框（用户报的就是它）。
+  // 7) 添加供应商：选「Custom Gateway」后，路由 ID 是「建议值」——输入框留空、
+  //    custom-gateway 只出现在占位符里，一旦输入即覆盖；清空则凭据名回落到预设建议值。
+  //    （更早的问题：readOnly 与「routeId 反查预设」绑定，改一个字符就锁死输入框。）
   //    上一步导航去了 seat.html，这里先回 harness 页等重新挂载。
   await cdp.send('Page.navigate', { url: 'file:///' + join(here, 'harness.html').replace(/\\/g, '/') })
   await cdp.waitFor('.pv_addBtn')
@@ -761,8 +762,23 @@ try {
     b.click()
   `)
   await sleep(300)
+  // 选中后：路由 ID 留空（建议值在占位符里），凭据名直接显示预设建议值
+  const suggestProbe = await cdp.eval(`(function () {
+    var route = Array.from(document.querySelectorAll('.pv_line input')).find(function (el) { return el.placeholder === 'custom-gateway' })
+    var hint = (document.querySelector('.pv_hint') || {}).textContent || ''
+    return {
+      suggested: route !== undefined,
+      empty: route !== undefined && route.value === '',
+      editable: route !== undefined && route.readOnly === false,
+      hint: hint,
+    }
+  })()`)
+  console.log('  建议值探针:', JSON.stringify(suggestProbe))
+  if (suggestProbe.suggested !== true || suggestProbe.empty !== true || suggestProbe.editable !== true || suggestProbe.hint.indexOf('CUSTOM_GATEWAY_API_KEY') === -1) {
+    throw new Error('自定义网关的建议值形态不对：' + JSON.stringify(suggestProbe))
+  }
   await cdp.eval(`
-    var input = document.querySelector('input[title*="路由 ID 可自定义"], .pv_line input.pv_key[value="custom-gateway"]') || Array.from(document.querySelectorAll('.pv_line input.pv_key')).find(function (el) { return el.value === 'custom-gateway' })
+    var input = Array.from(document.querySelectorAll('.pv_line input')).find(function (el) { return el.placeholder === 'custom-gateway' })
     input.focus()
     input.value = 'my-gateway'
     input.dispatchEvent(new Event('change', { bubbles: true }))
@@ -782,7 +798,7 @@ try {
     throw new Error('自定义 provider 路由 ID 改不动或凭据名没跟随：' + JSON.stringify(customProbe))
   }
   // 清空路由 ID：「供应商」必须仍显示 Custom Gateway（选中预设不随 routeId 清空而丢，
-  // 用户报的就是它——旧版会变回「选择供应商…」），密钥名回落为 _API_KEY 属预期
+  // 用户报的就是它——旧版会变回「选择供应商…」），密钥名回落到预设建议值 CUSTOM_GATEWAY_API_KEY
   await cdp.eval(`
     var input = Array.from(document.querySelectorAll('.pv_line input')).find(function (el) { return el.value === 'my-gateway' })
     input.value = ''
@@ -791,10 +807,11 @@ try {
   await sleep(300)
   const clearProbe = await cdp.eval(`(function () {
     var trigger = document.querySelector('.pv_pick button')
-    return { vendor: trigger === null ? null : trigger.textContent.trim() }
+    var hint = (document.querySelector('.pv_hint') || {}).textContent || ''
+    return { vendor: trigger === null ? null : trigger.textContent.trim(), hint: hint }
   })()`)
   console.log('  清空路由 ID 探针:', JSON.stringify(clearProbe))
-  if (clearProbe.vendor === null || clearProbe.vendor.indexOf('Custom Gateway') === -1) {
+  if (clearProbe.vendor === null || clearProbe.vendor.indexOf('Custom Gateway') === -1 || clearProbe.hint.indexOf('CUSTOM_GATEWAY_API_KEY') === -1) {
     throw new Error('清空路由 ID 后供应商跟着丢了：' + JSON.stringify(clearProbe))
   }
   shots.push(await cdp.shot('07-custom-gateway-editable'))
