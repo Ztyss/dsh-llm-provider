@@ -520,6 +520,19 @@ try {
   await sleep(300)
   const modalText = await cdp.eval(`document.querySelector('.pv_modal').textContent`)
   console.log('  弹层文案:', modalText.slice(0, 120))
+  // 取消按钮要与弹层内容左缘对齐（弹层内边距 20px）——pv_action 自带 margin-left:auto 会把它顶离左边
+  const cancelAlign = await cdp.eval(`(function () {
+    var modal = document.querySelector('.pv_modal')
+    var cancel = Array.from(document.querySelectorAll('.pv_modalActs button')).find(function (x) { return x.textContent === '取消' })
+    if (modal === null || cancel === null) return null
+    var m = modal.getBoundingClientRect()
+    var c = cancel.getBoundingClientRect()
+    return { offset: Math.round(c.left - (m.left + 20)) }
+  })()`)
+  console.log('  取消按钮左对齐探针:', JSON.stringify(cancelAlign))
+  if (cancelAlign === null || Math.abs(cancelAlign.offset) > 2) {
+    throw new Error('取消按钮没有与弹层内容左缘对齐：' + JSON.stringify(cancelAlign))
+  }
   shots.push(await cdp.shot('04-delete-confirm-modal'))
   await cdp.eval(`var b = Array.from(document.querySelectorAll('.pv_modalActs button')).find(function (x) { return x.textContent === '取消' }); if (b) b.click();`)
   await sleep(300)

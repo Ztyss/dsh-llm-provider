@@ -1298,7 +1298,8 @@ function DeleteProviderModal(props: {
       react.createElement(
         'div',
         { className: 'pv_modalActs' },
-        react.createElement('button', { type: 'button', className: 'pv_action', disabled: props.busy, onClick: props.onCancel }, t('prov.cancel')),
+        // 取消贴弹层内容左缘：pv_action 自带 margin-left:auto，会把取消顶离左边（与导出/删除均分空隙）
+        react.createElement('button', { type: 'button', className: 'pv_action', style: { marginLeft: '0' }, disabled: props.busy, onClick: props.onCancel }, t('prov.cancel')),
         react.createElement('button', { type: 'button', className: 'pv_action', disabled: props.busy, onClick: props.onExport }, t('del.exportBtn')),
         react.createElement('button', {
           type: 'button',
