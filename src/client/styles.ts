@@ -330,6 +330,9 @@ var css =
   '.pv_meRow:last-child{border-bottom:0}' +
   '.pv_meRowOff{opacity:.45}' +
   '.pv_meCheck{margin:0;cursor:pointer}' +
+  // 表头第一格（全选框）垂直居中：内联 span 会让 checkbox 按 文本基线 排，与「模型 ID」
+  // 文字的视觉中心错开（用户批注：全选按钮与模型 ID 的文字没对齐）
+  '.pv_meHeadRow > span:first-child{display:flex;align-items:center;height:18px}' +
   // 长 ID 单行省略号截断（截断好过换行挤高行/叠到能力徽标上），完整 ID 走 title 悬停
   '.pv_meIdBox{display:inline-flex;align-items:center;gap:6px;min-width:0}' +
   '.pv_meRow .pv_mId{width:auto;max-width:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}' +

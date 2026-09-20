@@ -867,15 +867,15 @@ function modelEditRow(
     // 上下文 / 最大输出统一只读展示：目录条目显示元数据值，自定义条目显示添加时填的值
     react.createElement('span', { className: 'pv_mCtx', title: '上下文窗口' }, known ? (formatContext(row.knownContextWindow) ?? '') : (formatContext(parsePositiveInt(row.contextWindow)) ?? '')),
     react.createElement('span', { className: 'pv_mMax', title: '最大输出' }, known ? (formatContext(row.knownMaxTokens) ?? '') : (formatContext(parsePositiveInt(row.maxTokens)) ?? '')),
-    // ✕ 只给「添加模型」加进来的行：本会话表单新加的（added 标记）+ 路由声明里的条目
-    // （不管来自表单还是手写 yaml，都是「用户加进清单的」）。目录候选行是 provider 的
-    // 既有供给，不想要不勾就行，没有删的意义（用户要求：删去其它行的 ✕）
-    (row.declared !== undefined || row.added === true)
+    // ✕ 只给「pi-ai 清单之外的自定义模型」：本会话表单新加的（added）+ 手写/旧自定义 id
+    // （known=false = pi-ai 模型库不认识它）。凡是 pi-ai 自带清单里的模型（无论勾没勾）
+    // 都不配 ✕——不想要取消勾选即可，✕ 的职责是真正删掉一条自定义模型（用户要求）
+    row.known !== true
       ? react.createElement('button', {
           type: 'button',
           className: 'pv_iconBtn',
           disabled: busy,
-          title: '把这一条从模型清单里删掉（点「保存」后生效）',
+          title: '把这条自定义模型从清单里删掉（点「保存」后生效）',
           onClick: function () { remove(row.id) },
         }, '✕')
       : null,

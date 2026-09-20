@@ -394,8 +394,11 @@ try {
       .map(function (el) { return (el.querySelector('.pv_mId') || {}).textContent })
     function aligned() {
       var head = document.querySelector('.pv_meHeadRow')
-      if (head === null || rows.length === 0 || head.children.length !== rows[0].children.length) return false
-      for (var i = 0; i < head.children.length; i += 1) {
+      if (head === null || rows.length === 0) return false
+      // 新 ✕ 规则下已知行没有第 6 列（✕），只比较两侧行都存在的前 N 列
+      var n = Math.min(head.children.length, rows[0].children.length)
+      if (n === 0) return false
+      for (var i = 0; i < n; i += 1) {
         if (Math.abs(head.children[i].getBoundingClientRect().left - rows[0].children[i].getBoundingClientRect().left) > 1.5) return false
       }
       return true
@@ -418,13 +421,23 @@ try {
         return s.whiteSpace === 'nowrap' && s.textOverflow === 'ellipsis'
       })(),
       noFilter: document.querySelector('.pv_mFilter') === null,
-      // ✕ 只在「添加模型」加进来的行上：夹具里只有已声明的 deepseek-flash 配 ✕，
-      // 目录候选（kimi-k3 / glm-5.3）不配（用户要求）
+      // ✕ 只给「pi-ai 清单之外的自定义模型」：夹具初始行全是 pi-ai 自带（deepseek-flash /
+      // kimi-k3 / glm-5.3），一律没有 ✕（用户要求：勾着但来自自带清单的模型不需要 ✕）
       delRows: rows.filter(function (el) { return el.querySelector('.pv_iconBtn') !== null })
         .map(function (el) { return (el.querySelector('.pv_mId') || {}).textContent }),
-      delOnDeclaredOnly: (function () {
-        var del = rows.filter(function (el) { return el.querySelector('.pv_iconBtn') !== null })
-        return del.length === 1 && (del[0].querySelector('.pv_mId') || {}).textContent === 'deepseek-flash'
+      noDelOnPiAiRows: rows.filter(function (el) { return el.querySelector('.pv_iconBtn') !== null }).length === 0,
+      // 全选框与「模型 ID」文字的对齐：垂直中心偏差 ≤2px，且与数据行勾选框左缘对齐 ≤2px
+      headCheckAligned: (function () {
+        var headCheck = document.querySelector('.pv_meHeadRow input.pv_meCheck')
+        var headId = document.querySelectorAll('.pv_meHeadRow > span')[1]
+        var rowCheck = document.querySelector('.pv_meRow .pv_meCheck')
+        if (headCheck === null || headId === undefined || headId === null || rowCheck === null) return false
+        var hc = headCheck.getBoundingClientRect()
+        var hi = headId.getBoundingClientRect()
+        var rc = rowCheck.getBoundingClientRect()
+        var dv = Math.abs((hc.top + hc.bottom) / 2 - (hi.top + hi.bottom) / 2)
+        var dh = Math.abs(hc.left - rc.left)
+        return dv <= 2 && dh <= 2
       })(),
       // 名称列删除：无 .pv_meName，表头 6 列
       noNameCol: document.querySelector('.pv_meName') === null && document.querySelectorAll('.pv_meHeadRow > span').length === 6,
@@ -443,7 +456,7 @@ try {
     }
   })()`)
   console.log('  清单探针:', JSON.stringify(editorProbe))
-  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.allRowsReadOnly !== true || editorProbe.noCustomBadge !== true || editorProbe.idTruncates !== true || editorProbe.noFilter !== true || editorProbe.delOnDeclaredOnly !== true || editorProbe.noNameCol !== true || editorProbe.declaredOnly !== true || editorProbe.noCounter !== true || editorProbe.noInlineAdd !== true || editorProbe.ctxMaxShown !== true || editorProbe.colAligned !== true) {
+  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.allRowsReadOnly !== true || editorProbe.noCustomBadge !== true || editorProbe.idTruncates !== true || editorProbe.noFilter !== true || editorProbe.noDelOnPiAiRows !== true || editorProbe.headCheckAligned !== true || editorProbe.noNameCol !== true || editorProbe.declaredOnly !== true || editorProbe.noCounter !== true || editorProbe.noInlineAdd !== true || editorProbe.ctxMaxShown !== true || editorProbe.colAligned !== true) {
     throw new Error('模型清单结构没满足：' + JSON.stringify(editorProbe))
   }
   shots.push(await cdp.shot('02b-model-list-editor'))
