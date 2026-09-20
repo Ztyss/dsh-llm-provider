@@ -225,18 +225,25 @@ try {
   // 模型框保持折叠——展开是第 2 步的事；此前这里提前展开，01/02 曾截出两张逐字节相同的图
   await cdp.eval(`window.scrollTo(0, 0)`)
   shots.push(await cdp.shot('01-provider-card-30d-chip'))
-  // 1b) Provider 卡就地编辑：无改动无编辑痕迹；有草稿浮出操作区；只写改动过的字段；校验拦截；取消回落
+  // 1b) Provider 卡就地编辑：无改动无编辑痕迹；已配置的端点/协议直接显示实际值；
+  //     有草稿浮出操作区；只写改动过的字段；校验拦截；取消回落
   await cdp.waitFor('.pv_row input.pv_key')
   const edit0 = await cdp.eval(`(function () {
     var el = document.querySelector('.pv_row input[placeholder="opencode-go"]')
+    var url = document.querySelector('.pv_row input[placeholder="留空回到官方默认端点"]')
+    var sel = document.querySelector('.pv_row select')
     return {
       initial: el ? el.value : null,
+      urlInitial: url ? url.value : null,
+      apiInitial: sel ? sel.value : null,
       actsGone: document.querySelector('.pv_editActs') === null,
       noPencil: Array.from(document.querySelectorAll('.pv_metaActs button')).every(function (b) { return b.textContent !== '✎' }),
     }
   })()`)
   console.log('  就地编辑·初始:', JSON.stringify(edit0))
-  if (edit0.initial !== '' || edit0.actsGone !== true || edit0.noPencil !== true) throw new Error('就地编辑初始态不对：' + JSON.stringify(edit0))
+  if (edit0.initial !== '' || edit0.urlInitial !== 'https://opencode.ai/zen/go/v1' || edit0.apiInitial !== 'openai-completions' || edit0.actsGone !== true || edit0.noPencil !== true) {
+    throw new Error('就地编辑初始态不对（已配置的端点/协议要直接显示实际值）：' + JSON.stringify(edit0))
+  }
 
   // 密钥行：始终可编辑（密码框，占位 = 掩码）+ 保存按钮（空草稿禁用）；凭据名行不再出现。
   // 此前已配置的路由只显示掩码文本，实质改不了 key（用户报的就是它）
@@ -272,12 +279,14 @@ try {
     if (box === null) return null
     return {
       buttons: Array.from(box.querySelectorAll('button')).map(function (b) { return b.textContent + (b.disabled ? '(disabled)' : '') }),
-      hint: (box.querySelector('.plan_note') || {}).textContent || '',
+      hint: (document.querySelector('.pv_editHint') || {}).textContent || '',
+      hintOutsideActs: box.querySelector('.plan_note') === null,
     }
   })()`)
   console.log('  就地编辑·草稿:', JSON.stringify(edit1))
-  if (edit1 === null || JSON.stringify(edit1.buttons) !== '["保存修改","取消"]' || edit1.hint.indexOf('清空') === -1) {
-    throw new Error('草稿态操作区不对：' + JSON.stringify(edit1))
+  if (edit1 === null || JSON.stringify(edit1.buttons) !== '["保存修改","取消"]' || edit1.hint.indexOf('清空') === -1
+    || edit1.hintOutsideActs !== true || edit1.hint.indexOf('官方默认') !== -1) {
+    throw new Error('草稿态操作区不对（提示要独立成行；自定义网关用短提示）：' + JSON.stringify(edit1))
   }
   shots.push(await cdp.shot('01b-provider-edit-dirty'))
 
@@ -340,7 +349,7 @@ try {
     }
   })()`)
   console.log('  就地编辑·取消:', JSON.stringify(edit2))
-  if (edit2.actsGone !== true || edit2.urlValue !== '') throw new Error('取消后没回落：' + JSON.stringify(edit2))
+  if (edit2.actsGone !== true || edit2.urlValue !== 'https://opencode.ai/zen/go/v1') throw new Error('取消后没回落到原值：' + JSON.stringify(edit2))
   // 取消 = 丢弃草稿，草稿的校验报错要跟着一起清掉
   const noteGone = await cdp.eval(`document.querySelector('.pv_pageNote') === null && document.body.textContent.indexOf('端点必须以') === -1`)
   console.log('  取消后报错已清:', noteGone)

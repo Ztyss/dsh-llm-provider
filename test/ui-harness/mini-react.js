@@ -99,6 +99,14 @@
     }
   }
 
+  /** select 的 value 必须在 option 子节点挂上之后再设，否则赋值落在空 select 上不生效
+   *  （真实 React 的 commit 在 children 之后，这里补齐同一语义）。 */
+  function restoreSelectValue(el, props) {
+    if (el.tagName !== 'SELECT' || props === null || props === undefined || props.value === undefined) return
+    var next = String(props.value)
+    if (el.value !== next) el.value = next
+  }
+
   /** 就地更新属性：先清掉 old 有而 new 没有的，再套用 new（事件处理器重绑、style 整体重设）。 */
   function installProps(el, oldProps, newProps) {
     if (oldProps !== null && oldProps !== undefined) {
@@ -239,6 +247,7 @@
       installProps(slot.dom, slot.props, node.props)
       slot.props = node.props
       syncChildren(slot.dom, node.children, path, el)
+      restoreSelectValue(slot.dom, node.props)
       return slot
     }
     destroyRec(slot, el)
@@ -246,6 +255,7 @@
     if (node.props !== undefined) installProps(dom, null, node.props)
     var rec = { kind: 'dom', tag: String(node.type).toUpperCase(), key: keyOf(node), props: node.props, dom: dom }
     syncChildren(dom, node.children, path, el)
+    restoreSelectValue(dom, node.props)
     return rec
   }
 

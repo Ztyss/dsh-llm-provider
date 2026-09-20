@@ -2263,18 +2263,23 @@ export function ProviderSettingsSection() {
         )
         // 凭据名行已删（用户要求）：密钥的写入目标固定是这条路由的 apiKeyEnv，
         // 在「API 密钥」行输入新值即写入该凭据名，界面上不再允许改凭据名本身。
-        // 有改动才出现操作区：写清「清空」的语义（删键，不是写空串）
+        // 有改动才出现操作区。提示独立成行、按钮行留呼吸距（用户报原来太挤）；
+        // 自定义网关（写了 baseURL）没有「官方默认端点」可回，提示语相应缩短（用户要求）
         if (editDirty || busyEdit) {
+          bodyRows.push(
+            react.createElement('div', { className: 'plan_note pv_editHint', key: 'edit-hint' },
+              editOrigin.baseURL !== '' ? t('edit.emptyHintCustom') : t('edit.emptyHint')),
+          )
           bodyRows.push(
             react.createElement(
               'div',
               { className: 'pv_editActs', key: 'edit-acts' },
-              react.createElement('div', { className: 'plan_note', key: 'hint' }, t('edit.emptyHint')),
               react.createElement(
                 'button',
                 {
                   type: 'button',
                   className: 'pv_action',
+                  style: { marginLeft: '0' },
                   disabled: busyEdit || !editDirty,
                   onClick: function () { saveProviderEdit(account) },
                 },
@@ -2285,6 +2290,7 @@ export function ProviderSettingsSection() {
                 {
                   type: 'button',
                   className: 'pv_action',
+                  style: { marginLeft: '0' },
                   disabled: busyEdit,
                   onClick: function () {
                     // 取消 = 丢弃草稿，字段回落到 route 快照（操作区随之隐藏）；

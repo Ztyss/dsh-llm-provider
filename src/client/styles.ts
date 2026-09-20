@@ -227,6 +227,9 @@ var css =
   'input.pv_key{background:var(--dsw-alias-bg-layer-1,#fff);' +
   'border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}' +
   '.pv_actRow{display:flex;gap:10px;align-items:center;padding:8px 0 4px}' +
+  // 就地编辑的操作区：提示独立成行，按钮行与其它保存/取消行同款呼吸距（用户报原来太挤）
+  '.pv_editHint{margin:2px 0 0}' +
+  '.pv_editActs{display:flex;gap:8px;align-items:center;padding:10px 0 2px}' +
   // 「发现模型」后的可勾选清单：与逐模型编辑器同一套表格（勾选 | 模型 ID | 能力 | 上下文 | 最大输出）
   '.pv_modelPick{max-height:240px;overflow:auto;border:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));' +
   'border-radius:8px;margin:4px 0 2px;display:flex;flex-direction:column}' +

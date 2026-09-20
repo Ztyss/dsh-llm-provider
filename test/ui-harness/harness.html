@@ -44,7 +44,7 @@
     localBuild: true,
     vendorPiAiVersions: [],
     llmDirectorySize: 12,
-    routes: [{ id: 'opencode-go', apiKeyEnv: 'OPENCODE_GO_API_KEY', source: 'llm-pi-ai' },
+    routes: [{ id: 'opencode-go', apiKeyEnv: 'OPENCODE_GO_API_KEY', source: 'llm-pi-ai', api: 'openai-completions', baseURL: 'https://opencode.ai/zen/go/v1' },
              { id: 'zai-coding-cn', apiKeyEnv: 'ZAI_API_KEY', source: 'llm-pi-ai' }],
     deepseekRouteMissing: false,
     testMode: false,

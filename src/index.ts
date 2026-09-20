@@ -291,6 +291,12 @@ export function apply(ctx: PluginContext, config: unknown): void {
               id: route.id,
               apiKeyEnv: route.apiKeyEnv ?? null,
               source: route.source,
+              // displayName / api / baseURL：就地编辑的初始值——不回传的话编辑表单会把
+              // 已配置的端点/协议显示成空（「回到官方默认」占位对自定义网关不成立），
+              // 保存时的「只写改动过的字段」也会拿空串当原值
+              ...(route.label === undefined || route.label === '' ? {} : { displayName: route.label }),
+              ...(route.api === undefined || route.api === '' ? {} : { api: route.api }),
+              ...(route.baseURL === undefined || route.baseURL === '' ? {} : { baseURL: route.baseURL }),
               // 空数组 / 空对象等于没写，别占着字段——界面用「有没有这个字段」判「有没有自定义清单」
               ...(route.models === undefined || route.models.length === 0 ? {} : { models: route.models }),
               ...(route.modelOverrides === undefined || Object.keys(asRecord(route.modelOverrides)).length === 0
