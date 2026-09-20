@@ -1253,14 +1253,23 @@ function ModelListEditor(props: {
   function testAddModel() {
     var id = form.id.trim()
     if (id === '') { setError('先填模型 ID'); return }
-    setTestModel({ phase: 'run', message: t('prov.testing') })
+    testModelConn(id, setTestModel)
+  }
+
+  /**
+   * 「测试」的公共实现：走插件宿主的 /provider/test-model——宿主用凭据仓库里的 key
+   * 请求端点的模型清单，key 不出宿主；浏览器只拿到「端点共 N 个模型，含不含这个 id」。
+   * 添加模型表单与行内编辑面板共用（回调各自落自己的状态）。
+   */
+  function testModelConn(id: string, set: (next: { phase: string; message: string }) => void) {
+    set({ phase: 'run', message: t('prov.testing') })
     postJson('/provider/test-model', { providerId: account.id, modelId: id })
       .then(function (res) {
         if (res === null || res === undefined || res.ok !== true) {
-          setTestModel({ phase: 'fail', message: '✗ ' + String((res && res.error) || '未知错误') })
+          set({ phase: 'fail', message: '✗ ' + String((res && res.error) || '未知错误') })
           return
         }
-        setTestModel({
+        set({
           phase: res.served === true ? 'ok' : 'fail',
           message: res.served === true
             ? '✓ ' + tf('prov.testModelYes', { total: String(res.total ?? ''), id: id })
@@ -1268,7 +1277,7 @@ function ModelListEditor(props: {
         })
       })
       .catch(function (cause) {
-        setTestModel({ phase: 'fail', message: '✗ ' + String(cause && cause.message ? cause.message : cause) })
+        set({ phase: 'fail', message: '✗ ' + String(cause && cause.message ? cause.message : cause) })
       })
   }
 
@@ -1394,6 +1403,10 @@ function ModelListEditor(props: {
   var editIdState = react.useState(null)
   var editId = editIdState[0] as string | null
   var setEditId = editIdState[1]
+  // 面板「测试」按钮的状态（与添加模型表单同款：验证端点真的供这个模型）
+  var panelTestState = react.useState({ phase: 'idle', message: '' })
+  var panelTest = panelTestState[0] as { phase: string; message: string }
+  var setPanelTest = panelTestState[1]
   /** 行内编辑面板：目录外条目的参数编辑（显示名 / 上下文 / 最大输出 / 能力）。改动只进草稿。 */
   function rowEditPanel(row: ModelEditRow) {
     function panelField(label: string, value: string, onInput: (next: string) => void, key: string, placeholder?: string) {
@@ -1443,8 +1456,27 @@ function ModelListEditor(props: {
         ),
       ),
       react.createElement('div', { className: 'pv_meActs', key: 'p-acts' },
-        react.createElement('button', { type: 'button', className: 'pv_action', style: { marginLeft: '0' }, onClick: function () { setEditId(null) } }, '完成'),
+        react.createElement('button', {
+          type: 'button',
+          className: 'pv_action',
+          style: { marginLeft: '0' },
+          disabled: busy || panelTest.phase === 'run',
+          title: '验证端点真的在供这个模型（用凭据仓库里的 key 请求端点的模型清单，key 不出宿主）',
+          onClick: function () { testModelConn(row.id, setPanelTest) },
+        }, panelTest.phase === 'run' ? '测试中…' : '测试'),
+        react.createElement('button', {
+          type: 'button',
+          className: 'pv_action',
+          style: { marginLeft: '0' },
+          onClick: function () {
+            setEditId(null)
+            setPanelTest({ phase: 'idle', message: '' })
+          },
+        }, '完成'),
       ),
+      panelTest.message === ''
+        ? null
+        : react.createElement('div', { className: 'pv_line' + (panelTest.phase === 'fail' ? ' plan_badText' : ''), key: 'p-test' }, panelTest.message),
     )
   }
   var rows_ = []
@@ -1452,6 +1484,8 @@ function ModelListEditor(props: {
     var rowItem = rows[r]
     rows_.push(modelEditRow(rowItem, patch, remove, toggleDraft, busy, editId === rowItem.id, function (id: string) {
       setEditId(function (prev: string | null) { return prev === id ? null : id })
+      // 切换展开行时把上一行的测试结果一并收掉
+      setPanelTest({ phase: 'idle', message: '' })
     }))
     if (editId === rowItem.id && rowItem.inPiAi !== true) rows_.push(rowEditPanel(rowItem))
   }

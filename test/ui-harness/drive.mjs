@@ -541,6 +541,24 @@ try {
     || panelProbe.visionOn !== true || panelProbe.reasonOn !== true || panelProbe.piAiRowClickable !== false) {
     throw new Error('行内编辑面板没按预期预填：' + JSON.stringify(panelProbe))
   }
+  // 面板「测试」：验证端点真的在供这个模型（与添加模型表单同款，走 /provider/test-model）
+  await cdp.eval(`
+    var b = Array.from(document.querySelectorAll('.pv_meEditPanel button')).find(function (x) { return x.textContent === '测试' })
+    b.click()
+  `)
+  await sleep(500)
+  const panelTest = await cdp.eval(`(function () {
+    var panel = document.querySelector('.pv_meEditPanel')
+    return {
+      msg: panel === null ? '' : panel.textContent,
+      recorded: window.__lastTestModel ?? null,
+    }
+  })()`)
+  console.log('  面板测试探针:', JSON.stringify(panelTest))
+  if (panelTest.msg.indexOf('包含 deepseek-flash') === -1 || panelTest.recorded === null
+    || panelTest.recorded.modelId !== 'deepseek-flash' || panelTest.recorded.providerId !== 'opencode-go') {
+    throw new Error('行内编辑面板测试按钮没按预期工作：' + JSON.stringify(panelTest))
+  }
   await cdp.eval(`
     var texts = Array.from(document.querySelectorAll('.pv_meEditPanel input[type=text]'))
     var set = function (el, v) { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })) }

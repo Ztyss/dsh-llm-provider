@@ -3055,7 +3055,15 @@ window.__ModuleLoader__.load({
 					setError("先填模型 ID");
 					return;
 				}
-				setTestModel({
+				testModelConn(id, setTestModel);
+			}
+			/**
+			* 「测试」的公共实现：走插件宿主的 /provider/test-model——宿主用凭据仓库里的 key
+			* 请求端点的模型清单，key 不出宿主；浏览器只拿到「端点共 N 个模型，含不含这个 id」。
+			* 添加模型表单与行内编辑面板共用（回调各自落自己的状态）。
+			*/
+			function testModelConn(id, set) {
+				set({
 					phase: "run",
 					message: t("prov.testing")
 				});
@@ -3064,13 +3072,13 @@ window.__ModuleLoader__.load({
 					modelId: id
 				}).then(function(res) {
 					if (res === null || res === void 0 || res.ok !== true) {
-						setTestModel({
+						set({
 							phase: "fail",
 							message: "✗ " + String(res && res.error || "未知错误")
 						});
 						return;
 					}
-					setTestModel({
+					set({
 						phase: res.served === true ? "ok" : "fail",
 						message: res.served === true ? "✓ " + tf("prov.testModelYes", {
 							total: String(res.total ?? ""),
@@ -3081,7 +3089,7 @@ window.__ModuleLoader__.load({
 						})
 					});
 				}).catch(function(cause) {
-					setTestModel({
+					set({
 						phase: "fail",
 						message: "✗ " + String(cause && cause.message ? cause.message : cause)
 					});
@@ -3232,6 +3240,12 @@ window.__ModuleLoader__.load({
 			var editIdState = react.default.useState(null);
 			var editId = editIdState[0];
 			var setEditId = editIdState[1];
+			var panelTestState = react.default.useState({
+				phase: "idle",
+				message: ""
+			});
+			var panelTest = panelTestState[0];
+			var setPanelTest = panelTestState[1];
 			/** 行内编辑面板：目录外条目的参数编辑（显示名 / 上下文 / 最大输出 / 能力）。改动只进草稿。 */
 			function rowEditPanel(row) {
 				function panelField(label, value, onInput, key, placeholder) {
@@ -3293,10 +3307,26 @@ window.__ModuleLoader__.load({
 					type: "button",
 					className: "pv_action",
 					style: { marginLeft: "0" },
+					disabled: busy || panelTest.phase === "run",
+					title: "验证端点真的在供这个模型（用凭据仓库里的 key 请求端点的模型清单，key 不出宿主）",
+					onClick: function() {
+						testModelConn(row.id, setPanelTest);
+					}
+				}, panelTest.phase === "run" ? "测试中…" : "测试"), react.default.createElement("button", {
+					type: "button",
+					className: "pv_action",
+					style: { marginLeft: "0" },
 					onClick: function() {
 						setEditId(null);
+						setPanelTest({
+							phase: "idle",
+							message: ""
+						});
 					}
-				}, "完成")));
+				}, "完成")), panelTest.message === "" ? null : react.default.createElement("div", {
+					className: "pv_line" + (panelTest.phase === "fail" ? " plan_badText" : ""),
+					key: "p-test"
+				}, panelTest.message));
 			}
 			var rows_ = [];
 			for (var r = 0; r < rows.length; r += 1) {
@@ -3304,6 +3334,10 @@ window.__ModuleLoader__.load({
 				rows_.push(modelEditRow(rowItem, patch, remove, toggleDraft, busy, editId === rowItem.id, function(id) {
 					setEditId(function(prev) {
 						return prev === id ? null : id;
+					});
+					setPanelTest({
+						phase: "idle",
+						message: ""
 					});
 				}));
 				if (editId === rowItem.id && rowItem.inPiAi !== true) rows_.push(rowEditPanel(rowItem));
