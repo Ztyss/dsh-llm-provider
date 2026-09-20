@@ -564,7 +564,8 @@ try {
   shots.push(await cdp.shot('02c-model-added'))
 
   // 2b+) 添加自定义条目后点「保存」才落盘：勾选 / ✕ / 添加模型都是草稿操作，保存 = 修改整个清单。
-  //      「保存」按钮右对齐（用户要求）；「还原清单」按钮已删（用户要求）。
+  //      「保存」按钮右对齐（用户要求）；「还原清单」按钮已删（用户要求）；
+  //      按钮行与模型框下边框留呼吸距 ≥8px（与「编辑模型」按钮同等待遇）。
   const saveProbe = await cdp.eval(`(function () {
     var acts = document.querySelector('.pv_meActs')
     var save = null
@@ -574,14 +575,17 @@ try {
       if (b.textContent === '保存') save = b
     })
     var rightGap = null
+    var breath = null
     if (save !== null) {
       rightGap = Math.abs(acts.getBoundingClientRect().right - save.getBoundingClientRect().right)
+      var box = save.closest('.pv_mBox')
+      if (box !== null) breath = box.getBoundingClientRect().bottom - acts.getBoundingClientRect().bottom
     }
-    return { names: names, saveFound: save !== null, rightGap: rightGap, noRevert: names.indexOf('还原清单') === -1 }
+    return { names: names, saveFound: save !== null, rightGap: rightGap, noRevert: names.indexOf('还原清单') === -1, breath: breath }
   })()`)
   console.log('  保存按钮探针:', JSON.stringify(saveProbe))
-  if (saveProbe.saveFound !== true || saveProbe.rightGap > 2 || saveProbe.noRevert !== true) {
-    throw new Error('保存按钮没右对齐或还原清单还在：' + JSON.stringify(saveProbe))
+  if (saveProbe.saveFound !== true || saveProbe.rightGap > 2 || saveProbe.noRevert !== true || saveProbe.breath === null || saveProbe.breath < 8) {
+    throw new Error('保存按钮没右对齐、还原清单还在、或按钮行没留呼吸距：' + JSON.stringify(saveProbe))
   }
   await cdp.eval(`
     var n = Array.from(document.querySelectorAll('.pv_meActs button')).find(function (b) { return b.textContent === '保存' });

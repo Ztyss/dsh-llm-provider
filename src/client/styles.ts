@@ -364,7 +364,8 @@ var css =
   '.pv_usageLoading .pv_spin{font-size:16px;color:var(--dsw-alias-label-secondary)}' +
   // 清单页的「编辑模型」入口行：底部留足呼吸距，别让按钮贴着模型框下边框
   '.pv_mEditRow{display:flex;align-items:center;padding:9px 0 12px}' +
-  '.pv_meActs{display:flex;align-items:center;gap:8px}' +
+  // 编辑器的「添加模型 / 保存」按钮行同样与模型框下边框留呼吸距（模型框自身 padding-bottom 为 0）
+  '.pv_meActs{display:flex;align-items:center;gap:8px;margin-bottom:12px}' +
   // ---- 本地版新增：删除确认弹层（issue #3）----
   '.pv_mask{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;' +
   'background:rgba(0,0,0,.42);padding:24px}' +
