@@ -990,14 +990,8 @@ function modelEditRow(
     react.createElement(
       'span',
       { className: 'pv_meIdBox' },
-      // 目录外条目（自定义 provider 的模型 / 手写模型）的 ID 可点击进入行内编辑；
-      // pi-ai 目录收录的参数以上游目录为准，ID 不可点。笔尖标记是兄弟节点，
-      // 不进 .pv_mId 的 textContent（探针和载荷比较都用纯 id）
-      react.createElement('span', {
-        className: 'pv_mIdPen',
-        title: editable ? '点击编辑这条模型的显示名 / 上下文 / 最大输出 / 能力' : undefined,
-        onClick: editable ? function () { onToggleExpand(row.id) } : undefined,
-      }, editable ? '✎' : null),
+      // 目录外条目（自定义 provider 的模型 / 手写模型）的 ID 可点击进入行内编辑（虚线
+      // 下划线标示，不带图标——用户要求）；pi-ai 目录收录的参数以上游目录为准，ID 不可点
       react.createElement(
         'span',
         {
@@ -1332,7 +1326,7 @@ function ModelListEditor(props: {
       if (!isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) { setError('「' + row.id + '」的最大输出要填正整数'); return undefined }
       var input = ['text']
       if (row.vision === true) input.push('image')
-      if (row.video === true) input.push('video')
+      // video 不写：官方校验的 input 模态只有 text/image（写 video 整单被拒）
       // 键序按 settings.yaml 惯例：id、name、contextWindow、maxTokens、input
       var entry: DeclaredModel = { id: row.id }
       // 表单里填了显示名（且不等于 ID）才写 name，避免冗余字段进 settings.yaml
@@ -1439,7 +1433,6 @@ function ModelListEditor(props: {
         react.createElement('span', null, '能力'),
         react.createElement('span', { className: 'pv_mePanelCaps' },
           capToggle('视觉', 'vision', row.vision === true, '支持图片输入（写进模型的 input 模态）', 'pv_capVision'),
-          capToggle('视频', 'video', row.video === true, '支持视频输入（写进模型的 input 模态）', 'pv_capVideo'),
           capToggle('推理', 'reasoning', row.reasoning === true, '支持思维链（声明条目写 reasoning: true）', 'pv_capReason'),
         ),
       ),
@@ -1522,17 +1515,7 @@ function ModelListEditor(props: {
             setForm(function (prev) { return withKeys(prev as unknown as AnyRecord, { vision: next }) as typeof prev })
           },
         }), '视觉'),
-        react.createElement('label', {
-          className: 'pv_meCap' + (form.video ? ' pv_capVideo' : ' pv_capOff'),
-          title: '声明支持视频输入（写进模型的 input 模态）',
-        }, react.createElement('input', {
-          type: 'checkbox',
-          checked: form.video,
-          onChange: function (event: FieldEvent) {
-            var next = event.target.checked === true
-            setForm(function (prev) { return withKeys(prev as unknown as AnyRecord, { video: next }) as typeof prev })
-          },
-        }), '视频'),
+        // 视频不在可选能力里：官方校验的 input 模态只有 text/image，写 video 会被整单拒绝
         react.createElement('label', {
           className: 'pv_meCap' + (form.reasoning ? ' pv_capReason' : ' pv_capOff'),
           title: '声明支持思维链（声明条目写 reasoning: true）',

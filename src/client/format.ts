@@ -6,14 +6,17 @@ import type { AnyRecord } from '../types.js'
 import { t, tf } from './i18n.js'
 import type { HeadlineChip, PlanAccount } from './types.js'
 
-/** 上下文窗口的人性化显示：1048576 → 1.0M，262144 → 262K（K/M 按 1000 进）。 */
+/** 上下文窗口 / 最大输出的人性化显示。取整口径（用户报「65536 显示成 66K」）：
+ *  1000000 → 1M（十进制整除）、1048576 → 1M（MiB 整除）、65536 → 64K、131072 → 128K
+ *  （1024 整除按二进制）、384000 → 384K（十进制整除）、其余按 1000 进四舍五入。 */
 export function formatContext(value: unknown): string | undefined {
   var n = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(n) || n <= 0) return undefined
-  if (n >= 1e6) {
-    var m = n / 1e6
-    return (Number.isInteger(m) ? String(m) : m.toFixed(1)) + 'M'
-  }
+  if (n >= 1048576 && n % 1048576 === 0) return (n / 1048576) + 'M'
+  if (n >= 1000000 && n % 1000000 === 0) return (n / 1000000) + 'M'
+  if (n >= 1000 && n % 1000 === 0) return (n / 1000) + 'K'
+  if (n >= 1024 && n % 1024 === 0) return (n / 1024) + 'K'
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M'
   if (n >= 1e3) return Math.round(n / 1e3) + 'K'
   return String(n)
 }

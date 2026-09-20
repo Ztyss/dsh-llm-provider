@@ -507,7 +507,7 @@ try {
       ctx: texts[1].value,
       max: texts[2].value,
       visionOn: caps[0].checked,
-      reasonOn: caps[2].checked,
+      reasonOn: caps[1].checked,
       piAiRowClickable: (function () {
         var kimi = Array.from(document.querySelectorAll('.pv_meRow')).find(function (el) { return el.textContent.indexOf('kimi-k3') !== -1 })
         return kimi !== undefined && kimi.querySelector('.pv_mIdEdit') !== null
@@ -609,7 +609,7 @@ try {
     set(texts[3], '100000')
     var caps = document.querySelectorAll('.pv_meFormCaps label input')
     caps[0].click()
-    caps[2].click()
+    caps[1].click()
   `)
   await sleep(300)
   // 「测试」：像添加供应商一样，保存前先验证端点供这个模型（桩固定返回 served:true）
@@ -974,9 +974,9 @@ try {
   })()`)
   console.log('  添加供应商测试探针:', JSON.stringify(addTest))
   const expectRows = [
-    { id: 'step-3.7-flash', caps: ['视觉'], ctx: '33K', max: '—' },
+    { id: 'step-3.7-flash', caps: ['视觉'], ctx: '32K', max: '—' },
     { id: 'step-router-v1', caps: [], ctx: '—', max: '—' },
-    { id: 'glm-5.3-flash', caps: ['视觉', '推理'], ctx: '1M', max: '131K' },
+    { id: 'glm-5.3-flash', caps: ['视觉', '推理'], ctx: '1M', max: '128K' },
   ]
   const rowsOk = addTest.pickItems === 3 && addTest.headOk === true && addTest.master === true && addTest.picked === 3
     && addTest.rows.every(function (row, i) {

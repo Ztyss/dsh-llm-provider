@@ -244,7 +244,6 @@ var css =
   'text-underline-offset:3px;color:var(--dsw-alias-label-secondary)}' +
   '.pv_mIdEdit:hover{color:var(--dsw-alias-label-primary)}' +
   '.pv_mIdOpen{color:var(--dsw-alias-label-primary)}' +
-  '.pv_mIdPen{font-size:10px;color:var(--dsw-alias-label-tertiary);cursor:pointer;flex:none}' +
   '.pv_meEditPanel{display:flex;flex-direction:column;gap:6px;padding:8px 10px;margin:2px 0 4px 18px;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;' +
   'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.02))}' +
@@ -347,10 +346,10 @@ var css =
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:10px}' +
   // 编辑器行用网格列布局（勾选 | 模型 ID | 能力 | 上下文 | 最大输出 | 移除）。
   // 表头与数据行必须用完全相同的列宽 / gap / 横向 padding——差 1px 都会让固定列错位
-  '.pv_meHeadRow{display:grid;grid-template-columns:12px minmax(140px,1.6fr) 84px 64px 64px 24px;' +
+  '.pv_meHeadRow{display:grid;grid-template-columns:12px minmax(140px,1.6fr) 132px 64px 64px 24px;' +
   'gap:6px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;' +
   'color:var(--dsw-alias-label-tertiary);border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}' +
-  '.pv_meRow{display:grid;grid-template-columns:12px minmax(140px,1.6fr) 84px 64px 64px 24px;' +
+  '.pv_meRow{display:grid;grid-template-columns:12px minmax(140px,1.6fr) 132px 64px 64px 24px;' +
   'gap:6px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;' +
   'border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.06))}' +
   '.pv_meRow:last-child{border-bottom:0}' +
