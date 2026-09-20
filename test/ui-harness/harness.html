@@ -65,7 +65,7 @@
       { id: 'zai-coding-cn', displayName: 'Z.ai Coding (CN)', kind: 'quota', authConfigured: true, api: 'openai-completions',
         apiKeyEnv: 'ZAI_API_KEY', baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4', websiteUrl: 'https://open.bigmodel.cn',
         keyHint: 'abc****wxyz', deletable: true, fetchedAt: new Date().toISOString(),
-        models: [{ id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', contextWindow: 1000000, maxTokens: 131072, input: ['text', 'image'], reasoningEfforts: { low: 'low' } }],
+        // 故意不配 models = 跟随 pi-ai 目录（catalog 全量生效）：驱动用它验证编辑器初始把目录模型全部预勾
         windows: [ { window: '5 小时滚动窗口', percentLeft: 88, resetAt: new Date(Date.now() + 2 * 3600e3).toISOString() },
                    { window: '每月窗口', percentLeft: 42, resetAt: new Date(Date.now() + 9 * 864e5).toISOString() } ] },
     ],

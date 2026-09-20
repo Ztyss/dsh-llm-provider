@@ -42,13 +42,14 @@ new Function('window', 'document', 'fetch', 'setInterval', source)(
 const moduleExports = captured.factory((name) => (name === 'react' ? reactStub : {}))
 const {
   addModelRow,
+  buildEditRows,
   buildModelEditor,
   isDefaultCatalogEquivalent,
   modelListPayload,
   patchModelRow,
   validateModelRows,
 } = moduleExports
-for (const [name, fn] of Object.entries({ addModelRow, buildModelEditor, isDefaultCatalogEquivalent, modelListPayload, patchModelRow, validateModelRows })) {
+for (const [name, fn] of Object.entries({ addModelRow, buildEditRows, buildModelEditor, isDefaultCatalogEquivalent, modelListPayload, patchModelRow, validateModelRows })) {
   if (typeof fn !== 'function') {
     console.error(`lib/client.js 没有导出 ${name}（先 npm run build，并确认 src/client/index.ts 的导出名单）`)
     process.exit(2)
@@ -160,6 +161,21 @@ check('原样的目录清单 = 目录默认（可以不写）', isDefaultCatalog
 check('裁掉一个模型就必须写清单', isDefaultCatalogEquivalent(unchecked) === false)
 check('改过参数就必须写清单', isDefaultCatalogEquivalent(patchModelRow(fresh.rows, 'deepseek-v4-flash', { maxTokens: '4096' })) === false)
 check('有 declared 行就必须写清单（catalog 语义表达不了自定义 id）', isDefaultCatalogEquivalent(withDeclared.rows) === false)
+
+// ---- 7. 清单页编辑器的初始勾选 = 当前真正生效的模型（跟随目录全勾 / 自定义清单只勾声明条目）----
+// 此前「跟随目录」时一个都不预勾：深度求索官方路由明明 3 个模型都在生效，打开编辑器却全是空的
+const followAccount = { id: 'deepseek', deletable: true }
+const declaredAccount = { id: 'deepseek', deletable: true, models: [{ id: 'deepseek-v4-flash' }] }
+const followRows = buildEditRows(followAccount, catalog, details)
+const declaredRows = buildEditRows(declaredAccount, catalog, details)
+check('跟随目录：目录里的模型全部预勾', followRows.length === 3 && followRows.every((r) => r.enabled === true))
+check('跟随目录：行不带 declared（保存才落盘，初始态是目录语义）', followRows.every((r) => r.declared === undefined))
+check('自定义清单：只预勾声明过的条目', declaredRows.find((r) => r.id === 'deepseek-v4-flash').enabled === true
+  && declaredRows.filter((r) => r.enabled).length === 1)
+check('自定义清单：未勾的目录模型仍在清单里（可再勾上）', declaredRows.length === 3
+  && declaredRows.find((r) => r.id === 'deepseek-v4-pro').enabled === false)
+check('跟随目录：已知模型带最大输出（清单页取数就在详情里）',
+  followRows.find((r) => r.id === 'deepseek-v4-flash').knownMaxTokens === 384000)
 
 console.log(failures === 0 ? '\n逐模型清单编辑测试全部通过' : `\n${failures} 个失败`)
 process.exit(failures === 0 ? 0 : 1)

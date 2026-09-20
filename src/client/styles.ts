@@ -263,14 +263,16 @@ var css =
   '.pv_pcLink:hover{color:var(--dsw-alias-label-secondary);text-decoration:underline}' +
   // ---- 模型行悬浮详情卡（Cherry Studio 式）----
   '.pv_mRow{position:relative;display:flex;align-items:center;gap:8px;padding:3px 0}' +
-  '.pv_mId{flex:none;width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
+  // ID 占满弹性宽并允许换行：模型 ID 是路由键，省略号截断等于不可辨认（长 ID 如 deepseek-v4-flash-vision-exp）
+  '.pv_mId{flex:1;min-width:0;white-space:normal;word-break:break-all;' +
   'font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);' +
   'font-family:ui-monospace,Menlo,Consolas,monospace}' +
-  '.pv_mName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
   '.pv_mHeadRow{display:flex;align-items:center;gap:8px;padding:5px 0 4px;font-size:12px;' +
   'color:var(--dsw-alias-label-tertiary);border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}' +
   '.pv_mCaps{flex:none;width:100px;display:inline-flex;justify-content:flex-end;align-items:center;gap:6px}' +
   '.pv_mCtx{flex:none;width:56px;text-align:right;font-size:12px;line-height:18px;' +
+  'color:var(--dsw-alias-label-tertiary)}' +
+  '.pv_mMax{flex:none;width:64px;text-align:right;font-size:12px;line-height:18px;' +
   'color:var(--dsw-alias-label-tertiary)}' +
   '.pv_capIcons{display:inline-flex;gap:6px;font-size:12px;line-height:16px}' +
   '.pv_capMini{font-size:11px;line-height:16px;padding:0 7px;border-radius:999px;white-space:nowrap}' +
@@ -359,8 +361,8 @@ var css =
   '.pv_usageLoading{flex-direction:row;align-items:center;justify-content:center;gap:8px;padding:22px 0;' +
   'color:var(--dsw-alias-label-tertiary)}' +
   '.pv_usageLoading .pv_spin{font-size:16px;color:var(--dsw-alias-label-secondary)}' +
-  // 清单页的「修改模型」入口行
-  '.pv_mEditRow{display:flex;align-items:center;padding:7px 0 2px}' +
+  // 清单页的「修改模型」入口行：底部留足呼吸距，别让按钮贴着模型框下边框
+  '.pv_mEditRow{display:flex;align-items:center;padding:9px 0 12px}' +
   '.pv_meActs{display:flex;align-items:center;gap:8px}' +
   // ---- 本地版新增：删除确认弹层（issue #3）----
   '.pv_mask{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;' +

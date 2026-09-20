@@ -194,12 +194,14 @@ function detailOf(detailsById: Record<string, ModelDetail> | undefined | null, p
   return detailsById[detailKeyOf(provider, modelId)]
 }
 
-/** 模型行：名称 + 能力徽章（视觉/推理/视频）+ 上下文标签，悬浮出 Cherry 式详情卡。 */
+/** 模型行：ID + 能力徽章（视觉/推理/视频）+ 上下文 / 最大输出标签，悬浮出 Cherry 式详情卡。 */
 export function modelRow(model: CatalogModel, account: PlanAccount, detailsById: Record<string, ModelDetail> | undefined | null) {
   // issue #5：详情按 provider+id 查（同名模型不串家），查不到才退回裸 id
   var detail = lookupDetail(detailsById, account.id, model.id)
   var cw = detail !== undefined && detail.contextWindow !== undefined ? detail.contextWindow : model.contextWindow
   var ctx = formatContext(cw)
+  var mt = detail !== undefined && detail.maxTokens !== undefined ? detail.maxTokens : undefined
+  var max = formatContext(mt)
   var caps = capabilityKeysOf(detail).map(function (id) {
     return react.createElement('span', { key: id, className: 'pv_capMini ' + capClassOf(id) }, t(CAP_KEYS[id].label))
   })
@@ -207,13 +209,15 @@ export function modelRow(model: CatalogModel, account: PlanAccount, detailsById:
   if (detail !== undefined && detail.source === 'declared') {
     caps.push(react.createElement('span', { key: 'declared', className: 'pv_capMini pv_capDeclared', title: t('cap.declaredTip') }, t('cap.declared')))
   }
+  // 不放「名称」列：显示名是 ID 的注脚，详情卡悬浮里有，占着最宽的一列还把长 ID 挤成省略号；
+  // 「最大输出」才是清单页缺的硬信息（与编辑器同款格式化，目录没给就留空）
   return react.createElement(
     'div',
     { className: 'pv_mRow', key: 'm-' + model.id },
     react.createElement('span', { className: 'pv_mId', title: model.id }, model.id),
-    react.createElement('span', { className: 'pv_mName', title: model.name }, model.name),
     react.createElement('span', { className: 'pv_mCaps' }, caps),
     react.createElement('span', { className: 'pv_mCtx' }, ctx === undefined ? '' : ctx),
+    react.createElement('span', { className: 'pv_mMax' }, max === undefined ? '' : max),
     modelTip(model, account, detail),
   )
 }
@@ -899,7 +903,8 @@ function modelEditRow(
 }
 
 /** 编辑器初始行：当前生效的目录模型 + 目录里该 provider 的全部模型 + 路由声明过的模型。 */
-function buildEditRows(
+/** 导出供离线测试钉住初始勾选语义（跟随目录全勾 / 自定义清单只勾声明条目）。 */
+export function buildEditRows(
   account: PlanAccount,
   catalog: CatalogModel[],
   details: Record<string, ModelDetail> | undefined | null,
@@ -914,9 +919,10 @@ function buildEditRows(
     rows.push({
       id: id,
       name: name,
-      // 勾选 = 写进 settings.yaml 的 models：只预勾声明过的条目；
-      // 没配 models（跟随目录）时一个都不预勾——勾上并保存才建立自定义清单
-      enabled: declared.some(function (item) { return item.id === id }),
+      // 勾选 = 当前真正生效的模型：配置了 models（自定义清单）就只预勾声明过的条目；
+      // 没配 models（跟随目录）时目录收录的都在生效——**全部预勾**。此前这种情况一个都不勾，
+      // 用户会以为已启用的模型没启用（深度求索官方路由报的就是它）
+      enabled: declared.length === 0 || declared.some(function (item) { return item.id === id }),
       contextWindow: entry !== undefined && entry.contextWindow !== undefined ? String(entry.contextWindow) : '',
       maxTokens: entry !== undefined && entry.maxTokens !== undefined ? String(entry.maxTokens) : '',
       vision: detail !== undefined ? detail.vision === true : declaredInput.indexOf('image') !== -1,
@@ -959,7 +965,8 @@ function buildEditRows(
  * 勾选 → 保存 → 写 settings 的 `llm-pi-ai.providers.<id>.models`（与官方 Models 页同一条写路径，
  * 官方 adapter 的 resolveRouteModels 认这个键，`models` 非空就替换整份服务目录）。
  *
- * 语义两条：
+ * 语义三条：
+ *   初始勾选 —— 当前真正生效的那份：配置了 models 只勾声明条目，跟随目录则目录全量都勾（见 buildEditRows）；
  *   保存清单 —— 只留勾上的；目录里没有的自定义 ID 必须填全上下文/最大输出（官方 strict 校验会拒）；
  *   跟随目录 —— 删掉 models 键，回到「pi-ai 目录收录什么就服务什么」。
  */
@@ -2129,9 +2136,9 @@ export function ProviderSettingsSection() {
                 'div',
                 { className: 'pv_mHeadRow', key: 'm-colhead' },
                 react.createElement('span', { className: 'pv_mId', style: { fontFamily: 'inherit' } }, t('prov.modelId')),
-                react.createElement('span', { className: 'pv_mName' }, t('prov.name')),
                 react.createElement('span', { className: 'pv_mCaps' }, t('prov.caps')),
                 react.createElement('span', { className: 'pv_mCtx' }, t('prov.ctx')),
+                react.createElement('span', { className: 'pv_mMax' }, t('cap.maxTokens')),
               ),
             )
             for (var m = 0; m < models.length; m += 1) {

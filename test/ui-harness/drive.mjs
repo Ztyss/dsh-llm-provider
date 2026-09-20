@@ -294,16 +294,34 @@ try {
   await cdp.waitFor('.pv_mRow')
   const listProbe = await cdp.eval(`(function () {
     var box = document.querySelectorAll('.pv_mBox')[0]
+    var head = box.querySelector('.pv_mHeadRow')
+    var idCell = box.querySelector('.pv_mRow .pv_mId')
+    var maxCell = box.querySelector('.pv_mRow .pv_mMax')
     return {
       listRows: box.querySelectorAll('.pv_mRow').length,
-      listHead: box.querySelector('.pv_mHeadRow') !== null,
+      listHead: head !== null,
       editBtn: Array.from(box.querySelectorAll('button')).some(function (b) { return b.textContent === '修改模型' }),
       editorHidden: document.querySelector('.pv_meRow') === null,
+      // 列改版：不放名称列，补最大输出列（表头 + 数据行都在）
+      noNameCol: box.querySelector('.pv_mName') === null && head.textContent.indexOf('名称') === -1,
+      maxCol: head.textContent.indexOf('最大输出') !== -1,
+      maxShown: maxCell !== null && maxCell.textContent !== '',
+      // 模型 ID 完整可见：换行而非省略号
+      idWraps: idCell !== null && getComputedStyle(idCell).whiteSpace === 'normal',
+      // 「修改模型」按钮与模型框下边框留了呼吸距
+      btnBreath: (function () {
+        var row = box.querySelector('.pv_mEditRow')
+        var boxRect = box.getBoundingClientRect()
+        var btn = row !== null ? row.querySelector('button') : null
+        if (row === null || btn === null) return false
+        return boxRect.bottom - btn.getBoundingClientRect().bottom >= 8
+      })(),
     }
   })()`)
   console.log('  清单页探针:', JSON.stringify(listProbe))
-  if (listProbe.listRows === 0 || listProbe.listHead !== true || listProbe.editBtn !== true || listProbe.editorHidden !== true) {
-    throw new Error('清单页结构没满足（展开应先看到只读清单 + 修改模型按钮）：' + JSON.stringify(listProbe))
+  if (listProbe.listRows === 0 || listProbe.listHead !== true || listProbe.editBtn !== true || listProbe.editorHidden !== true
+    || listProbe.noNameCol !== true || listProbe.maxCol !== true || listProbe.maxShown !== true || listProbe.idWraps !== true || listProbe.btnBreath !== true) {
+    throw new Error('清单页结构没满足（只读清单 + 修改模型 + 列改版 + ID 完整 + 按钮呼吸距）：' + JSON.stringify(listProbe))
   }
   shots.push(await cdp.shot('02-model-list-page'))
   await cdp.eval(`
@@ -429,6 +447,46 @@ try {
   ])
   if (payloadOk !== true) throw new Error('勾选保存载荷不对（声明原样 + 已知只写 id + 自定义全参数）：' + JSON.stringify(payload))
   shots.push(await cdp.shot('03-model-list-saved-toast'))
+
+  // 2d) 跟随目录的 provider（夹具里 zai 没配 models）：编辑器必须把目录里的模型全部预勾——
+  //     此前这种情况一个都不勾，用户会以为已启用的模型没启用（深度求索官方路由报的就是它）
+  await cdp.eval(`
+    var cards = document.querySelectorAll('.pv_pc')
+    cards[cards.length - 1].querySelector('.pv_pcHead').click()
+  `)
+  await sleep(300)
+  await cdp.eval(`
+    var cards = document.querySelectorAll('.pv_pc')
+    cards[cards.length - 1].querySelector('.pv_mHead').click()
+  `)
+  await sleep(300)
+  await cdp.eval(`
+    var cards = document.querySelectorAll('.pv_pc')
+    var b = Array.from(cards[cards.length - 1].querySelectorAll('button')).find(function (x) { return x.textContent === '修改模型' })
+    b.click()
+  `)
+  await cdp.waitFor('.pv_meRow')
+  await sleep(300)
+  const followPick = await cdp.eval(`(function () {
+    var rows = Array.from(document.querySelectorAll('.pv_meRow'))
+    return {
+      rows: rows.length,
+      checked: rows.filter(function (el) { return el.querySelector('.pv_meCheck').checked })
+        .map(function (el) { return (el.querySelector('.pv_mId') || {}).textContent }),
+      hint: (document.querySelector('.pv_hint') || {}).textContent || '',
+    }
+  })()`)
+  console.log('  跟随目录预勾探针:', JSON.stringify(followPick))
+  if (followPick.rows !== 1 || JSON.stringify(followPick.checked) !== '["glm-5.3-flash"]' || followPick.hint.indexOf('跟随') === -1) {
+    throw new Error('跟随目录的 provider 编辑器没有把目录模型全部预勾：' + JSON.stringify(followPick))
+  }
+  shots.push(await cdp.shot('02d-follow-catalog-prechecked'))
+  // 收起 zai 的模型框，别影响后面的删除弹层步骤
+  await cdp.eval(`
+    var cards = document.querySelectorAll('.pv_pc')
+    cards[cards.length - 1].querySelector('.pv_mHead').click()
+  `)
+  await sleep(200)
 
   // 3) 删除确认弹层（issue #3）
   await cdp.waitFor('[title^="删除这个 provider"]')
