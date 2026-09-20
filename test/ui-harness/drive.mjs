@@ -405,10 +405,12 @@ try {
       ids: rows.map(function (el) { return (el.querySelector('.pv_mId') || {}).textContent }),
       colhead: document.querySelector('.pv_meHeadRow') !== null,
       noConfigBtn: document.querySelector('.pv_meOpen') === null,
-      knownRowsReadOnly: Array.from(rows).every(function (el) {
-        var custom = el.querySelector('.pv_capDeclared') !== null
-        return custom ? el.querySelector('.pv_meNum') !== null : el.querySelector('.pv_meNum') === null
-      }),
+      // 自定义行也只读：编辑器里没有任何输入框，也没有「自定义」徽标（用户要求）
+      allRowsReadOnly: document.querySelectorAll('.pv_meNum').length === 0,
+      noCustomBadge: (function () {
+        var texts = Array.from(document.querySelectorAll('.pv_me .pv_capDeclared')).map(function (el) { return el.textContent })
+        return texts.indexOf('自定义') === -1
+      })(),
       // 长 ID 单行省略号截断（v0.1.1 的「换行完整可见」按用户反馈改成截断：省略号好过挤高行/叠徽标）
       idTruncates: rows.length > 0 && (function () {
         var el = rows[0].querySelector('.pv_mId')
@@ -432,19 +434,16 @@ try {
       noCounter: document.querySelector('.pv_me .pv_push') === null,
       // 旧的「加一行」内联输入已移除
       noInlineAdd: document.querySelector('.pv_me input[placeholder^="自定义模型 ID"]') === null,
-      // 目录已知模型的上下文/最大输出两列都有值
+      // 目录已知模型的上下文/最大输出两列都有值；自定义行（有 ✕ 的声明行 deepseek-flash）同样有值
       ctxMaxShown: rows.length > 0 && rows.every(function (el) {
-        var known = el.querySelector('.pv_capDeclared') === null
-        return known
-          ? (el.querySelector('.pv_mCtx') || {}).textContent !== '' && (el.querySelector('.pv_mMax') || {}).textContent !== ''
-          : el.querySelector('.pv_mMax') === null
+        return (el.querySelector('.pv_mCtx') || {}).textContent !== '' && (el.querySelector('.pv_mMax') || {}).textContent !== ''
       }),
       // 表头与数据行逐列对齐（每列左缘偏差 ≤1.5px）
       colAligned: aligned(),
     }
   })()`)
   console.log('  清单探针:', JSON.stringify(editorProbe))
-  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.knownRowsReadOnly !== true || editorProbe.idTruncates !== true || editorProbe.noFilter !== true || editorProbe.delOnDeclaredOnly !== true || editorProbe.noNameCol !== true || editorProbe.declaredOnly !== true || editorProbe.noCounter !== true || editorProbe.noInlineAdd !== true || editorProbe.ctxMaxShown !== true || editorProbe.colAligned !== true) {
+  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.allRowsReadOnly !== true || editorProbe.noCustomBadge !== true || editorProbe.idTruncates !== true || editorProbe.noFilter !== true || editorProbe.delOnDeclaredOnly !== true || editorProbe.noNameCol !== true || editorProbe.declaredOnly !== true || editorProbe.noCounter !== true || editorProbe.noInlineAdd !== true || editorProbe.ctxMaxShown !== true || editorProbe.colAligned !== true) {
     throw new Error('模型清单结构没满足：' + JSON.stringify(editorProbe))
   }
   shots.push(await cdp.shot('02b-model-list-editor'))
@@ -509,8 +508,8 @@ try {
   await sleep(300)
   const emptyErr = await cdp.eval(`(document.querySelector('.pv_me .plan_badText') || {}).textContent || ''`)
   if (emptyErr === '') throw new Error('空 ID 没有报错')
-  // 上下文留空（自动按已知模型填默认 1000000）、最大输出显式填 100000（显式值优先）——
-  // 后面的 set-models 载荷断言同时钉住这两条路径
+  // 上下文留空（自动按已知模型填默认 1048576）、最大输出显式填 100000（显式值优先）、
+  // 勾视觉 + 推理——后面的 set-models 载荷断言同时钉住默认值 / 显式值 / 推理三条路径
   await cdp.eval(`
     var q = function (sel) { return document.querySelector('.pv_meForm ' + sel) }
     var set = function (el, v) { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })) }
@@ -518,9 +517,27 @@ try {
     set(q('input[placeholder="留空则同模型 ID"]'), 'My Custom')
     var texts = document.querySelectorAll('.pv_meForm input[type=text]')
     set(texts[3], '100000')
-    q('.pv_meFormCaps label input').click()
+    var caps = document.querySelectorAll('.pv_meFormCaps label input')
+    caps[0].click()
+    caps[2].click()
   `)
   await sleep(300)
+  // 「测试」：像添加供应商一样，保存前先验证端点供这个模型（桩固定返回 served:true）
+  await cdp.eval(`
+    var b = Array.from(document.querySelectorAll('.pv_meForm button')).find(function (x) { return x.textContent === '测试' })
+    b.click()
+  `)
+  await sleep(400)
+  const testProbe = await cdp.eval(`(function () {
+    var lines = Array.from(document.querySelectorAll('.pv_me .pv_line'))
+    var msg = lines.length > 0 ? lines[lines.length - 1].textContent : ''
+    return { msg: msg, recorded: window.__lastTestModel ?? null }
+  })()`)
+  console.log('  测试按钮探针:', JSON.stringify(testProbe))
+  if (testProbe.msg.indexOf('包含 my-custom') === -1 || testProbe.recorded === null
+    || testProbe.recorded.modelId !== 'my-custom' || testProbe.recorded.providerId !== 'opencode-go') {
+    throw new Error('测试按钮没有按预期工作：' + JSON.stringify(testProbe))
+  }
   shots.push(await cdp.shot('02a1-add-model-form'))
   await cdp.eval(`
     var add = Array.from(document.querySelectorAll('.pv_meForm button')).find(function (x) { return x.textContent === '添加' })
@@ -533,14 +550,15 @@ try {
     return {
       rows: rows.length,
       lastId: (last.querySelector('.pv_mId') || {}).textContent,
-      lastCustom: last.querySelector('.pv_capDeclared') !== null,
       lastEnabled: last.querySelector('.pv_meCheck').checked,
       lastHasDel: last.querySelector('.pv_iconBtn') !== null,
+      lastReasoning: last.querySelector('.pv_capReason') !== null,
+      readOnly: document.querySelectorAll('.pv_meNum').length === 0,
       formClosed: document.querySelector('.pv_meForm') === null,
     }
   })()`)
   console.log('  添加模型探针:', JSON.stringify(addProbe))
-  if (addProbe.rows !== 4 || addProbe.lastId !== 'my-custom' || addProbe.lastCustom !== true || addProbe.lastEnabled !== true || addProbe.lastHasDel !== true || addProbe.formClosed !== true) {
+  if (addProbe.rows !== 4 || addProbe.lastId !== 'my-custom' || addProbe.lastEnabled !== true || addProbe.lastHasDel !== true || addProbe.lastReasoning !== true || addProbe.readOnly !== true || addProbe.formClosed !== true) {
     throw new Error('添加模型表单没按预期追加行：' + JSON.stringify(addProbe))
   }
   shots.push(await cdp.shot('02c-model-added'))
@@ -575,9 +593,9 @@ try {
   const payloadOk = payload !== null && payload.providerId === 'opencode-go' && JSON.stringify(payload.models) === JSON.stringify([
     { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', contextWindow: 1000000, maxTokens: 384000, input: ['text', 'image'], reasoningEfforts: { low: 'low', high: 'high', max: 'max' } },
     { id: 'kimi-k3' },
-    { id: 'my-custom', name: 'My Custom', contextWindow: 1048576, maxTokens: 100000, input: ['text', 'image'] },
+    { id: 'my-custom', name: 'My Custom', contextWindow: 1048576, maxTokens: 100000, input: ['text', 'image'], reasoning: true },
   ])
-  if (payloadOk !== true) throw new Error('勾选保存载荷不对（声明原样 + 已知只写 id + 自定义全参数）：' + JSON.stringify(payload))
+  if (payloadOk !== true) throw new Error('勾选保存载荷不对（声明原样 + 已知只写 id + 自定义全参数含推理）：' + JSON.stringify(payload))
   shots.push(await cdp.shot('03-model-list-saved-toast'))
 
   // 2d) 跟随目录的 provider（夹具里 zai 没配 models）：编辑器必须把目录里的模型全部预勾——

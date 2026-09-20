@@ -102,7 +102,9 @@ window.__ModuleLoader__.load({
 				"prov.testOkNames": "✓ 连通，发现 {count} 个模型：{names}",
 				"prov.testOkMore": "{names} …",
 				"prov.addManualHint": "路由 ID / API 地址 / API 密钥都要填",
-				"prov.testing": "正在用这把密钥实连供应商探测模型…",
+				"prov.testing": "正在用凭据仓库里的密钥实连端点探测模型…",
+				"prov.testModelYes": "端点共 {total} 个模型，包含 {id}",
+				"prov.testModelNo": "端点共 {total} 个模型，没有 {id}——先在供应商侧开通再添加",
 				"prov.added": "已添加 {id}",
 				"prov.updated": "已更新 {id}（原有 models / compat 等手写配置保留）",
 				"prov.addFailed": "添加失败：{reason}（配置可能已写入、仅密钥未存，检查后可重试）",
@@ -269,7 +271,9 @@ window.__ModuleLoader__.load({
 				"prov.testOkNames": "✓ Connected, found {count} models: {names}",
 				"prov.testOkMore": "{names} …",
 				"prov.addManualHint": "Route ID, API base URL and API key are all required",
-				"prov.testing": "Connecting to the provider with this key to probe its models…",
+				"prov.testing": "Connecting to the endpoint with the stored credential to probe its models…",
+				"prov.testModelYes": "The endpoint serves {total} models, including {id}",
+				"prov.testModelNo": "The endpoint serves {total} models, but not {id} — enable it on the provider side first",
 				"prov.added": "Added {id}",
 				"prov.updated": "Updated {id} (existing hand-written models / compat and other config kept)",
 				"prov.addFailed": "Add failed: {reason} (the config may already be written while only the key is missing; check and retry)",
@@ -2585,52 +2589,32 @@ window.__ModuleLoader__.load({
 		/**
 		* 逐模型编辑器的一行：列序固定（勾选 | 模型 ID | 能力 | 上下文 | 最大输出 | 移除），
 		* 与表头共用同一套网格列宽，逐列严格对齐。不设名称列——模型 ID 本身就是唯一标识，
-		* 单行省略号截断（title 兜底）。现有条目（目录收录 / 已声明）只读展示——清单只做
-		* 新增与移除；自定义条目才有输入框和能力开关。
+		* 单行省略号截断（title 兜底）。所有行都只读展示（目录条目与自定义条目同款外观，
+		* 自定义条目要改参数就 ✕ 掉重新添加）——清单只做新增与移除。
 		*
 		* 勾选语义（回归草稿制）：勾选 / 取消只改草稿，点「保存」一次性写入 settings.yaml；
 		* ✕ 只出现在「添加模型」加进来的行上（本会话新加的 + 路由声明里已有的条目），
 		* 目录候选行没有 ✕——不想要就不勾。
 		*/
-		function modelEditRow(row, patch, remove, onToggle, busy) {
+		function modelEditRow(row, _patch, remove, onToggle, busy) {
 			var known = row.known === true;
-			var caps = known ? [
+			var caps = [
 				row.vision === true ? react.default.createElement("span", {
 					key: "v",
 					className: "pv_capMini pv_capVision",
-					title: "目录元数据：支持图片输入"
+					title: known ? "目录元数据：支持图片输入" : "添加时勾选：支持图片输入"
 				}, "视觉") : null,
 				row.video === true ? react.default.createElement("span", {
 					key: "d",
 					className: "pv_capMini pv_capVideo",
-					title: "目录元数据：支持视频输入"
+					title: known ? "目录元数据：支持视频输入" : "添加时勾选：支持视频输入"
 				}, "视频") : null,
-				row.knownReasoning === true ? react.default.createElement("span", {
+				row.knownReasoning === true || row.reasoning === true ? react.default.createElement("span", {
 					key: "r",
 					className: "pv_capMini pv_capReason",
-					title: "目录元数据：支持思维链"
+					title: known ? "目录元数据：支持思维链" : "添加时勾选：支持思维链（声明条目写 reasoning: true）"
 				}, "推理") : null
-			] : [react.default.createElement("label", {
-				key: "vision",
-				className: "pv_meCap" + (row.vision ? " pv_capVision" : " pv_capOff"),
-				title: "声明支持图片输入（写进模型的 input 模态）"
-			}, react.default.createElement("input", {
-				type: "checkbox",
-				checked: row.vision,
-				onChange: function(event) {
-					patch(row.id, { vision: event.target.checked === true });
-				}
-			}), "视觉"), react.default.createElement("label", {
-				key: "video",
-				className: "pv_meCap" + (row.video ? " pv_capVideo" : " pv_capOff"),
-				title: "声明支持视频输入（写进模型的 input 模态）"
-			}, react.default.createElement("input", {
-				type: "checkbox",
-				checked: row.video,
-				onChange: function(event) {
-					patch(row.id, { video: event.target.checked === true });
-				}
-			}), "视频")];
+			];
 			return react.default.createElement("div", {
 				className: "pv_meRow" + (row.enabled ? "" : " pv_meRowOff"),
 				key: row.id
@@ -2646,36 +2630,13 @@ window.__ModuleLoader__.load({
 			}), react.default.createElement("span", { className: "pv_meIdBox" }, react.default.createElement("span", {
 				className: "pv_mId",
 				title: row.id
-			}, row.id), known ? null : react.default.createElement("span", {
-				className: "pv_capMini pv_capDeclared",
-				title: "生效 pi-ai 目录里没有这个 ID——上下文窗口与最大输出必须自己填"
-			}, "自定义")), react.default.createElement("span", { className: "pv_mCaps" }, caps), known ? react.default.createElement("span", {
+			}, row.id)), react.default.createElement("span", { className: "pv_mCaps" }, caps), react.default.createElement("span", {
 				className: "pv_mCtx",
-				title: "目录里的上下文窗口（只读）"
-			}, formatContext(row.knownContextWindow) ?? "") : react.default.createElement("input", {
-				className: "pv_meNum",
-				type: "text",
-				inputMode: "numeric",
-				placeholder: "上下文",
-				title: "上下文窗口（自定义模型必填）",
-				value: row.contextWindow,
-				onChange: function(event) {
-					patch(row.id, { contextWindow: event.target.value });
-				}
-			}), known ? react.default.createElement("span", {
+				title: "上下文窗口"
+			}, known ? formatContext(row.knownContextWindow) ?? "" : formatContext(parsePositiveInt(row.contextWindow)) ?? ""), react.default.createElement("span", {
 				className: "pv_mMax",
-				title: "目录里的最大输出（只读）"
-			}, formatContext(row.knownMaxTokens) ?? "") : react.default.createElement("input", {
-				className: "pv_meNum",
-				type: "text",
-				inputMode: "numeric",
-				placeholder: "最大输出",
-				title: "最大输出 token（自定义模型必填）",
-				value: row.maxTokens,
-				onChange: function(event) {
-					patch(row.id, { maxTokens: event.target.value });
-				}
-			}), row.declared !== void 0 || row.added === true ? react.default.createElement("button", {
+				title: "最大输出"
+			}, known ? formatContext(row.knownMaxTokens) ?? "" : formatContext(parsePositiveInt(row.maxTokens)) ?? ""), row.declared !== void 0 || row.added === true ? react.default.createElement("button", {
 				type: "button",
 				className: "pv_iconBtn",
 				disabled: busy,
@@ -2793,6 +2754,12 @@ window.__ModuleLoader__.load({
 			var enabledCount = rows.filter(function(r) {
 				return r.enabled === true;
 			}).length;
+			var testModelState = react.default.useState({
+				phase: "idle",
+				message: ""
+			});
+			var testModel = testModelState[0];
+			var setTestModel = testModelState[1];
 			var formState = react.default.useState(function() {
 				return {
 					open: false,
@@ -2801,7 +2768,8 @@ window.__ModuleLoader__.load({
 					ctx: "",
 					max: "",
 					vision: false,
-					video: false
+					video: false,
+					reasoning: false
 				};
 			});
 			var form = formState[0];
@@ -2814,7 +2782,8 @@ window.__ModuleLoader__.load({
 					ctx: "",
 					max: "",
 					vision: false,
-					video: false
+					video: false,
+					reasoning: false
 				};
 			};
 			function patch(id, next) {
@@ -2880,11 +2849,55 @@ window.__ModuleLoader__.load({
 						originVision: form.vision === true,
 						originVideo: form.video === true,
 						declared: void 0,
-						added: true
+						added: true,
+						reasoning: form.reasoning === true
 					}]);
 				});
 				setForm(emptyForm);
 				setError(null);
+			}
+			/**
+			* 「测试」：像添加供应商的测试一样，保存前先验证端点真的在供这个模型。
+			* 走插件宿主的 /provider/test-model——宿主用凭据仓库里的 key 请求端点的模型清单，
+			* key 不出宿主；浏览器只拿到「端点共 N 个模型，含不含这个 id」。
+			*/
+			function testAddModel() {
+				var id = form.id.trim();
+				if (id === "") {
+					setError("先填模型 ID");
+					return;
+				}
+				setTestModel({
+					phase: "run",
+					message: t("prov.testing")
+				});
+				postJson("/provider/test-model", {
+					providerId: account.id,
+					modelId: id
+				}).then(function(res) {
+					if (res === null || res === void 0 || res.ok !== true) {
+						setTestModel({
+							phase: "fail",
+							message: "✗ " + String(res && res.error || "未知错误")
+						});
+						return;
+					}
+					setTestModel({
+						phase: res.served === true ? "ok" : "fail",
+						message: res.served === true ? "✓ " + tf("prov.testModelYes", {
+							total: String(res.total ?? ""),
+							id
+						}) : "✗ " + tf("prov.testModelNo", {
+							total: String(res.total ?? ""),
+							id
+						})
+					});
+				}).catch(function(cause) {
+					setTestModel({
+						phase: "fail",
+						message: "✗ " + String(cause && cause.message ? cause.message : cause)
+					});
+				});
 			}
 			/**
 			* 给定行列表 → settings 的 models 数组；形状不合法时返回 undefined 并写好错误提示。
@@ -2937,6 +2950,7 @@ window.__ModuleLoader__.load({
 					entry.contextWindow = ctxNum;
 					entry.maxTokens = maxNum;
 					entry.input = input;
+					if (row.reasoning === true) entry.reasoning = true;
 					out.push(entry);
 				}
 				if (out.length === 0) {
@@ -3059,7 +3073,19 @@ window.__ModuleLoader__.load({
 						return withKeys(prev, { video: next });
 					});
 				}
-			}), "视频"))), react.default.createElement("div", {
+			}), "视频"), react.default.createElement("label", {
+				className: "pv_meCap" + (form.reasoning ? " pv_capReason" : " pv_capOff"),
+				title: "声明支持思维链（声明条目写 reasoning: true）"
+			}, react.default.createElement("input", {
+				type: "checkbox",
+				checked: form.reasoning,
+				onChange: function(event) {
+					var next = event.target.checked === true;
+					setForm(function(prev) {
+						return withKeys(prev, { reasoning: next });
+					});
+				}
+			}), "推理"))), react.default.createElement("div", {
 				className: "pv_actRow",
 				key: "f-acts"
 			}, react.default.createElement("button", {
@@ -3071,12 +3097,26 @@ window.__ModuleLoader__.load({
 			}, "添加"), react.default.createElement("button", {
 				type: "button",
 				className: "pv_action",
+				style: { marginLeft: "0" },
+				disabled: busy || testModel.phase === "run",
+				title: "验证端点真的在供这个模型（用凭据仓库里的 key 请求端点的模型清单，key 不出宿主）",
+				onClick: testAddModel
+			}, testModel.phase === "run" ? "测试中…" : "测试"), react.default.createElement("button", {
+				type: "button",
+				className: "pv_action",
 				style: { marginLeft: "auto" },
 				disabled: busy,
 				onClick: function() {
 					setForm(emptyForm);
+					setTestModel({
+						phase: "idle",
+						message: ""
+					});
 				}
-			}, "取消")));
+			}, "取消")), testModel.message === "" ? null : react.default.createElement("div", {
+				className: "pv_line",
+				key: "f-test"
+			}, testModel.message));
 			return react.default.createElement("div", { className: "pv_me" }, react.default.createElement("div", { className: "pv_hint" }, "当前已添加" + String(enabledCount) + "个模型"), react.default.createElement("div", { className: "pv_meList" }, [colHead].concat(rows_)), react.default.createElement("div", { className: "pv_meActs" }, react.default.createElement("button", {
 				type: "button",
 				className: "pv_action",

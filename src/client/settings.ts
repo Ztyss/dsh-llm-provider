@@ -800,8 +800,8 @@ function AddProviderPanel(props: AddProviderPanelProps) {
 /**
  * 逐模型编辑器的一行：列序固定（勾选 | 模型 ID | 能力 | 上下文 | 最大输出 | 移除），
  * 与表头共用同一套网格列宽，逐列严格对齐。不设名称列——模型 ID 本身就是唯一标识，
- * 单行省略号截断（title 兜底）。现有条目（目录收录 / 已声明）只读展示——清单只做
- * 新增与移除；自定义条目才有输入框和能力开关。
+ * 单行省略号截断（title 兜底）。所有行都只读展示（目录条目与自定义条目同款外观，
+ * 自定义条目要改参数就 ✕ 掉重新添加）——清单只做新增与移除。
  *
  * 勾选语义（回归草稿制）：勾选 / 取消只改草稿，点「保存」一次性写入 settings.yaml；
  * ✕ 只出现在「添加模型」加进来的行上（本会话新加的 + 路由声明里已有的条目），
@@ -809,49 +809,19 @@ function AddProviderPanel(props: AddProviderPanelProps) {
  */
 function modelEditRow(
   row: ModelEditRow,
-  patch: (id: string, next: AnyRecord) => void,
+  _patch: (id: string, next: AnyRecord) => void,
   remove: (id: string) => void,
   onToggle: (row: ModelEditRow, checked: boolean) => void,
   busy: boolean,
 ) {
   var known = row.known === true
-  // 能力列：现有条目给只读徽章（与显示清单同款）；自定义条目给可点的开关（写 input 模态）
-  var caps = known
-    ? [
-        row.vision === true ? react.createElement('span', { key: 'v', className: 'pv_capMini pv_capVision', title: '目录元数据：支持图片输入' }, '视觉') : null,
-        row.video === true ? react.createElement('span', { key: 'd', className: 'pv_capMini pv_capVideo', title: '目录元数据：支持视频输入' }, '视频') : null,
-        row.knownReasoning === true ? react.createElement('span', { key: 'r', className: 'pv_capMini pv_capReason', title: '目录元数据：支持思维链' }, '推理') : null,
-      ]
-    : [
-        react.createElement(
-          'label',
-          {
-            key: 'vision',
-            className: 'pv_meCap' + (row.vision ? ' pv_capVision' : ' pv_capOff'),
-            title: '声明支持图片输入（写进模型的 input 模态）',
-          },
-          react.createElement('input', {
-            type: 'checkbox',
-            checked: row.vision,
-            onChange: function (event: FieldEvent) { patch(row.id, { vision: event.target.checked === true }) },
-          }),
-          '视觉',
-        ),
-        react.createElement(
-          'label',
-          {
-            key: 'video',
-            className: 'pv_meCap' + (row.video ? ' pv_capVideo' : ' pv_capOff'),
-            title: '声明支持视频输入（写进模型的 input 模态）',
-          },
-          react.createElement('input', {
-            type: 'checkbox',
-            checked: row.video,
-            onChange: function (event: FieldEvent) { patch(row.id, { video: event.target.checked === true }) },
-          }),
-          '视频',
-        ),
-      ]
+  // 能力列：统一只读徽章（与显示清单同款）。推理标记：目录条目来自元数据，
+  // 自定义条目来自添加表单的勾选（保存时写进声明条目的 reasoning: true）。
+  var caps = [
+    row.vision === true ? react.createElement('span', { key: 'v', className: 'pv_capMini pv_capVision', title: known ? '目录元数据：支持图片输入' : '添加时勾选：支持图片输入' }, '视觉') : null,
+    row.video === true ? react.createElement('span', { key: 'd', className: 'pv_capMini pv_capVideo', title: known ? '目录元数据：支持视频输入' : '添加时勾选：支持视频输入' }, '视频') : null,
+    (row.knownReasoning === true || row.reasoning === true) ? react.createElement('span', { key: 'r', className: 'pv_capMini pv_capReason', title: known ? '目录元数据：支持思维链' : '添加时勾选：支持思维链（声明条目写 reasoning: true）' }, '推理') : null,
+  ]
   return react.createElement(
     'div',
     { className: 'pv_meRow' + (row.enabled ? '' : ' pv_meRowOff'), key: row.id },
@@ -867,33 +837,11 @@ function modelEditRow(
       'span',
       { className: 'pv_meIdBox' },
       react.createElement('span', { className: 'pv_mId', title: row.id }, row.id),
-      known
-        ? null
-        : react.createElement('span', { className: 'pv_capMini pv_capDeclared', title: '生效 pi-ai 目录里没有这个 ID——上下文窗口与最大输出必须自己填' }, '自定义'),
     ),
     react.createElement('span', { className: 'pv_mCaps' }, caps),
-    known
-      ? react.createElement('span', { className: 'pv_mCtx', title: '目录里的上下文窗口（只读）' }, formatContext(row.knownContextWindow) ?? '')
-      : react.createElement('input', {
-          className: 'pv_meNum',
-          type: 'text',
-          inputMode: 'numeric',
-          placeholder: '上下文',
-          title: '上下文窗口（自定义模型必填）',
-          value: row.contextWindow,
-          onChange: function (event: FieldEvent) { patch(row.id, { contextWindow: event.target.value }) },
-        }),
-    known
-      ? react.createElement('span', { className: 'pv_mMax', title: '目录里的最大输出（只读）' }, formatContext(row.knownMaxTokens) ?? '')
-      : react.createElement('input', {
-          className: 'pv_meNum',
-          type: 'text',
-          inputMode: 'numeric',
-          placeholder: '最大输出',
-          title: '最大输出 token（自定义模型必填）',
-          value: row.maxTokens,
-          onChange: function (event: FieldEvent) { patch(row.id, { maxTokens: event.target.value }) },
-        }),
+    // 上下文 / 最大输出统一只读展示：目录条目显示元数据值，自定义条目显示添加时填的值
+    react.createElement('span', { className: 'pv_mCtx', title: '上下文窗口' }, known ? (formatContext(row.knownContextWindow) ?? '') : (formatContext(parsePositiveInt(row.contextWindow)) ?? '')),
+    react.createElement('span', { className: 'pv_mMax', title: '最大输出' }, known ? (formatContext(row.knownMaxTokens) ?? '') : (formatContext(parsePositiveInt(row.maxTokens)) ?? '')),
     // ✕ 只给「添加模型」加进来的行：本会话表单新加的（added 标记）+ 路由声明里的条目
     // （不管来自表单还是手写 yaml，都是「用户加进清单的」）。目录候选行是 provider 的
     // 既有供给，不想要不勾就行，没有删的意义（用户要求：删去其它行的 ✕）
@@ -1036,11 +984,15 @@ function ModelListEditor(props: {
   var error = errorState[0] as string | null
   var setError = errorState[1] as (next: string | null) => void
   var enabledCount = rows.filter(function (r) { return r.enabled === true }).length
-  // 「添加模型」表单（仿添加供应商：点按钮浮出填写面板，各参数一次填全）
-  var formState = react.useState(function () { return { open: false, id: '', name: '', ctx: '', max: '', vision: false, video: false } })
-  var form = formState[0] as { open: boolean; id: string; name: string; ctx: string; max: string; vision: boolean; video: boolean }
+  // 「添加模型」表单（仿添加供应商：点按钮浮出填写面板，各参数一次填全）。
+  // testModel = 「测试」按钮的状态（像添加供应商一样，保存前先验证端点真的供这个模型）
+  var testModelState = react.useState({ phase: 'idle', message: '' })
+  var testModel = testModelState[0] as { phase: string; message: string }
+  var setTestModel = testModelState[1] as (next: { phase: string; message: string }) => void
+  var formState = react.useState(function () { return { open: false, id: '', name: '', ctx: '', max: '', vision: false, video: false, reasoning: false } })
+  var form = formState[0] as { open: boolean; id: string; name: string; ctx: string; max: string; vision: boolean; video: boolean; reasoning: boolean }
   var setForm = formState[1] as (updater: (prev: typeof form) => typeof form) => void
-  var emptyForm = function () { return { open: false, id: '', name: '', ctx: '', max: '', vision: false, video: false } }
+  var emptyForm = function () { return { open: false, id: '', name: '', ctx: '', max: '', vision: false, video: false, reasoning: false } }
 
   function patch(id: string, next: AnyRecord) {
     setRows(function (prev) {
@@ -1089,10 +1041,38 @@ function ModelListEditor(props: {
         originVideo: form.video === true,
         declared: undefined,
         added: true,
+        reasoning: form.reasoning === true,
       }])
     })
     setForm(emptyForm)
     setError(null)
+  }
+
+  /**
+   * 「测试」：像添加供应商的测试一样，保存前先验证端点真的在供这个模型。
+   * 走插件宿主的 /provider/test-model——宿主用凭据仓库里的 key 请求端点的模型清单，
+   * key 不出宿主；浏览器只拿到「端点共 N 个模型，含不含这个 id」。
+   */
+  function testAddModel() {
+    var id = form.id.trim()
+    if (id === '') { setError('先填模型 ID'); return }
+    setTestModel({ phase: 'run', message: t('prov.testing') })
+    postJson('/provider/test-model', { providerId: account.id, modelId: id })
+      .then(function (res) {
+        if (res === null || res === undefined || res.ok !== true) {
+          setTestModel({ phase: 'fail', message: '✗ ' + String((res && res.error) || '未知错误') })
+          return
+        }
+        setTestModel({
+          phase: res.served === true ? 'ok' : 'fail',
+          message: res.served === true
+            ? '✓ ' + tf('prov.testModelYes', { total: String(res.total ?? ''), id: id })
+            : '✗ ' + tf('prov.testModelNo', { total: String(res.total ?? ''), id: id }),
+        })
+      })
+      .catch(function (cause) {
+        setTestModel({ phase: 'fail', message: '✗ ' + String(cause && cause.message ? cause.message : cause) })
+      })
   }
 
   /**
@@ -1133,6 +1113,7 @@ function ModelListEditor(props: {
       entry.contextWindow = ctxNum
       entry.maxTokens = maxNum
       entry.input = input
+      if (row.reasoning === true) entry.reasoning = true
       out.push(entry)
     }
     if (out.length === 0) { setError('至少要勾选一个模型（全部不勾的清单无法保存）'); return undefined }
@@ -1263,6 +1244,17 @@ function ModelListEditor(props: {
             setForm(function (prev) { return withKeys(prev as unknown as AnyRecord, { video: next }) as typeof prev })
           },
         }), '视频'),
+        react.createElement('label', {
+          className: 'pv_meCap' + (form.reasoning ? ' pv_capReason' : ' pv_capOff'),
+          title: '声明支持思维链（声明条目写 reasoning: true）',
+        }, react.createElement('input', {
+          type: 'checkbox',
+          checked: form.reasoning,
+          onChange: function (event: FieldEvent) {
+            var next = event.target.checked === true
+            setForm(function (prev) { return withKeys(prev as unknown as AnyRecord, { reasoning: next }) as typeof prev })
+          },
+        }), '推理'),
       ),
     ),
     react.createElement('div', { className: 'pv_actRow', key: 'f-acts' },
@@ -1270,11 +1262,25 @@ function ModelListEditor(props: {
       react.createElement('button', {
         type: 'button',
         className: 'pv_action',
+        style: { marginLeft: '0' },
+        disabled: busy || testModel.phase === 'run',
+        title: '验证端点真的在供这个模型（用凭据仓库里的 key 请求端点的模型清单，key 不出宿主）',
+        onClick: testAddModel,
+      }, testModel.phase === 'run' ? '测试中…' : '测试'),
+      react.createElement('button', {
+        type: 'button',
+        className: 'pv_action',
         style: { marginLeft: 'auto' },
         disabled: busy,
-        onClick: function () { setForm(emptyForm) },
+        onClick: function () {
+          setForm(emptyForm)
+          setTestModel({ phase: 'idle', message: '' })
+        },
       }, '取消'),
     ),
+    testModel.message === ''
+      ? null
+      : react.createElement('div', { className: 'pv_line', key: 'f-test' }, testModel.message),
   )
 
   return react.createElement(

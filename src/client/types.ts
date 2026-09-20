@@ -91,6 +91,8 @@ export interface ModelEditRow {
   declared: DeclaredModel | undefined
   /** 本会话经「添加模型」表单新加的行：唯一允许 ✕ 删除的目录外来源（声明过的行也允许 ✕）。 */
   added?: boolean
+  /** 自定义条目的思维链标记：添加表单勾选「推理」时为 true，保存时写进声明条目 reasoning: true。 */
+  reasoning?: boolean
 }
 
 /** /plan/status 的 accounts 项：额度快照里的一家 provider（宿主在通用字段外还会带几个）。 */
