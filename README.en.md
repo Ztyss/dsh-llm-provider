@@ -14,7 +14,7 @@ covers **this repository's customizations only**.
 |---|---|
 | Upstream | [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider) |
 | This fork | [Ztyss/dsh-llm-provider](https://github.com/Ztyss/dsh-llm-provider) (private) |
-| This fork's version | [v0.1.0](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.1.0) (installs from main, same source as the release) |
+| This fork's version | [v0.1.1](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.1.1) (installs from main) |
 | Base | upstream `1eb017f` (v0.1.0-rc.2); upstream 0.2.0 has no published source, so its exclusive features (OAuth, github-copilot) are out of scope |
 
 ## Install
