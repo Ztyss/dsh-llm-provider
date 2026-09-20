@@ -905,26 +905,31 @@ function modelEditRow(
 }
 
 /** 编辑器初始行：当前生效的目录模型 + 目录里该 provider 的全部模型 + 路由声明过的模型。 */
-/** 导出供离线测试钉住初始勾选语义（跟随目录全勾 / 自定义清单只勾声明条目）。 */
+/** 导出供离线测试钉住初始勾选语义（跟随目录勾目录快照 / 自定义清单只勾声明条目）。 */
 export function buildEditRows(
   account: PlanAccount,
   catalog: CatalogModel[],
   details: Record<string, ModelDetail> | undefined | null,
 ): ModelEditRow[] {
   var declared = Array.isArray(account.models) ? account.models : []
+  var followingCatalog = declared.length === 0
   var rows: ModelEditRow[] = []
   var seen: AnyRecord = {}
-  function add(id: string, name: string, detail: ModelDetail | undefined, entry: DeclaredModel | undefined) {
+  function add(id: string, name: string, detail: ModelDetail | undefined, entry: DeclaredModel | undefined, inCatalog: boolean) {
     if (id === '' || seen[id] === true) return
     seen[id] = true
     var declaredInput: string[] = entry !== undefined && Array.isArray(entry.input) ? entry.input : []
     rows.push({
       id: id,
       name: name,
-      // 勾选 = 当前真正生效的模型：配置了 models（自定义清单）就只预勾声明过的条目；
-      // 没配 models（跟随目录）时目录收录的都在生效——**全部预勾**。此前这种情况一个都不勾，
-      // 用户会以为已启用的模型没启用（深度求索官方路由报的就是它）
-      enabled: declared.length === 0 || declared.some(function (item) { return item.id === id }),
+      // 勾选 = 当前真正生效的模型：
+      //   声明过的条目（第一来源）恒勾；
+      //   配了 models（自定义清单）→ 其余行只勾声明过的；
+      //   没配 models（跟随目录）→ 只有「目录快照」里的在生效——pi-ai 跟随的是目录，
+      //   不是元数据库里的全量历史模型。所以目录行全勾，元数据补进来的候选行**不勾**：
+      //   此前把候选也全勾，编辑器报「当前已添加17个」而卡片头是「模型 (3)」，对不上
+      //   （深度求索官方路由，用户报的就是它；最早那版「一个都不勾」的修正仍然保留）。
+      enabled: entry !== undefined ? true : followingCatalog ? inCatalog : declared.some(function (item) { return item.id === id }),
       contextWindow: entry !== undefined && entry.contextWindow !== undefined ? String(entry.contextWindow) : '',
       maxTokens: entry !== undefined && entry.maxTokens !== undefined ? String(entry.maxTokens) : '',
       vision: detail !== undefined ? detail.vision === true : declaredInput.indexOf('image') !== -1,
@@ -945,16 +950,16 @@ export function buildEditRows(
     var entryId = typeof entry.id === 'string' ? entry.id : ''
     if (entryId === '') continue
     var entryDetail = lookupDetail(details, account.id, entryId)
-    add(entryId, entry.name !== undefined ? String(entry.name) : (entryDetail !== undefined && entryDetail.name !== undefined ? entryDetail.name : entryId), entryDetail, entry)
+    add(entryId, entry.name !== undefined ? String(entry.name) : (entryDetail !== undefined && entryDetail.name !== undefined ? entryDetail.name : entryId), entryDetail, entry, false)
   }
   for (var c = 0; c < catalog.length; c += 1) {
     var model = catalog[c]
-    add(model.id, model.name, lookupDetail(details, account.id, model.id), undefined)
+    add(model.id, model.name, lookupDetail(details, account.id, model.id), undefined, true)
   }
   var own = detailsOfProvider(details, account.id)
   for (var o = 0; o < own.length; o += 1) {
     if (typeof own[o].id !== 'string') continue
-    add(own[o].id as string, own[o].name === undefined ? String(own[o].id) : String(own[o].name), own[o], undefined)
+    add(own[o].id as string, own[o].name === undefined ? String(own[o].id) : String(own[o].name), own[o], undefined, false)
   }
   return rows
 }

@@ -177,5 +177,25 @@ check('自定义清单：未勾的目录模型仍在清单里（可再勾上）'
 check('跟随目录：已知模型带最大输出（清单页取数就在详情里）',
   followRows.find((r) => r.id === 'deepseek-v4-flash').knownMaxTokens === 384000)
 
+// ---- 7b. 跟随目录时，元数据补进来的「历史候选」不预勾 ----
+// 深度求索官方路由（pi-ai bridge base 层默认，没配 models）：目录快照 3 个在生效，
+// 元数据库里还有 14 个历史模型（deepseek/deepseek-chat、r1 这些）。此前把并集全勾，
+// 编辑器报「当前已添加17个」而卡片头是「模型 (3)」——勾选必须等于目录快照，候选只是候选。
+const legacyDetails = {
+  ...details,
+  'deepseek/deepseek-chat': { id: 'deepseek/deepseek-chat', provider: 'deepseek', name: 'DeepSeek Chat', vision: false, thinkingLevels: [], contextWindow: 163840, maxTokens: 16384 },
+  'deepseek/deepseek-r1': { id: 'deepseek/deepseek-r1', provider: 'deepseek', name: 'DeepSeek R1', vision: false, thinkingLevels: [], contextWindow: 65536, maxTokens: 16384 },
+}
+const followWithLegacy = buildEditRows(followAccount, catalog, legacyDetails)
+check('跟随目录 + 历史候选：目录快照全勾、候选不勾（计数和卡片头一致）',
+  followWithLegacy.length === 5
+  && followWithLegacy.filter((r) => r.enabled).length === 3
+  && followWithLegacy.filter((r) => r.enabled).every((r) => catalog.some((c) => c.id === r.id)))
+check('跟随目录 + 历史候选：候选行仍在清单里（可勾上变成显式清单）',
+  followWithLegacy.find((r) => r.id === 'deepseek/deepseek-chat')?.enabled === false)
+const declaredWithLegacy = buildEditRows(declaredAccount, catalog, legacyDetails)
+check('自定义清单 + 历史候选：只勾声明过的那一条', declaredWithLegacy.filter((r) => r.enabled).length === 1
+  && declaredWithLegacy.find((r) => r.id === 'deepseek-v4-flash')?.enabled === true)
+
 console.log(failures === 0 ? '\n逐模型清单编辑测试全部通过' : `\n${failures} 个失败`)
 process.exit(failures === 0 ? 0 : 1)

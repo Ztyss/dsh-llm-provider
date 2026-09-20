@@ -2689,19 +2689,20 @@ window.__ModuleLoader__.load({
 			}, "✕"));
 		}
 		/** 编辑器初始行：当前生效的目录模型 + 目录里该 provider 的全部模型 + 路由声明过的模型。 */
-		/** 导出供离线测试钉住初始勾选语义（跟随目录全勾 / 自定义清单只勾声明条目）。 */
+		/** 导出供离线测试钉住初始勾选语义（跟随目录勾目录快照 / 自定义清单只勾声明条目）。 */
 		function buildEditRows(account, catalog, details) {
 			var declared = Array.isArray(account.models) ? account.models : [];
+			var followingCatalog = declared.length === 0;
 			var rows = [];
 			var seen = {};
-			function add(id, name, detail, entry) {
+			function add(id, name, detail, entry, inCatalog) {
 				if (id === "" || seen[id] === true) return;
 				seen[id] = true;
 				var declaredInput = entry !== void 0 && Array.isArray(entry.input) ? entry.input : [];
 				rows.push({
 					id,
 					name,
-					enabled: declared.length === 0 || declared.some(function(item) {
+					enabled: entry !== void 0 ? true : followingCatalog ? inCatalog : declared.some(function(item) {
 						return item.id === id;
 					}),
 					contextWindow: entry !== void 0 && entry.contextWindow !== void 0 ? String(entry.contextWindow) : "",
@@ -2723,16 +2724,16 @@ window.__ModuleLoader__.load({
 				var entryId = typeof entry.id === "string" ? entry.id : "";
 				if (entryId === "") continue;
 				var entryDetail = lookupDetail(details, account.id, entryId);
-				add(entryId, entry.name !== void 0 ? String(entry.name) : entryDetail !== void 0 && entryDetail.name !== void 0 ? entryDetail.name : entryId, entryDetail, entry);
+				add(entryId, entry.name !== void 0 ? String(entry.name) : entryDetail !== void 0 && entryDetail.name !== void 0 ? entryDetail.name : entryId, entryDetail, entry, false);
 			}
 			for (var c = 0; c < catalog.length; c += 1) {
 				var model = catalog[c];
-				add(model.id, model.name, lookupDetail(details, account.id, model.id), void 0);
+				add(model.id, model.name, lookupDetail(details, account.id, model.id), void 0, true);
 			}
 			var own = detailsOfProvider(details, account.id);
 			for (var o = 0; o < own.length; o += 1) {
 				if (typeof own[o].id !== "string") continue;
-				add(own[o].id, own[o].name === void 0 ? String(own[o].id) : String(own[o].name), own[o], void 0);
+				add(own[o].id, own[o].name === void 0 ? String(own[o].id) : String(own[o].name), own[o], void 0, false);
 			}
 			return rows;
 		}
