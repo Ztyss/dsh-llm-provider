@@ -198,6 +198,8 @@ export interface EffortChoice {
 export interface AddProviderPanelProps {
   presets?: unknown
   onAdded?: () => void
+  /** 全量模型详情索引（provider/id → 详情）：发现清单用来跨 provider 补能力/上下文展示。 */
+  details?: Record<string, ModelDetail> | undefined | null
 }
 
 /** 座位注册表：inject(name, factory) + register(描述符, 组件)。 */

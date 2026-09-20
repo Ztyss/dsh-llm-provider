@@ -16,6 +16,7 @@ import {
   loadPlanStatus,
   loadProviderStatus,
   lookupDetail,
+  lookupDetailAnySource,
   mergePlanAccount,
   onPlanChange,
   postJson,
@@ -489,6 +490,7 @@ export function refreshFailure(result: unknown): string | undefined {
  */
 function AddProviderPanel(props: AddProviderPanelProps) {
   var presets: ProviderPreset[] = Array.isArray(props.presets) ? props.presets : []
+  var detailsIndex = props.details !== undefined && props.details !== null ? props.details : null
   var openState = react.useState(false)
   var open = openState[0]
   var setOpen = openState[1]
@@ -497,7 +499,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
   var setForm = formState[1]
   // 「发现模型」成功时把发现的模型一并留下：自定义网关（目录外路由）在 settings/mutate 时
   // 必须带 models 清单，否则官方校验直接拒绝（"resolves no models"）
-  var testState = react.useState({ phase: 'idle', message: '', models: [] as { id: string; name?: string }[] })
+  var testState = react.useState({ phase: 'idle', message: '', models: [] as { id: string; name?: string; ctx?: number; max?: number; input?: string[] }[] })
   var test = testState[0]
   var setTest = testState[1]
   // 发现的模型的勾选态（id → 是否加入）；用户要求：发现模型后弹出清单供选择，不自动全加
@@ -580,7 +582,9 @@ function AddProviderPanel(props: AddProviderPanelProps) {
       .then(function (value) {
         var models = Array.isArray(value) ? value : (value !== null && typeof value === 'object' && Array.isArray(value.models) ? value.models : [])
         var names = []
-        var discovered: { id: string; name?: string }[] = []
+        // 网关的 /models 一般只回 id；有的（openrouter 这类）会附带 contextWindow /
+        // inputModalities——有就带上，发现清单能多显示一列是一列
+        var discovered: { id: string; name?: string; ctx?: number; max?: number; input?: string[] }[] = []
         for (var i = 0; i < models.length; i += 1) {
           var m = models[i]
           var mid = typeof m === 'string' ? m : String((m && (m.id || m.name)) || '')
@@ -589,8 +593,14 @@ function AddProviderPanel(props: AddProviderPanelProps) {
             discovered.push({ id: mid })
           } else {
             var rec = m as AnyRecord
-            var entry: { id: string; name?: string } = { id: mid }
+            var entry: { id: string; name?: string; ctx?: number; max?: number; input?: string[] } = { id: mid }
             if (rec['name'] !== undefined && rec['name'] !== null && String(rec['name']) !== '') entry.name = String(rec['name'])
+            var ctxRaw = rec['contextWindow'] !== undefined ? rec['contextWindow'] : rec['context_length']
+            if (typeof ctxRaw === 'number' && ctxRaw > 0) entry.ctx = ctxRaw
+            var maxRaw = rec['maxTokens'] !== undefined ? rec['maxTokens'] : rec['max_output_tokens']
+            if (typeof maxRaw === 'number' && maxRaw > 0) entry.max = maxRaw
+            var input = rec['inputModalities'] !== undefined ? rec['inputModalities'] : rec['input']
+            if (Array.isArray(input)) entry.input = input.filter(function (x: unknown) { return typeof x === 'string' })
             discovered.push(entry)
           }
           if (names.length < 3) names.push(typeof m === 'string' ? m : String((m && (m.name || m.id)) || '?'))
@@ -646,7 +656,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
     // 上下文/输出由路由默认值兜底 262144 / 32768）。
     // 已存在的路由不动它的 models（避免覆盖手写清单），走逐模型编辑器改。
     if (existed !== true && Array.isArray(test.models) && test.models.length > 0) {
-      var chosen = test.models.filter(function (m: { id: string; name?: string }) {
+      var chosen = test.models.filter(function (m: { id: string; name?: string; ctx?: number; max?: number; input?: string[] }) {
         return modelPick[m.id] !== false
       })
       if (chosen.length === 0) {
@@ -862,26 +872,76 @@ function AddProviderPanel(props: AddProviderPanelProps) {
         ? null
         : react.createElement('div', { className: 'plan_note' + (test.phase === 'fail' ? ' plan_badText' : '') }, test.message),
       // 发现模型后弹出可勾选清单（用户要求）：默认全勾，不想要的取消勾选，
-      // 「添加到列表」只写勾选中的；没有 pi-ai 元数据的模型由路由默认值兜底参数
+      // 「添加到列表」只写勾选中的。排版与逐模型编辑器同一套表格（勾选 | 模型 ID |
+      // 能力 | 上下文 | 最大输出）；能力/上下文优先用网关 /models 自带的元数据，没有就
+      // 跨 provider 查 pi-ai 目录同名模型（官方参数），再没有就显示「—」（用户要求）
       test.phase === 'ok' && test.models.length > 0
-        ? react.createElement(
-            'div',
-            { className: 'pv_modelPick' },
-            test.models.map(function (m: { id: string; name?: string }, i: number) {
+        ? (function () {
+            var allPicked = test.models.every(function (m: { id: string }) { return modelPick[m.id] !== false })
+            function pickAll(picked: boolean) {
+              var next: AnyRecord = {}
+              for (var pi = 0; pi < test.models.length; pi += 1) next[test.models[pi].id] = picked
+              setModelPick(next)
+            }
+            var rows = test.models.map(function (m: { id: string; name?: string; ctx?: number; max?: number; input?: string[] }) {
+              // 元数据：网关自报优先，其次跨 provider 查 pi-ai 目录同名模型（只认 source==='pi-ai'）
+              var detail = lookupDetailAnySource(detailsIndex, m.id)
+              var vision = m.input !== undefined ? m.input.indexOf('image') !== -1 : (detail !== undefined && detail.vision === true)
+              var video = m.input !== undefined ? m.input.indexOf('video') !== -1 : (detail !== undefined && detail.video === true)
+              var reasoning = detail !== undefined && detail.reasoning === true
+              var ctxText = m.ctx !== undefined ? formatContext(m.ctx) : (detail !== undefined && detail.source === 'pi-ai' ? formatContext(detail.contextWindow) : undefined)
+              var maxText = m.max !== undefined ? formatContext(m.max) : (detail !== undefined && detail.source === 'pi-ai' ? formatContext(detail.maxTokens) : undefined)
+              var caps: unknown[] = []
+              if (vision === true) caps.push(react.createElement('span', { key: 'v', className: 'pv_capMini pv_capVision' }, '视觉'))
+              if (video === true) caps.push(react.createElement('span', { key: 'd', className: 'pv_capMini pv_capVideo' }, '视频'))
+              if (reasoning === true) caps.push(react.createElement('span', { key: 'r', className: 'pv_capMini pv_capReason' }, '推理'))
               return react.createElement(
-                'label',
-                { key: m.id, className: 'pv_modelPickItem' },
+                'div',
+                { className: 'pv_meRow', key: m.id },
                 react.createElement('input', {
                   type: 'checkbox',
+                  className: 'pv_meCheck',
                   checked: modelPick[m.id] !== false,
                   onChange: function () {
                     setModelPick(function (prev: AnyRecord) { return withKeys(prev, { [m.id]: modelPick[m.id] === false }) })
                   },
                 }),
-                react.createElement('span', null, m.name !== undefined && m.name !== '' ? m.name + '（' + m.id + '）' : m.id),
+                react.createElement(
+                  'span',
+                  { className: 'pv_mId', title: m.name !== undefined && m.name !== m.id ? m.name : m.id },
+                  m.id,
+                  m.name !== undefined && m.name !== '' && m.name !== m.id
+                    ? react.createElement('span', { className: 'pv_modelPickName' }, m.name)
+                    : null,
+                ),
+                react.createElement('span', { className: 'pv_mCaps' }, caps.length > 0 ? caps : [react.createElement('span', { key: 'none', className: 'pv_pickNone' }, '—')]),
+                react.createElement('span', { className: 'pv_mCtx' }, ctxText !== undefined ? ctxText : '—'),
+                react.createElement('span', { className: 'pv_mMax' }, maxText !== undefined ? maxText : '—'),
               )
-            }),
-          )
+            })
+            return react.createElement(
+              'div',
+              { className: 'pv_modelPick' },
+              react.createElement(
+                'div',
+                { className: 'pv_meHeadRow' },
+                react.createElement('span', null,
+                  react.createElement('input', {
+                    type: 'checkbox',
+                    className: 'pv_meCheck',
+                    checked: allPicked,
+                    title: allPicked ? '全不选' : '全选',
+                    onChange: function () { pickAll(allPicked !== true) },
+                  }),
+                ),
+                react.createElement('span', { style: { fontFamily: 'inherit' } }, t('prov.modelId')),
+                react.createElement('span', null, t('prov.caps')),
+                react.createElement('span', null, t('prov.ctx')),
+                react.createElement('span', null, t('cap.maxTokens')),
+              ),
+              rows,
+            )
+          })()
         : null,
       !note ? null : react.createElement('div', { className: 'plan_note' }, note),
     ),
@@ -2549,7 +2609,7 @@ export function ProviderSettingsSection() {
         : react.createElement(
             'div',
             { style: { display: 'flex', flexDirection: 'column', gap: '10px' }, key: 'pane-providers' },
-            react.createElement(AddProviderPanel, { presets: presets, onAdded: onProviderAdded }),
+            react.createElement(AddProviderPanel, { presets: presets, onAdded: onProviderAdded, details: detailsById }),
             cards,
           ),
     toast === null

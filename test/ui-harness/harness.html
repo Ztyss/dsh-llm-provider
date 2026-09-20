@@ -136,9 +136,11 @@
     }
     if (path.indexOf('/api/llm/discoverModels') === 0) {
       return reply({ result: { ok: true, value: { models: [
-        { id: 'step-3.7-flash' },
+        // step-3.7-flash：网关自带元数据（上下文 + 模态）——发现清单应显示 视觉 / 33K / —
+        { id: 'step-3.7-flash', contextWindow: 32768, inputModalities: ['text', 'image'] },
         { id: 'step-router-v1' },
-        { id: 'stepaudio-2.5-chat' },
+        // glm-5.3-flash：夹具 MODELS 里有 pi-ai 条目（1M/131072，视觉+推理）——跨 provider 补显示
+        { id: 'glm-5.3-flash' },
       ] } } })
     }
     if (path.indexOf('/api/credentials/set') === 0) return reply({ result: { ok: true, value: {} } })

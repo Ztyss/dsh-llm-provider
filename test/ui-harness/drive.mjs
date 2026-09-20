@@ -897,27 +897,67 @@ try {
     for (var i = notes.length - 1; i >= 0; i -= 1) {
       if (notes[i].textContent.indexOf('连通') !== -1) { msg = notes[i].textContent; break }
     }
-    var items = Array.from(document.querySelectorAll('.pv_modelPickItem'))
+    var rows = Array.from(document.querySelectorAll('.pv_modelPick .pv_meRow'))
+    var head = document.querySelector('.pv_modelPick .pv_meHeadRow')
+    function rowInfo(el) {
+      return {
+        id: (el.querySelector('.pv_mId') || {}).textContent,
+        caps: Array.from(el.querySelectorAll('.pv_capMini')).map(function (x) { return x.textContent }),
+        ctx: (el.querySelector('.pv_mCtx') || {}).textContent,
+        max: (el.querySelector('.pv_mMax') || {}).textContent,
+        on: el.querySelector('.pv_meCheck').checked,
+      }
+    }
     return {
       msg: msg,
-      pickItems: items.length,
-      picked: items.filter(function (el) { return el.querySelector('input').checked }).length,
+      pickItems: rows.length,
+      headOk: head !== null && head.textContent.indexOf('模型 ID') !== -1 && head.textContent.indexOf('上下文') !== -1,
+      master: head !== null ? head.querySelector('.pv_meCheck').checked : null,
+      rows: rows.map(rowInfo),
+      picked: rows.filter(function (el) { return el.querySelector('.pv_meCheck').checked }).length,
     }
   })()`)
   console.log('  添加供应商测试探针:', JSON.stringify(addTest))
-  if (addTest.msg.indexOf('连通') === -1 || addTest.msg.indexOf('3 个模型') === -1) {
+  const expectRows = [
+    { id: 'step-3.7-flash', caps: ['视觉'], ctx: '33K', max: '—' },
+    { id: 'step-router-v1', caps: [], ctx: '—', max: '—' },
+    { id: 'glm-5.3-flash', caps: ['视觉', '推理'], ctx: '1M', max: '131K' },
+  ]
+  const rowsOk = addTest.pickItems === 3 && addTest.headOk === true && addTest.master === true && addTest.picked === 3
+    && addTest.rows.every(function (row, i) {
+      return row.id === expectRows[i].id && JSON.stringify(row.caps) === JSON.stringify(expectRows[i].caps)
+        && row.ctx === expectRows[i].ctx && row.max === expectRows[i].max && row.on === true
+    })
+  if (addTest.msg.indexOf('连通') === -1 || addTest.msg.indexOf('3 个模型') === -1 || rowsOk !== true) {
     throw new Error('添加面板发现模型失败：' + JSON.stringify(addTest))
   }
+  // 用户要求：表头主勾选框 = 一键全选 / 全不选
+  await cdp.eval(`document.querySelector('.pv_modelPick .pv_meHeadRow .pv_meCheck').click()`)
+  await sleep(250)
+  const allOff = await cdp.eval(`(function () {
+    var boxes = Array.from(document.querySelectorAll('.pv_modelPick .pv_meRow .pv_meCheck'))
+    return { master: document.querySelector('.pv_modelPick .pv_meHeadRow .pv_meCheck').checked, on: boxes.filter(function (b) { return b.checked }).length }
+  })()`)
+  console.log('  一键全不选:', JSON.stringify(allOff))
+  if (allOff.master !== false || allOff.on !== 0) throw new Error('一键全不选没生效：' + JSON.stringify(allOff))
+  await cdp.eval(`document.querySelector('.pv_modelPick .pv_meHeadRow .pv_meCheck').click()`)
+  await sleep(250)
+  const allOn = await cdp.eval(`(function () {
+    var boxes = Array.from(document.querySelectorAll('.pv_modelPick .pv_meRow .pv_meCheck'))
+    return { master: document.querySelector('.pv_modelPick .pv_meHeadRow .pv_meCheck').checked, on: boxes.filter(function (b) { return b.checked }).length }
+  })()`)
+  console.log('  一键全选:', JSON.stringify(allOn))
+  if (allOn.master !== true || allOn.on !== 3) throw new Error('一键全选没生效：' + JSON.stringify(allOn))
   // 用户要求：发现后弹出清单供选择（默认全勾），不自动全加
   await cdp.eval(`
-    var items = Array.from(document.querySelectorAll('.pv_modelPickItem'))
-    var drop = items.find(function (el) { return el.textContent.indexOf('step-router-v1') !== -1 })
+    var rows = Array.from(document.querySelectorAll('.pv_modelPick .pv_meRow'))
+    var drop = rows.find(function (el) { return el.textContent.indexOf('step-router-v1') !== -1 })
     drop.querySelector('input').click()
   `)
   await sleep(300)
   const afterUnpick = await cdp.eval(`(function () {
-    var items = Array.from(document.querySelectorAll('.pv_modelPickItem'))
-    return items.map(function (el) { return { id: el.textContent, on: el.querySelector('input').checked } })
+    var rows = Array.from(document.querySelectorAll('.pv_modelPick .pv_meRow'))
+    return rows.map(function (el) { return { id: (el.querySelector('.pv_mId') || {}).textContent, on: el.querySelector('.pv_meCheck').checked } })
   })()`)
   console.log('  取消勾选探针:', JSON.stringify(afterUnpick))
   shots.push(await cdp.shot('07c-model-pick-list'))
@@ -939,7 +979,7 @@ try {
     }
     if (modelsOp === null) return false
     return JSON.stringify(modelsOp.value) === JSON.stringify([
-      { id: 'step-3.7-flash' }, { id: 'stepaudio-2.5-chat' },
+      { id: 'step-3.7-flash' }, { id: 'glm-5.3-flash' },
     ])
   })()
   if (addedOk !== true) throw new Error('添加供应商没有按勾选写入 models（取消的 step-router-v1 不应出现）：' + JSON.stringify(added))

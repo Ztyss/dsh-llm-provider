@@ -139,6 +139,25 @@ export function lookupDetail(
   return map[modelId]
 }
 
+/**
+ * 跨 provider 查同 id 的模型详情（发现清单展示用）：优先 pi-ai 目录（source==='pi-ai'，
+ * 官方参数），没有再退回任何来源的第一条。查不到返回 undefined——调用方显示「—」。
+ */
+export function lookupDetailAnySource(
+  map: Record<string, ModelDetail> | undefined | null,
+  modelId: string,
+): ModelDetail | undefined {
+  if (map === undefined || map === null || modelId === '') return undefined
+  var fallback: ModelDetail | undefined = undefined
+  for (var key in map) {
+    var detail = map[key]
+    if (detail === undefined || detail === null || detail.id !== modelId) continue
+    if (detail.source === 'pi-ai') return detail
+    if (fallback === undefined) fallback = detail
+  }
+  return fallback
+}
+
 /** 生效目录里属于某个 provider 的全部模型（逐模型编辑器的候选来源）。 */
 export function detailsOfProvider(
   map: Record<string, ModelDetail> | undefined | null,
