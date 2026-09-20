@@ -3275,7 +3275,7 @@ window.__ModuleLoader__.load({
 				}, "p-max", "如 384000"), react.default.createElement("div", {
 					className: "pv_line pv_row",
 					key: "p-caps"
-				}, react.default.createElement("span", null, "能力"), react.default.createElement("span", { className: "pv_mePanelCaps" }, capToggle("视觉", "vision", row.vision === true, "支持图片输入（写进模型的 input 模态）", "pv_capVision"), capToggle("推理", "reasoning", row.reasoning === true, "支持思维链（声明条目写 reasoning: true）", "pv_capReason"))), react.default.createElement("div", {
+				}, react.default.createElement("span", null, "能力"), react.default.createElement("span", { className: "pv_mePanelCaps" }, capToggle("视觉", "vision", row.vision === true, "支持图片输入（写进模型的 input 模态）", "pv_capVision"), capToggle("推理", "reasoning", row.reasoning === true || row.knownReasoning === true, "支持思维链（声明条目写 reasoning: true）", "pv_capReason"))), react.default.createElement("div", {
 					className: "pv_meActs",
 					key: "p-acts"
 				}, react.default.createElement("button", {

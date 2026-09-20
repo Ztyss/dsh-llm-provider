@@ -1433,7 +1433,9 @@ function ModelListEditor(props: {
         react.createElement('span', null, '能力'),
         react.createElement('span', { className: 'pv_mePanelCaps' },
           capToggle('视觉', 'vision', row.vision === true, '支持图片输入（写进模型的 input 模态）', 'pv_capVision'),
-          capToggle('推理', 'reasoning', row.reasoning === true, '支持思维链（声明条目写 reasoning: true）', 'pv_capReason'),
+          // 推理勾选态 = 生效状态（knownReasoning 来自目录/声明详情，reasoning 来自本会话
+          // 的改动）——只看后者会让声明了 reasoningEfforts 的行在面板里显示成未勾（用户报）
+          capToggle('推理', 'reasoning', row.reasoning === true || row.knownReasoning === true, '支持思维链（声明条目写 reasoning: true）', 'pv_capReason'),
         ),
       ),
       react.createElement('div', { className: 'pv_meActs', key: 'p-acts' },

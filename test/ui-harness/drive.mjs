@@ -516,7 +516,7 @@ try {
   })()`)
   console.log('  行内编辑探针:', JSON.stringify(panelProbe))
   if (panelProbe.name !== 'DeepSeek V4.1 Flash' || panelProbe.ctx !== '1000000' || panelProbe.max !== '384000'
-    || panelProbe.visionOn !== true || panelProbe.reasonOn !== false || panelProbe.piAiRowClickable !== false) {
+    || panelProbe.visionOn !== true || panelProbe.reasonOn !== true || panelProbe.piAiRowClickable !== false) {
     throw new Error('行内编辑面板没按预期预填：' + JSON.stringify(panelProbe))
   }
   await cdp.eval(`
