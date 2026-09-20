@@ -179,6 +179,43 @@ try {
   console.log('  /model 贡献契约:', JSON.stringify(cmdContract))
   if (cmdContract.ok !== true) throw new Error('/model 贡献的 available 契约没满足（issue #7）：' + JSON.stringify(cmdContract))
 
+  // 0b) 桥接页加载态：status 还在路上（?statusDelay=700）时切进桥接页，卡内应给「正在读取…」占位行，
+  //     而不是先闪一个空框、数据到了内容再蹦出来（用户报的「每次点进都闪烁」）
+  await cdp.send('Page.navigate', { url: url + '?statusDelay=700' })
+  await sleep(150)
+  await cdp.eval(`var t = Array.from(document.querySelectorAll('.pv_tab')).find(function (x) { return x.textContent.indexOf('pi-ai 桥接') !== -1 }); if (t) t.click();`)
+  await sleep(120)
+  const bridgeLoading = await cdp.eval(`(function () {
+    var box = document.querySelector('.pv_pc')
+    var line = box !== null ? box.querySelector('.pv_line') : null
+    return {
+      loadingLine: line !== null ? line.textContent : '',
+      spin: box !== null && box.querySelector('.pv_spin') !== null,
+      versionYet: box !== null && box.textContent.indexOf('当前 pi-ai 版本') !== -1,
+    }
+  })()`)
+  console.log('  桥接加载态探针:', JSON.stringify(bridgeLoading))
+  if (bridgeLoading.spin !== true || bridgeLoading.loadingLine.indexOf('正在读取') === -1 || bridgeLoading.versionYet !== false) {
+    throw new Error('status 加载中桥接卡没有给加载占位（会闪空框）：' + JSON.stringify(bridgeLoading))
+  }
+  shots.push(await cdp.shot('00b-bridge-loading'))
+  for (var wi = 0; wi < 30; wi += 1) {
+    const done = await cdp.eval(`document.body.textContent.indexOf('当前 pi-ai 版本') !== -1`)
+    if (done === true) break
+    await sleep(100)
+  }
+  const bridgeLoaded = await cdp.eval(`({
+    spinGone: document.querySelector('.pv_spin') === null,
+    versionShown: document.body.textContent.indexOf('当前 pi-ai 版本') !== -1,
+  })`)
+  console.log('  桥接加载完成探针:', JSON.stringify(bridgeLoaded))
+  if (bridgeLoaded.spinGone !== true || bridgeLoaded.versionShown !== true) {
+    throw new Error('桥接卡加载完成后没有切到版本行：' + JSON.stringify(bridgeLoaded))
+  }
+  // 切回服务商标签，后面各步都在这张页面上进行
+  await cdp.eval(`var t = Array.from(document.querySelectorAll('.pv_tab')).find(function (x) { return x.textContent === '服务商' }); if (t) t.click();`)
+  await sleep(200)
+
   // 1) Provider 卡片（含 30d 月窗口 chip）
   await cdp.waitFor('.pv_pc')
   await cdp.eval(`document.querySelector('.pv_pc .pv_pcHead').click()`)

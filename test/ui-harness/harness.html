@@ -94,24 +94,28 @@
   window.__calls = []
   // ?planDelay=N：把 /plan/status 拖慢 N 毫秒——驱动用它验证「正在刷新用量…」占位页
   var planDelayMs = 0
+  var statusDelayMs = 0
   try {
     var pd = String(location.search).match(/[?&]planDelay=(\d+)/)
     if (pd) planDelayMs = Number(pd[1])
+    var sd = String(location.search).match(/[?&]statusDelay=(\d+)/)
+    if (sd) statusDelayMs = Number(sd[1])
   } catch (e) { /* 没有查询参数 */ }
   function reply(body) {
     return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve(body) } })
+  }
+  function delayed(body, ms) {
+    if (!(ms > 0)) return reply(body)
+    return reply(body).then(function (res) {
+      return new Promise(function (done) { setTimeout(function () { done(res) }, ms) })
+    })
   }
   window.fetch = function (url, options) {
     var path = String(url)
     window.__calls.push((options && options.method ? options.method : 'GET') + ' ' + path)
     var body = options && options.body ? JSON.parse(options.body) : undefined
-    if (path.indexOf('/provider/status') === 0) return reply(STATUS)
-    if (path.indexOf('/plan/status') === 0) {
-      if (planDelayMs <= 0) return reply(PLAN)
-      return reply(PLAN).then(function (res) {
-        return new Promise(function (done) { setTimeout(function () { done(res) }, planDelayMs) })
-      })
-    }
+    if (path.indexOf('/provider/status') === 0) return delayed(STATUS, statusDelayMs)
+    if (path.indexOf('/plan/status') === 0) return delayed(PLAN, planDelayMs)
     if (path.indexOf('/provider/models') === 0) return reply({ models: MODELS, fetchedAt: new Date().toISOString() })
     if (path.indexOf('/provider/presets') === 0) return reply(PRESETS)
     if (path.indexOf('/api/session/modelCatalog') === 0) return reply({ result: { ok: true, value: CATALOG } })

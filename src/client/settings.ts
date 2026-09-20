@@ -1873,7 +1873,8 @@ export function ProviderSettingsSection() {
   }
   // 上游那一行右侧跟按钮：检查更新（宿主先校验下载内容、再做兼容性体检，都过了才等重启生效）。
   // 只在开启自动下载（DSH_PROVIDER_UPDATE=on）时渲染；默认收起，桥接页只留版本一行（issue #4）。
-  if (updatesEnabled !== false) {
+  // status 还在加载（null）时也不渲染——否则「上游/检查更新」会先闪一下又被收走。
+  if (status !== null && updatesEnabled !== false) {
     bridgeLines.push(
       react.createElement(
         'div',
@@ -2351,7 +2352,14 @@ export function ProviderSettingsSection() {
           'div',
           { className: 'pv_pc' },
           react.createElement('div', { className: 'pv_pcBody', style: { borderTop: '0', padding: '10px 18px', justifyContent: 'center' } },
-            bridgeLines),
+            bridgeLines,
+            // status 还在加载时给一行占位：卡壳常在、内容原位填充，避免「空框先出现、数据到了内容再蹦出来」的闪烁
+            status === null
+              ? react.createElement('div', { className: 'pv_line', key: 'loading' },
+                  react.createElement('span', { className: 'pv_spin' }, '↻'),
+                  react.createElement('span', null, t('bridge.loading')),
+                )
+              : null),
         )
       : usageWait === true && plan === null
         ? // 用量快照还没就绪：先给「正在刷新用量…」占位，刷新完再渲染 provider 界面

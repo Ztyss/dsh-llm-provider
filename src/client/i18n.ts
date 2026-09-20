@@ -17,6 +17,7 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
 
     // ---- pi-ai 桥接明细（设置页第二个二级标签）----
     'bridge.tab': 'pi-ai 桥接',
+    'bridge.loading': '正在读取 pi-ai 版本…',
     'bridge.version': '当前 pi-ai 版本',
     'bridge.srcOfficial': '官方',
     'bridge.srcVendored': 'vendor',
@@ -210,6 +211,7 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
 
     // ---- pi-ai bridge detail rows ----
     'bridge.tab': 'pi-ai bridge',
+    'bridge.loading': 'Reading pi-ai version…',
     'bridge.version': 'Current pi-ai version',
     'bridge.srcOfficial': 'official',
     'bridge.srcVendored': 'vendor',

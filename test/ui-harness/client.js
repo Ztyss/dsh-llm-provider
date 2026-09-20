@@ -45,6 +45,7 @@ window.__ModuleLoader__.load({
 				tabProviders: "服务商",
 				addProvider: "＋ 添加供应商",
 				"bridge.tab": "pi-ai 桥接",
+				"bridge.loading": "正在读取 pi-ai 版本…",
 				"bridge.version": "当前 pi-ai 版本",
 				"bridge.srcOfficial": "官方",
 				"bridge.srcVendored": "vendor",
@@ -213,6 +214,7 @@ window.__ModuleLoader__.load({
 				tabProviders: "Provider",
 				addProvider: "＋ Add Provider",
 				"bridge.tab": "pi-ai bridge",
+				"bridge.loading": "Reading pi-ai version…",
 				"bridge.version": "Current pi-ai version",
 				"bridge.srcOfficial": "official",
 				"bridge.srcVendored": "vendor",
@@ -3507,7 +3509,7 @@ window.__ModuleLoader__.load({
 					key: row.key
 				}, children));
 			}
-			if (updatesEnabled !== false) bridgeLines.push(react.default.createElement("div", {
+			if (status !== null && updatesEnabled !== false) bridgeLines.push(react.default.createElement("div", {
 				className: "pv_line",
 				key: "action"
 			}, piAiUpstreamText(update, updatesEnabled), react.default.createElement("button", {
@@ -3840,7 +3842,10 @@ window.__ModuleLoader__.load({
 					padding: "10px 18px",
 					justifyContent: "center"
 				}
-			}, bridgeLines)) : usageWait === true && plan === null ? react.default.createElement("div", { className: "pv_pc" }, react.default.createElement("div", { className: "pv_pcBody pv_usageLoading" }, react.default.createElement("span", { className: "pv_spin" }, "↻"), react.default.createElement("span", null, t("prov.usageLoading")))) : react.default.createElement("div", { style: {
+			}, bridgeLines, status === null ? react.default.createElement("div", {
+				className: "pv_line",
+				key: "loading"
+			}, react.default.createElement("span", { className: "pv_spin" }, "↻"), react.default.createElement("span", null, t("bridge.loading"))) : null)) : usageWait === true && plan === null ? react.default.createElement("div", { className: "pv_pc" }, react.default.createElement("div", { className: "pv_pcBody pv_usageLoading" }, react.default.createElement("span", { className: "pv_spin" }, "↻"), react.default.createElement("span", null, t("prov.usageLoading")))) : react.default.createElement("div", { style: {
 				display: "flex",
 				flexDirection: "column",
 				gap: "10px"
