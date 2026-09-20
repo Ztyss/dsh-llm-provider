@@ -3835,7 +3835,10 @@ window.__ModuleLoader__.load({
 					setTab("bridge");
 				}
 			}, t("bridge.tab"));
-			return react.default.createElement("div", { className: "pv_stack" }, react.default.createElement("div", { className: "pv_tabs" }, tabProviders, tabBridge), !note ? null : react.default.createElement("div", { className: "plan_note pv_pageNote" }, note), tab === "bridge" ? react.default.createElement("div", { className: "pv_pc" }, react.default.createElement("div", {
+			return react.default.createElement("div", { className: "pv_stack" }, react.default.createElement("div", { className: "pv_tabs" }, tabProviders, tabBridge), !note ? null : react.default.createElement("div", { className: "plan_note pv_pageNote" }, note), tab === "bridge" ? react.default.createElement("div", {
+				className: "pv_pc",
+				key: "pane-bridge"
+			}, react.default.createElement("div", {
 				className: "pv_pcBody",
 				style: {
 					borderTop: "0",
@@ -3845,11 +3848,17 @@ window.__ModuleLoader__.load({
 			}, bridgeLines, status === null ? react.default.createElement("div", {
 				className: "pv_line",
 				key: "loading"
-			}, react.default.createElement("span", { className: "pv_spin" }, "↻"), react.default.createElement("span", null, t("bridge.loading"))) : null)) : usageWait === true && plan === null ? react.default.createElement("div", { className: "pv_pc" }, react.default.createElement("div", { className: "pv_pcBody pv_usageLoading" }, react.default.createElement("span", { className: "pv_spin" }, "↻"), react.default.createElement("span", null, t("prov.usageLoading")))) : react.default.createElement("div", { style: {
-				display: "flex",
-				flexDirection: "column",
-				gap: "10px"
-			} }, react.default.createElement(AddProviderPanel, {
+			}, react.default.createElement("span", { className: "pv_spin" }, "↻"), react.default.createElement("span", null, t("bridge.loading"))) : null)) : usageWait === true && plan === null ? react.default.createElement("div", {
+				className: "pv_pc",
+				key: "pane-usage"
+			}, react.default.createElement("div", { className: "pv_pcBody pv_usageLoading" }, react.default.createElement("span", { className: "pv_spin" }, "↻"), react.default.createElement("span", null, t("prov.usageLoading")))) : react.default.createElement("div", {
+				style: {
+					display: "flex",
+					flexDirection: "column",
+					gap: "10px"
+				},
+				key: "pane-providers"
+			}, react.default.createElement(AddProviderPanel, {
 				presets,
 				onAdded: onProviderAdded
 			}), cards), toast === null ? null : react.default.createElement("div", { className: "pv_toast " + (toast.ok === true ? "pv_toastOk" : "pv_toastFail") }, toast.text), delTarget === null ? null : react.default.createElement(DeleteProviderModal, {

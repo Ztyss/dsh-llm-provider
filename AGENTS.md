@@ -40,3 +40,18 @@
 - 装依赖：`dev-start.sh` 建完 worktree 会自动跑一次 `scripts/install-deps.sh`（装 typescript / tsdown / @types/node），失败时它会打印手动命令，那才需要补跑。**别直接 `npm install`**——会去 reify 那条指向宿主的 `node_modules/@deepseek-ai` 软链，直接 EPERM；脚本负责装前挪开、装完放回。
 - worktree 里没有的东西：`node_modules/`、`reference/` 完全不进；`vendor/` 只有 `package.json` 和 lockfile 入库会跟着进，`vendor/pi-ai/`、`vendor/llm-bridge/`、`vendor/node_modules/` 不进。跑测试实例时 `vendor/`（bridge 副本 + pi-ai）会由插件自己在该 worktree 里生成，属正常。
 - 临时产物（复现样例、diff、临时脚本、截图）写到 `/tmp`，不要落在仓库里：主线有 untracked 文件会挡住 `dev-merge.sh` 的校验。
+
+## UI harness（headless Chrome 验证链）
+
+- `test/ui-harness/drive.mjs`：把真实 `lib/client.js` 渲进 `harness.html`，按步骤点开界面，
+  断言全是几何/DOM 级（getBoundingClientRect、computed style），同时截图留档。
+- `test/ui-harness/flicker-probe.mjs`：**边框/样式闪烁回归**。在 React 忠实环境里反复切换
+  「服务商 ↔ pi-ai 桥接」标签，逐帧采样卡片 borderTopColor 亮度（半透明色先合成到白底再算，
+  否则 `rgba(0,0,0,.15)` 这种正常浅灰边框会被误判成黑）+ 检测 border-color CSSTransition +
+  节点身份复用。判红 = 350ms 内出现真深色帧或 border-color 过渡。
+  退出码 0/1 可直接进脚本。跑法：`node test/ui-harness/flicker-probe.mjs lib/client.js <输出目录>`。
+- **mini-react 垫片 v2 是「最小 reconciliation」语义**（同位置同类型同 key 的 DOM 节点就地更新，
+  类型或 key 不同才重建）——和真实 react 对齐。改这个垫片前先想清楚：v1 整树重建永远不触发
+  CSS transition，桥接页「边框先黑 ~0.2s 再恢复」那类 bug 在 v1 下天生复现不了（已烧过一次）。
+  代价规律：**条件分支两边如果是同类型元素，必须各带不同 key**，否则真实 react 会复用节点、
+  已有节点上的 className 变化会触发该 class 的 transition。

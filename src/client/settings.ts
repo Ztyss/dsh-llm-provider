@@ -2347,10 +2347,15 @@ export function ProviderSettingsSection() {
     // 提示行放在标签栏正下方，两个标签页都看得见。此前它的唯一渲染位在桥接页 body 里：
     // 服务商页的校验失败/保存结果/导出结果全都「点了没反应」，还会漏到桥接页冒出一句没来由的话
     !note ? null : react.createElement('div', { className: 'plan_note pv_pageNote' }, note),
+    // 三个分支各带不同 key：React 真实环境里条件分支两边同为 div 时会复用同一个 DOM 节点、
+    // 只改 className——pv_pc 的 transition:border-color .16s 会在已有节点上触发，边框色从
+    // 初始 currentColor（近黑）过渡到浅灰，肉眼就是「边框先变黑 ~0.2s 再恢复」的闪烁
+    // （本地版 issue：桥接页边框变黑）。不同 key 强制卸载重建，新节点带最终 class 插入，
+    // transition 不会在插入帧触发，首帧即浅灰。
     tab === 'bridge'
       ? react.createElement(
           'div',
-          { className: 'pv_pc' },
+          { className: 'pv_pc', key: 'pane-bridge' },
           react.createElement('div', { className: 'pv_pcBody', style: { borderTop: '0', padding: '10px 18px', justifyContent: 'center' } },
             bridgeLines,
             // status 还在加载时给一行占位：卡壳常在、内容原位填充，避免「空框先出现、数据到了内容再蹦出来」的闪烁
@@ -2365,7 +2370,7 @@ export function ProviderSettingsSection() {
         ? // 用量快照还没就绪：先给「正在刷新用量…」占位，刷新完再渲染 provider 界面
           react.createElement(
             'div',
-            { className: 'pv_pc' },
+            { className: 'pv_pc', key: 'pane-usage' },
             react.createElement(
               'div',
               { className: 'pv_pcBody pv_usageLoading' },
@@ -2375,7 +2380,7 @@ export function ProviderSettingsSection() {
           )
         : react.createElement(
             'div',
-            { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
+            { style: { display: 'flex', flexDirection: 'column', gap: '10px' }, key: 'pane-providers' },
             react.createElement(AddProviderPanel, { presets: presets, onAdded: onProviderAdded }),
             cards,
           ),
