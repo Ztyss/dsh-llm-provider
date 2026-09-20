@@ -438,11 +438,16 @@ try {
         return s.whiteSpace === 'nowrap' && s.textOverflow === 'ellipsis'
       })(),
       noFilter: document.querySelector('.pv_mFilter') === null,
-      // ✕ 只给「pi-ai 清单之外的自定义模型」：夹具初始行全是 pi-ai 自带（deepseek-flash /
-      // kimi-k3 / glm-5.3），一律没有 ✕（用户要求：勾着但来自自带清单的模型不需要 ✕）
+      // ✕ 只给「pi-ai 目录之外」的行：夹具里 deepseek-flash 的详情是 declared 兜底（pi-ai
+      // 目录没收录这个 id）→ 必须有 ✕；kimi-k3 / glm-5.3 是 pi-ai 自带（source:'pi-ai'）→
+      // 无 ✕（用户要求：目录里没有的模型就该能删，目录自带的取消勾选即可）
       delRows: rows.filter(function (el) { return el.querySelector('.pv_iconBtn') !== null })
         .map(function (el) { return (el.querySelector('.pv_mId') || {}).textContent }),
-      noDelOnPiAiRows: rows.filter(function (el) { return el.querySelector('.pv_iconBtn') !== null }).length === 0,
+      delOnlyDeclared: (function () {
+        var dels = rows.filter(function (el) { return el.querySelector('.pv_iconBtn') !== null })
+          .map(function (el) { return (el.querySelector('.pv_mId') || {}).textContent })
+        return JSON.stringify(dels) === '["deepseek-flash"]'
+      })(),
       // 全选框与「模型 ID」文字的对齐：垂直中心偏差 ≤2px，且与数据行勾选框左缘对齐 ≤2px
       headCheckAligned: (function () {
         var headCheck = document.querySelector('.pv_meHeadRow input.pv_meCheck')
@@ -473,7 +478,7 @@ try {
     }
   })()`)
   console.log('  清单探针:', JSON.stringify(editorProbe))
-  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.allRowsReadOnly !== true || editorProbe.noCustomBadge !== true || editorProbe.idTruncates !== true || editorProbe.noFilter !== true || editorProbe.noDelOnPiAiRows !== true || editorProbe.headCheckAligned !== true || editorProbe.noNameCol !== true || editorProbe.declaredOnly !== true || editorProbe.noCounter !== true || editorProbe.noInlineAdd !== true || editorProbe.ctxMaxShown !== true || editorProbe.colAligned !== true) {
+  if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.allRowsReadOnly !== true || editorProbe.noCustomBadge !== true || editorProbe.idTruncates !== true || editorProbe.noFilter !== true || editorProbe.delOnlyDeclared !== true || editorProbe.headCheckAligned !== true || editorProbe.noNameCol !== true || editorProbe.declaredOnly !== true || editorProbe.noCounter !== true || editorProbe.noInlineAdd !== true || editorProbe.ctxMaxShown !== true || editorProbe.colAligned !== true) {
     throw new Error('模型清单结构没满足：' + JSON.stringify(editorProbe))
   }
   shots.push(await cdp.shot('02b-model-list-editor'))

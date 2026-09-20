@@ -933,10 +933,11 @@ function modelEditRow(
     // 上下文 / 最大输出统一只读展示：目录条目显示元数据值，自定义条目显示添加时填的值
     react.createElement('span', { className: 'pv_mCtx', title: '上下文窗口' }, known ? (formatContext(row.knownContextWindow) ?? '') : (formatContext(parsePositiveInt(row.contextWindow)) ?? '')),
     react.createElement('span', { className: 'pv_mMax', title: '最大输出' }, known ? (formatContext(row.knownMaxTokens) ?? '') : (formatContext(parsePositiveInt(row.maxTokens)) ?? '')),
-    // ✕ 只给「pi-ai 清单之外的自定义模型」：本会话表单新加的（added）+ 手写/旧自定义 id
-    // （known=false = pi-ai 模型库不认识它）。凡是 pi-ai 自带清单里的模型（无论勾没勾）
-    // 都不配 ✕——不想要取消勾选即可，✕ 的职责是真正删掉一条自定义模型（用户要求）
-    row.known !== true
+    // ✕ 只给「pi-ai 目录之外」的行：known 只说明"有元数据可显示"，元数据可能是 declared
+    // （settings 声明兜底）或 adapter（网关自报）——这些目录外条目同样必须有 ✕（用户要求：
+    // 手写进 settings.yaml 的自定义 id 目录没收录，也必须能删）。pi-ai 目录收录的（inPiAi）
+    // 不配 ✕——不想要取消勾选即可。
+    row.inPiAi !== true
       ? react.createElement('button', {
           type: 'button',
           className: 'pv_iconBtn',
@@ -950,11 +951,13 @@ function modelEditRow(
 
 /**
  * 「添加模型」表单留空时的默认值，三级优先（用户批注定的策略）：
- *   ① 精确匹配：pi-ai 模型库（全量元数据，不分 provider）里有同 id 条目 → 用它的
- *      官方 contextWindow / maxTokens（跨供应商同名模型就是官方参数）；
- *   ② 没有精确匹配：按清单里已知模型（pi-ai 元数据）的「最小档」填——保守，
- *      宁可窗口偏小也别虚报导致上游拒绝；
+ *   ① 精确匹配：pi-ai 目录（source==='pi-ai'，全量元数据不分 provider）里有同 id 条目 →
+ *      用它的官方 contextWindow / maxTokens（跨供应商同名模型就是官方参数）；
+ *   ② 没有精确匹配：按目录已知模型的「最小档」填——保守，宁可窗口偏小也别虚报导致上游拒绝；
  *   ③ 连已知模型都没有：回退保守常数 131072 / 8192。
+ * ①② 都只认 source==='pi-ai' 的目录值：declared（settings 声明兜底）/ adapter（网关自报，
+ * 比如 opencode 给 deepseek-v4.1-flash 报 203K）不是官方参数，不能当默认值——用户报过
+ * 「自动填的 203K 不对，应该是 1M」，根因就是适配器自报值混进了默认值链。
  * 导出供离线测试钉住（精确匹配 / 最小档 / 常数回退 / 非法值忽略）。
  */
 export function resolveAddDefaults(
@@ -962,7 +965,7 @@ export function resolveAddDefaults(
   modelId: string,
   details: Record<string, ModelDetail> | undefined | null,
 ): { ctx: string; max: string } {
-  // ① 精确匹配：pi-ai 模型库（全量元数据，不分 provider）里同 id 的条目 → 官方参数。
+  // ① 精确匹配：pi-ai 目录（source==='pi-ai'，不分 provider）里同 id 的条目 → 官方参数。
   //    多条同名时取各维度的最小值，保守且确定。
   var exactCtx: number | undefined = undefined
   var exactMax: number | undefined = undefined
@@ -972,19 +975,20 @@ export function resolveAddDefaults(
     for (var dk in details) {
       var d = details[dk]
       if (d === null || d === undefined || d.id !== modelId) continue
+      if (d.source !== 'pi-ai') continue
       if (typeof d.contextWindow === 'number' && d.contextWindow > 0) ctxs.push(d.contextWindow)
       if (typeof d.maxTokens === 'number' && d.maxTokens > 0) maxs.push(d.maxTokens)
     }
     if (ctxs.length > 0) exactCtx = Math.min.apply(null, ctxs)
     if (maxs.length > 0) exactMax = Math.min.apply(null, maxs)
   }
-  // ② 已知模型（pi-ai 元数据）里的最小档：虚报大窗口会让超长输入打到上游才被拒，
-  //    最小档是最不误导的默认。只统计 known 行的元数据值，不把自定义行手填的数当依据。
+  // ② 目录已知模型（source==='pi-ai'）里的最小档：虚报大窗口会让超长输入打到上游才被拒，
+  //    最小档是最不误导的默认。declared/adapter 行的手填/自报值不进这个池子。
   var tierCtx: number | undefined = undefined
   var tierMax: number | undefined = undefined
   for (var i = 0; i < rows.length; i += 1) {
     var r = rows[i]
-    if (r.known !== true) continue
+    if (r.inPiAi !== true) continue
     if (typeof r.knownContextWindow === 'number' && r.knownContextWindow > 0 && (tierCtx === undefined || r.knownContextWindow < tierCtx)) tierCtx = r.knownContextWindow
     if (typeof r.knownMaxTokens === 'number' && r.knownMaxTokens > 0 && (tierMax === undefined || r.knownMaxTokens < tierMax)) tierMax = r.knownMaxTokens
   }
@@ -1033,6 +1037,9 @@ export function buildEditRows(
       vision: detail !== undefined ? detail.vision === true : declaredInput.indexOf('image') !== -1,
       video: detail !== undefined ? detail.video === true : declaredInput.indexOf('video') !== -1,
       known: detail !== undefined,
+      // 目录收录与否只认详情来源：declared（settings 声明兜底）/ adapter（适配器自报，如网关
+      // 上报的新 id）都不算「pi-ai 目录里有」——目录外的行必须给 ✕（用户要求）
+      inPiAi: detail !== undefined && detail.source === 'pi-ai',
       knownContextWindow: detail === undefined ? undefined : detail.contextWindow,
       knownMaxTokens: detail === undefined ? undefined : detail.maxTokens,
       knownReasoning: detail !== undefined && detail.reasoning === true,
@@ -1145,6 +1152,7 @@ function ModelListEditor(props: {
         vision: form.vision === true,
         video: form.video === true,
         known: false,
+        inPiAi: false,
         knownContextWindow: undefined,
         knownMaxTokens: undefined,
         knownReasoning: false,

@@ -80,6 +80,10 @@ export interface ModelEditRow {
   video: boolean
   /** 该 id 在生效 pi-ai 目录里有没有权威元数据（没有就得把上下文/最大输出写全）。 */
   known: boolean
+  /** 详情是不是真来自 pi-ai 目录（source==='pi-ai'）。✕ 只给目录外条目：declared（settings
+   * 声明兜底）/ adapter（适配器自报）的详情不算「pi-ai 目录里有」——用户手写进 settings.yaml
+   * 的自定义 id（目录没收录）也必须有 ✕（用户要求）。 */
+  inPiAi: boolean
   /** 目录里那份的原值：用于（a）输入框的 placeholder（b）判断用户是否改过能力。 */
   knownContextWindow: number | undefined
   knownMaxTokens: number | undefined

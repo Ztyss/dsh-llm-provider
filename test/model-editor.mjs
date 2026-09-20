@@ -69,8 +69,8 @@ const catalog = [
   { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', contextWindow: 1000000 },
 ]
 const details = {
-  'deepseek-v4-flash': { id: 'deepseek-v4-flash', provider: 'deepseek', name: 'DeepSeek V4 Flash', vision: false, thinkingLevels: [], contextWindow: 1000000, maxTokens: 384000 },
-  'deepseek-v4-flash-vision-exp': { id: 'deepseek-v4-flash-vision-exp', provider: 'deepseek', name: 'Vision Exp', vision: true, thinkingLevels: [], contextWindow: 1000000, maxTokens: 384000 },
+  'deepseek-v4-flash': { id: 'deepseek-v4-flash', provider: 'deepseek', name: 'DeepSeek V4 Flash', vision: false, thinkingLevels: [], contextWindow: 1000000, maxTokens: 384000, source: 'pi-ai' },
+  'deepseek-v4-flash-vision-exp': { id: 'deepseek-v4-flash-vision-exp', provider: 'deepseek', name: 'Vision Exp', vision: true, thinkingLevels: [], contextWindow: 1000000, maxTokens: 384000, source: 'pi-ai' },
 }
 
 // ---- 1. 建编辑器：目录 + 已声明清单合成，声明的那份优先 ----
@@ -184,8 +184,8 @@ check('跟随目录：已知模型带最大输出（清单页取数就在详情�
 // 编辑器报「当前已添加17个」而卡片头是「模型 (3)」——勾选必须等于目录快照，候选只是候选。
 const legacyDetails = {
   ...details,
-  'deepseek/deepseek-chat': { id: 'deepseek/deepseek-chat', provider: 'deepseek', name: 'DeepSeek Chat', vision: false, thinkingLevels: [], contextWindow: 163840, maxTokens: 16384 },
-  'deepseek/deepseek-r1': { id: 'deepseek/deepseek-r1', provider: 'deepseek', name: 'DeepSeek R1', vision: false, thinkingLevels: [], contextWindow: 65536, maxTokens: 16384 },
+  'deepseek/deepseek-chat': { id: 'deepseek/deepseek-chat', provider: 'deepseek', name: 'DeepSeek Chat', vision: false, thinkingLevels: [], contextWindow: 163840, maxTokens: 16384, source: 'pi-ai' },
+  'deepseek/deepseek-r1': { id: 'deepseek/deepseek-r1', provider: 'deepseek', name: 'DeepSeek R1', vision: false, thinkingLevels: [], contextWindow: 65536, maxTokens: 16384, source: 'pi-ai' },
 }
 const followWithLegacy = buildEditRows(followAccount, catalog, legacyDetails)
 check('跟随目录 + 历史候选：目录快照全勾、候选不勾（计数和卡片头一致）',
@@ -198,15 +198,32 @@ const declaredWithLegacy = buildEditRows(declaredAccount, catalog, legacyDetails
 check('自定义清单 + 历史候选：只勾声明过的那一条', declaredWithLegacy.filter((r) => r.enabled).length === 1
   && declaredWithLegacy.find((r) => r.id === 'deepseek-v4-flash')?.enabled === true)
 
+// ---- 7c. inPiAi：目录收录与否只认详情来源（✕ 的判据）----
+// declared（settings 声明兜底）/ adapter（网关自报）详情不算「pi-ai 目录里有」：
+// 用户手写的自定义 id（目录没收录）必须拿到 ✕；目录自带条目不许有 ✕。
+const sourceDetails = {
+  'deepseek/deepseek-v4-flash': { ...details['deepseek-v4-flash'], source: 'pi-ai' },
+  'deepseek/deepseek-v4-flash-vision-exp': { ...details['deepseek-v4-flash-vision-exp'], source: 'pi-ai' },
+  'deepseek/deepseek-flash': { id: 'deepseek-flash', provider: 'deepseek', name: 'DS Flash', vision: true, thinkingLevels: [], contextWindow: 1000000, maxTokens: 384000, source: 'declared' },
+}
+const srcRows = buildEditRows(declaredAccount, catalog, sourceDetails)
+check('pi-ai 目录条目 inPiAi=true（不配 ✕）', srcRows.find((r) => r.id === 'deepseek-v4-flash')?.inPiAi === true)
+check('declared 兜底详情的行 inPiAi=false（目录外，必须有 ✕）',
+  srcRows.find((r) => r.id === 'deepseek-flash')?.inPiAi === false)
+check('跟随目录 + 历史候选：元数据库历史模型也是 pi-ai 来源（inPiAi=true）',
+  followWithLegacy.find((r) => r.id === 'deepseek/deepseek-chat')?.inPiAi === true)
+
 // ---- 8. 「添加模型」表单留空时的默认值（三级策略：精确匹配官方参数 → 同供应商已知最小档 → 保守常数）----
-// 精确匹配：pi-ai 模型库（全量元数据，不分 provider）里有同 id 条目就用它的官方参数；
+// 精确匹配：pi-ai 目录（source==='pi-ai'，不分 provider）里有同 id 条目就用它的官方参数；
 // 匹配不到走「已知模型最小档」（保守，宁小勿虚报）；连已知模型都没有回退保守常数。
+// declared / adapter 来源的详情不算官方参数——网关给 deepseek-v4.1-flash 自报 203K，
+// 曾被精确匹配当成默认值填进表单（用户报「应该是 1M」），回归就在这里钉死。
 const rowsForDefaults = [
-  { id: 'a', contextWindow: '1000000', maxTokens: '384000', knownContextWindow: 1000000, knownMaxTokens: 384000, known: true },
-  { id: 'b', contextWindow: '', maxTokens: '', knownContextWindow: 65536, knownMaxTokens: 16384, known: true },
+  { id: 'a', contextWindow: '1000000', maxTokens: '384000', knownContextWindow: 1000000, knownMaxTokens: 384000, known: true, inPiAi: true },
+  { id: 'b', contextWindow: '', maxTokens: '', knownContextWindow: 65536, knownMaxTokens: 16384, known: true, inPiAi: true },
 ]
 const officialDetails = {
-  'deepseek/deepseek-v4.1-flash': { id: 'deepseek-v4.1-flash', provider: 'deepseek', contextWindow: 1000000, maxTokens: 384000 },
+  'deepseek/deepseek-v4.1-flash': { id: 'deepseek-v4.1-flash', provider: 'deepseek', contextWindow: 1000000, maxTokens: 384000, source: 'pi-ai' },
 }
 check('精确匹配官方参数优先（1000000/384000，跨 provider 同名也算）', (() => {
   const d = resolveAddDefaults(rowsForDefaults, 'deepseek-v4.1-flash', officialDetails)
@@ -214,6 +231,18 @@ check('精确匹配官方参数优先（1000000/384000，跨 provider 同名也�
 })())
 check('无精确匹配：取已知模型最小档（65536/16384，宁小勿虚报）', (() => {
   const d = resolveAddDefaults(rowsForDefaults, 'new-custom-id', officialDetails)
+  return d.ctx === '65536' && d.max === '16384'
+})())
+check('适配器自报的详情不进默认值（网关报 203K 不能当官方参数）', (() => {
+  const d = resolveAddDefaults(rowsForDefaults, 'deepseek-v4.1-flash', {
+    'deepseek-v4.1-flash': { id: 'deepseek-v4.1-flash', provider: 'opencode-go', contextWindow: 203000, maxTokens: 33000, source: 'adapter' },
+  })
+  return d.ctx === '65536' && d.max === '16384'
+})())
+check('declared 兜底详情同样不进默认值', (() => {
+  const d = resolveAddDefaults(rowsForDefaults, 'deepseek-v4.1-flash', {
+    'deepseek-v4.1-flash': { id: 'deepseek-v4.1-flash', provider: 'opencode-go', contextWindow: 203000, maxTokens: 33000, source: 'declared' },
+  })
   return d.ctx === '65536' && d.max === '16384'
 })())
 check('没有任何已知值时回退保守值（131072/8192）', (() => {

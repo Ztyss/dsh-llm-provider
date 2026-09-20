@@ -2713,7 +2713,7 @@ window.__ModuleLoader__.load({
 			}, known ? formatContext(row.knownContextWindow) ?? "" : formatContext(parsePositiveInt(row.contextWindow)) ?? ""), react.default.createElement("span", {
 				className: "pv_mMax",
 				title: "最大输出"
-			}, known ? formatContext(row.knownMaxTokens) ?? "" : formatContext(parsePositiveInt(row.maxTokens)) ?? ""), row.known !== true ? react.default.createElement("button", {
+			}, known ? formatContext(row.knownMaxTokens) ?? "" : formatContext(parsePositiveInt(row.maxTokens)) ?? ""), row.inPiAi !== true ? react.default.createElement("button", {
 				type: "button",
 				className: "pv_iconBtn",
 				disabled: busy,
@@ -2725,11 +2725,13 @@ window.__ModuleLoader__.load({
 		}
 		/**
 		* 「添加模型」表单留空时的默认值，三级优先（用户批注定的策略）：
-		*   ① 精确匹配：pi-ai 模型库（全量元数据，不分 provider）里有同 id 条目 → 用它的
-		*      官方 contextWindow / maxTokens（跨供应商同名模型就是官方参数）；
-		*   ② 没有精确匹配：按清单里已知模型（pi-ai 元数据）的「最小档」填——保守，
-		*      宁可窗口偏小也别虚报导致上游拒绝；
+		*   ① 精确匹配：pi-ai 目录（source==='pi-ai'，全量元数据不分 provider）里有同 id 条目 →
+		*      用它的官方 contextWindow / maxTokens（跨供应商同名模型就是官方参数）；
+		*   ② 没有精确匹配：按目录已知模型的「最小档」填——保守，宁可窗口偏小也别虚报导致上游拒绝；
 		*   ③ 连已知模型都没有：回退保守常数 131072 / 8192。
+		* ①② 都只认 source==='pi-ai' 的目录值：declared（settings 声明兜底）/ adapter（网关自报，
+		* 比如 opencode 给 deepseek-v4.1-flash 报 203K）不是官方参数，不能当默认值——用户报过
+		* 「自动填的 203K 不对，应该是 1M」，根因就是适配器自报值混进了默认值链。
 		* 导出供离线测试钉住（精确匹配 / 最小档 / 常数回退 / 非法值忽略）。
 		*/
 		function resolveAddDefaults(rows, modelId, details) {
@@ -2741,6 +2743,7 @@ window.__ModuleLoader__.load({
 				for (var dk in details) {
 					var d = details[dk];
 					if (d === null || d === void 0 || d.id !== modelId) continue;
+					if (d.source !== "pi-ai") continue;
 					if (typeof d.contextWindow === "number" && d.contextWindow > 0) ctxs.push(d.contextWindow);
 					if (typeof d.maxTokens === "number" && d.maxTokens > 0) maxs.push(d.maxTokens);
 				}
@@ -2751,7 +2754,7 @@ window.__ModuleLoader__.load({
 			var tierMax = void 0;
 			for (var i = 0; i < rows.length; i += 1) {
 				var r = rows[i];
-				if (r.known !== true) continue;
+				if (r.inPiAi !== true) continue;
 				if (typeof r.knownContextWindow === "number" && r.knownContextWindow > 0 && (tierCtx === void 0 || r.knownContextWindow < tierCtx)) tierCtx = r.knownContextWindow;
 				if (typeof r.knownMaxTokens === "number" && r.knownMaxTokens > 0 && (tierMax === void 0 || r.knownMaxTokens < tierMax)) tierMax = r.knownMaxTokens;
 			}
@@ -2790,6 +2793,7 @@ window.__ModuleLoader__.load({
 					vision: detail !== void 0 ? detail.vision === true : declaredInput.indexOf("image") !== -1,
 					video: detail !== void 0 ? detail.video === true : declaredInput.indexOf("video") !== -1,
 					known: detail !== void 0,
+					inPiAi: detail !== void 0 && detail.source === "pi-ai",
 					knownContextWindow: detail === void 0 ? void 0 : detail.contextWindow,
 					knownMaxTokens: detail === void 0 ? void 0 : detail.maxTokens,
 					knownReasoning: detail !== void 0 && detail.reasoning === true,
@@ -2937,6 +2941,7 @@ window.__ModuleLoader__.load({
 						vision: form.vision === true,
 						video: form.video === true,
 						known: false,
+						inPiAi: false,
 						knownContextWindow: void 0,
 						knownMaxTokens: void 0,
 						knownReasoning: false,
