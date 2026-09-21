@@ -153,7 +153,8 @@ var css =
   'color:var(--dsw-alias-label-secondary)}' +
   // 模型区外框
   '.pv_mBox{border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:12px;' +
-  'padding:0 14px;display:flex;flex-direction:column}' +
+  // 底部 12px 由框自己出（此前靠按钮行的 margin-bottom 兼职，导致它与下方表单拉开 14px）
+  'padding:0 14px 12px;display:flex;flex-direction:column}' +
   '.pv_mRight{margin-left:auto;display:inline-flex;align-items:center;gap:8px}' +
   '.pv_iconBtn{border:0;background:0 0;cursor:pointer;font:inherit;font-size:15px;padding:3px 6px;' +
   'border-radius:6px;color:var(--dsw-alias-label-tertiary)}' +
@@ -386,7 +387,7 @@ var css =
   '.pv_capOff{opacity:.6;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1,rgba(0,0,0,.15))}' +
   // 「添加模型」表单：仿添加供应商面板（标签在左、输入在右的 pv_row 行 + 底部按钮行）
   // 度量与 pv_pcBody 对齐（13px 行 / 6px 间距 / 18px 内边距），输入随行宽伸展，不再限 320px
-  '.pv_meForm{display:flex;flex-direction:column;gap:6px;padding:10px 18px;margin-top:2px;' +
+  '.pv_meForm{display:flex;flex-direction:column;gap:6px;padding:10px 18px;margin-top:0;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;' +
   'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.02))}' +
   '.pv_meFormTitle{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}' +
@@ -400,7 +401,7 @@ var css =
   // 清单页的「编辑模型」入口行：底部留足呼吸距，别让按钮贴着模型框下边框
   '.pv_mEditRow{display:flex;align-items:center;padding:9px 0 12px}' +
   // 编辑器的「添加模型 / 保存」按钮行同样与模型框下边框留呼吸距（模型框自身 padding-bottom 为 0）
-  '.pv_meActs{display:flex;align-items:center;gap:8px;margin-top:3px;margin-bottom:12px}' +
+  '.pv_meActs{display:flex;align-items:center;gap:8px;margin-top:3px;margin-bottom:4px}' +
   // ---- 本地版新增：删除确认弹层（issue #3）----
   '.pv_mask{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;' +
   'background:rgba(0,0,0,.42);padding:24px}' +
