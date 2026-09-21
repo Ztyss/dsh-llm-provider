@@ -2665,8 +2665,17 @@ export function ProviderSettingsSection() {
                     if (entry.name !== undefined) merged.name = entry.name
                     if (entry.contextWindow !== undefined) merged.contextWindow = entry.contextWindow
                     if (entry.maxTokens !== undefined) merged.maxTokens = entry.maxTokens
-                    if (entry.input !== undefined) merged.input = entry.input
-                    if (entry.reasoning === true) merged.reasoning = true
+                    if (Array.isArray(entry.input)) {
+                      merged.input = entry.input
+                      // 能力徽标读的是 vision/video 布尔，不是 input 数组——保存后就地按声明
+                      // 重算（与宿主 withDeclaredModels 同语义）。详情索引只在页面挂载时拉一次
+                      //（effect 依赖 []），漏了这两行，勾/取消勾选要整页刷新才显示（用户报）
+                      merged.vision = entry.input.indexOf('image') !== -1
+                      merged.video = entry.input.indexOf('video') !== -1
+                    }
+                    // reasoning 三态照声明：勾了 true、取消了也要写 false——只写 true 时
+                    // 「取消勾选」保存后徽标永远不灭（详情索引不重拉，本地合并是唯一事实源）
+                    if (entry.reasoning !== undefined) merged.reasoning = entry.reasoning === true
                     var existingSource = (existing as AnyRecord | undefined)?.source
                     if (existingSource === undefined || existingSource === 'declared') merged.source = 'declared'
                     next[qualified] = merged as unknown as ModelDetail
