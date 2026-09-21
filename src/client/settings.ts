@@ -1303,6 +1303,15 @@ function ModelListEditor(props: {
           scrollTestResultIntoView()
           return
         }
+        // 清单校验模式（探测被 400 拒的网关退回 GET /models）：如实标注不是实连
+        if (res.mode === 'list') {
+          set({
+            phase: res.served === true ? 'ok' : 'fail',
+            message: (res.served === true ? '✓ ' : '✗ ') + tf(res.served === true ? 'prov.listYes' : 'prov.listNo', { total: String(res.total ?? ''), id: id }),
+          })
+          scrollTestResultIntoView()
+          return
+        }
         set({
           phase: 'ok',
           // latency 缺席 = 宿主还在跑旧版探测（版本错位窗口）：如实只报连通，不渲染「· ms」

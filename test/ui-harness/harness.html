@@ -135,6 +135,10 @@
     }
     if (path.indexOf('/provider/test-model') === 0) {
       window.__lastTestModel = body
+      // opencode-go 特例：宿主对 400（MissingSessionID）退回清单校验——返回清单形状
+      if (body && body.providerId === 'opencode-go') {
+        return reply({ ok: true, mode: 'list', served: true, total: 2 })
+      }
       // 实连语义：宿主向模型发 1 token 最小请求，回 ok + 耗时（不再是查清单）
       return reply({ ok: true, served: true, latencyMs: 812 })
     }

@@ -582,6 +582,18 @@ export function apply(ctx: PluginContext, config: unknown): void {
           const raw = await response.text()
           if (!response.ok) {
             const snippet = raw.replace(/\s+/g, ' ').trim().slice(0, 160)
+            // 个别网关连 1 token 探测都不收（如 opencode-go 回 HTTP 400 MissingSessionID）——
+            // 退回模型清单校验（GET /models），至少能验证「端点可达 + 模型在清单里」，
+            // 并在结果里如实标注这是清单校验而非实连（用户批注）。
+            if (response.status === 400) {
+              const list = await probeModelList(base, isAnthropic, credential.key)
+              if (list !== undefined) {
+                const served = list.ids.includes(modelId)
+                logger?.info?.(`test-model ${route.id}/${modelId}：探测被拒（HTTP 400），退回清单校验——${list.ids.length} 个模型，${served ? '包含' : '不包含'}该 id`)
+                json(res, 200, { ok: true, mode: 'list', served, total: list.ids.length })
+                return
+              }
+            }
             json(res, 200, { ok: false, error: `HTTP ${response.status}${snippet !== '' ? '：' + snippet : ''}` })
             return
           }
@@ -594,6 +606,33 @@ export function apply(ctx: PluginContext, config: unknown): void {
     }),
     'dsh-llm-provider: /provider/test-model route',
   )
+
+  /** 模型清单探测（清单校验回退用）：GET /models，取回 id 列表；拿不到返回 undefined。 */
+  async function probeModelList(base: string, isAnthropic: boolean, key: string): Promise<{ ids: string[] } | undefined> {
+    const listUrl = isAnthropic ? base + '/v1/models' : base + '/models'
+    const listHeaders: Record<string, string> = isAnthropic
+      ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
+      : { Authorization: 'Bearer ' + key }
+    try {
+      const response = await fetch(listUrl, { headers: listHeaders, signal: AbortSignal.timeout(15_000) })
+      if (!response.ok) return undefined
+      const body = asRecord(await response.json())
+      const list = Array.isArray(body['data'])
+        ? body['data']
+        : Array.isArray(body['models'])
+          ? body['models']
+          : undefined
+      const ids: string[] = []
+      for (const item of Array.isArray(list) ? list : []) {
+        const record = asRecord(item)
+        const value = typeof item === 'string' ? item : readString(record['id']) ?? readString(record['name'])
+        if (value !== undefined && value !== '') ids.push(value)
+      }
+      return { ids }
+    } catch {
+      return undefined
+    }
+  }
 
   // 可添加的供应商预设（Provider 标签页「+ 添加」的候选清单，含已配置标记）
   ctx.effect(

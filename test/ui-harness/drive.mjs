@@ -585,7 +585,8 @@ try {
   })()`)
   console.log('  面板测试探针:', JSON.stringify(panelTest))
   // 实连语义：结果 = 「✓ 连通正常 · <id> · <耗时>ms」（桩固定回 latencyMs:812）
-  if (panelTest.msg.indexOf('deepseek-flash · 812ms') === -1 || panelTest.recorded === null
+  // opencode-go 特例：宿主探测被 400 拒 → 退回清单校验（桩返回清单形状）
+  if (panelTest.msg.indexOf('清单校验：端点共 2 个模型，包含 deepseek-flash') === -1 || panelTest.recorded === null
     || panelTest.recorded.modelId !== 'deepseek-flash' || panelTest.recorded.providerId !== 'opencode-go') {
     throw new Error('行内编辑面板测试按钮没按预期工作：' + JSON.stringify(panelTest))
   }
@@ -752,7 +753,7 @@ try {
     return { msg: msg, recorded: window.__lastTestModel ?? null }
   })()`)
   console.log('  测试按钮探针:', JSON.stringify(testProbe))
-  if (testProbe.msg.indexOf('my-custom · 812ms') === -1 || testProbe.recorded === null
+  if (testProbe.msg.indexOf('清单校验：端点共 2 个模型，包含 my-custom') === -1 || testProbe.recorded === null
     || testProbe.recorded.modelId !== 'my-custom' || testProbe.recorded.providerId !== 'opencode-go') {
     throw new Error('测试按钮没有按预期工作：' + JSON.stringify(testProbe))
   }
