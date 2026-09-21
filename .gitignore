@@ -32,3 +32,4 @@ vendor/node_modules/
 
 # install-deps.sh 在全局缓存不可写时的本地 npm 缓存
 .npm-cache/
+test/ui-harness/client.js
