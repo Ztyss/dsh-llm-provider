@@ -2374,7 +2374,11 @@ export function ProviderSettingsSection() {
             }),
           ),
         )
-        // 协议：就地选择；（默认）= 不写 api 键，由 pi-ai 按端点自行判定
+        // 协议：就地选择；（默认）= 不写 api 键，由 pi-ai 按端点自行判定。
+        // 对齐用内联样式钉死：宿主样式表里有来历不明的 select 规则会盖过类选择器
+        // （用户实测值文本/弹层选项整体右移、箭头贴边），内联是唯一稳赢的层级。
+        // paddingLeft 与同排输入框同值（12px）；原生箭头无视 padding 永远贴右边，
+        // 所以 appearance:none + 自绘 chevron（right 12px），弹层仍是原生渲染。
         bodyRows.push(
           react.createElement(
             'div',
@@ -2384,6 +2388,16 @@ export function ProviderSettingsSection() {
               'select',
               {
                 className: 'pv_field pv_key',
+                style: {
+                  textAlign: 'left',
+                  paddingLeft: '12px',
+                  paddingRight: '28px',
+                  appearance: 'none',
+                  backgroundImage: 'linear-gradient(45deg,transparent 50%,var(--dsw-alias-label-tertiary,#8a8b8e) 50%),linear-gradient(135deg,var(--dsw-alias-label-tertiary,#8a8b8e) 50%,transparent 50%)',
+                  backgroundPosition: 'calc(100% - 17px) calc(50% + 1px),calc(100% - 12px) calc(50% + 1px)',
+                  backgroundSize: '5px 5px,5px 5px',
+                  backgroundRepeat: 'no-repeat',
+                },
                 value: editForm.api,
                 onChange: function (event: FieldEvent) { setEditField(account.id, 'api', event.target.value) },
               },

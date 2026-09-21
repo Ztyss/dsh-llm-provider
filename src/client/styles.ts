@@ -218,8 +218,13 @@ var css =
   'color:var(--dsw-alias-label-secondary)}' +
   '.pv_addBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.03))}' +
   'input.pv_field{cursor:text}' +
-  // select 文本与下拉选项显式左对齐：宿主样式可能把 select 居中（协议「（默认）」占位被顶到中间）
-  'select.pv_field{cursor:pointer;text-align:left}' +
+  // select 文本与下拉选项显式左对齐 + 自带盒模型：宿主样式可能用更高特异性的规则
+  // 改 select 的对齐/内边距（协议值文本、弹层选项整体右移，箭头贴边）。
+  // 类规则是第一道防线，最终以 settings.ts 里渲染时的内联样式钉死（稳赢一切样式表）。
+  'select.pv_field{cursor:pointer;text-align:left;padding:6px 28px 6px 12px;appearance:none;' +
+  'background-image:linear-gradient(45deg,transparent 50%,var(--dsw-alias-label-tertiary,#8a8b8e) 50%),linear-gradient(135deg,var(--dsw-alias-label-tertiary,#8a8b8e) 50%,transparent 50%);' +
+  'background-position:calc(100% - 17px) calc(50% + 1px),calc(100% - 12px) calc(50% + 1px);' +
+  'background-size:5px 5px,5px 5px;background-repeat:no-repeat}' +
   'select.pv_field option{text-align:left}' +
   // 预置字段（路由 ID/端点/协议）：灰底只读；密钥/待填项：白底提示可输入
   'input.pv_ro{background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.05));' +

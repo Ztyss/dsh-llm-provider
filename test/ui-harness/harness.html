@@ -9,9 +9,18 @@
   #root { max-width: 1080px; margin: 18px auto; padding: 18px 20px; background: #fff; border-radius: 12px;
           box-shadow: 0 1px 3px rgba(0,0,0,.08); min-height: 400px; }
   #err { color: #c0392b; font-size: 12px; white-space: pre-wrap; padding: 8px 16px; }
+  /* 敌意样式模拟（?hostile=1 启用）：比插件类规则特异性更高（0,3,1）的宿主 select 规则
+     （不带 !important，对应真实宿主里的普通设计系统规则），
+     用于验证协议下拉的内联样式能穿透高特异性样式表覆盖。 */
+  body.hostile .pv_row select.pv_field { text-align: center; padding-left: 40px; padding-right: 6px; }
+
 </style>
 </head>
 <body>
+<script>
+  // 敌意样式开关：?hostile=1 → body.hostile（配合 select-probe.mjs HOSTILE=1 验证内联样式穿透力）
+  if (location.search.indexOf('hostile=1') !== -1) document.body.className = 'hostile'
+</script>
 <div id="bar">dsh-llm-provider <b>本地版</b> 客户端渲染验证（真 lib/client.js + 极简 react 垫片 + 桩 fetch）</div>
 <div id="err"></div>
 <div id="root">渲染中…</div>
