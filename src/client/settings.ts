@@ -1151,6 +1151,9 @@ export function buildEditRows(
       knownContextWindow: detail === undefined ? undefined : detail.contextWindow,
       knownMaxTokens: detail === undefined ? undefined : detail.maxTokens,
       knownReasoning: detail !== undefined && detail.reasoning === true,
+      // 声明条目里的 reasoning 要回填（用户批注：勾了推理保存后徽标消失）——
+      // 行重建时不带它，勾选态和徽标就会跟着目录/适配器元数据走，声明等于白写
+      reasoning: entry !== undefined && entry.reasoning !== undefined ? entry.reasoning === true : undefined,
       originVision: detail !== undefined ? detail.vision === true : declaredInput.indexOf('image') !== -1,
       originVideo: detail !== undefined ? detail.video === true : declaredInput.indexOf('video') !== -1,
       declared: entry,
@@ -1196,7 +1199,7 @@ function ModelListEditor(props: {
   account: PlanAccount
   catalog: CatalogModel[]
   details: Record<string, ModelDetail> | undefined | null
-  onSaved: (message: string) => void
+  onSaved: (message: string, models: DeclaredModel[]) => void
   onClose: () => void
 }) {
   var account = props.account
@@ -1437,7 +1440,9 @@ function ModelListEditor(props: {
           setError('保存失败：' + String((res && res.error) || '未知错误'))
           return
         }
-        props.onSaved(done)
+        // 带上刚保存的清单：父层据此本地立即覆盖详情/目录（用户批注：保存后
+        // 重新展开要立刻见新值，不等异步刷新回包）
+        props.onSaved(done, models)
         props.onClose()
       })
       .catch(function (cause) {
@@ -2619,8 +2624,53 @@ export function ProviderSettingsSection() {
               account: account,
               catalog: models,
               details: detailsById,
-              onSaved: function (message: string) {
+              onSaved: function (message: string, models: DeclaredModel[]) {
                 showToast(message, true)
+                // 本地立即覆盖详情索引与目录条目（用户批注：保存后重新展开模型页要
+                // 立刻见新值，不等异步刷新回包）。异步 reload 随后到达，自然对齐。
+                // 详情按 qualified 键写（lookupDetail 先查它）；目录里不存在的 id 补进去。
+                // source 只在无来源/已是 declared 时标记，绝不把 pi-ai/adapter 详情降级成 declared。
+                setDetailsById(function (prev: AnyRecord) {
+                  var next: AnyRecord = {}
+                  for (var key in prev) next[key] = prev[key]
+                  for (var i = 0; i < models.length; i += 1) {
+                    var entry = models[i]
+                    var qualified = detailKeyOf(account.id, entry.id)
+                    var existing = next[qualified]
+                    var merged: AnyRecord = existing !== undefined && existing !== null && typeof existing === 'object'
+                      ? { ...(existing as AnyRecord) }
+                      : { id: entry.id, provider: account.id }
+                    if (entry.name !== undefined) merged.name = entry.name
+                    if (entry.contextWindow !== undefined) merged.contextWindow = entry.contextWindow
+                    if (entry.maxTokens !== undefined) merged.maxTokens = entry.maxTokens
+                    if (entry.input !== undefined) merged.input = entry.input
+                    if (entry.reasoning === true) merged.reasoning = true
+                    var existingSource = (existing as AnyRecord | undefined)?.source
+                    if (existingSource === undefined || existingSource === 'declared') merged.source = 'declared'
+                    next[qualified] = merged as unknown as ModelDetail
+                  }
+                  return next
+                })
+                setCatalogGroups(function (prevGroups: AnyRecord[]) {
+                  return prevGroups.map(function (group: AnyRecord) {
+                    if (group.id !== account.id) return group
+                    var catalogModels = Array.isArray(group.models) ? group.models : []
+                    var merged: AnyRecord[] = []
+                    for (var i = 0; i < models.length; i += 1) {
+                      var entry = models[i]
+                      var existing: AnyRecord | undefined
+                      for (var j = 0; j < catalogModels.length; j += 1) {
+                        if (catalogModels[j].id === entry.id) { existing = catalogModels[j] as AnyRecord; break }
+                      }
+                      merged.push({
+                        id: entry.id,
+                        name: entry.name !== undefined ? entry.name : (existing !== undefined ? existing.name : entry.id),
+                        contextWindow: entry.contextWindow !== undefined ? entry.contextWindow : (existing !== undefined ? existing.contextWindow : undefined),
+                      })
+                    }
+                    return { id: group.id, name: group.name, models: merged } as AnyRecord
+                  })
+                })
                 // 清单变了：重拉余额/路由元信息 + 模型目录 + 预设
                 onProviderAdded()
               },
