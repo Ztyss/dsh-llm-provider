@@ -3,10 +3,11 @@
 // 两件事：能不能从 bundle 源码里读出它对 pi-ai 的 import 需求；体检能不能挡住
 // 不兼容的候选——尤其是"先体检一个坏的、再体检一个好的"这种组合，因为 Node 对
 // 加载失败的 ESM 会留下半初始化记录，探针目录要是共用一条 URL，第二个必然误判成失败。
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { piAiCandidates, piAiRequirements, probePiAi } from '../lib/bridge.js'
+import { resolveDshHome } from '../lib/dsh-home.js'
 
 let failures = 0
 function check(name, cond) {
@@ -79,6 +80,17 @@ check('坏 → 好 的顺序下，好候选仍通过', r2.ok === true)
 // ---- 需求解析不出来时只检查目录在不在 ----
 check('无需求 + 目录存在 → 通过', probePiAi([], good, 'noreq').ok === true)
 check('无需求 + 目录不存在 → 不通过', probePiAi([], join(tmpdir(), 'pi-ai-无-xyz'), 'noreq2').ok === false)
+
+// ---- 探针是一次性脚手架：用完即拆（用户批注：llm-bridge 下一堆 .probe-* 应清理）----
+// 上面的场景（good/renamed/nosub/missing/good-again/noreq…）各自建过 .probe-<key>，
+// 走到这里必须一个都不剩。只断言本测试用过的 key：机器上可能还有旧版代码留下的
+// 同名前缀目录（如生产的 .probe-dsh），那不是本测试的清理范围。
+const bridgeDir = join(resolveDshHome(), 'llm-provider-bridge', 'llm-bridge')
+const ownKeys = ['good', 'renamed', 'nosub', 'missing', 'good-again', 'noreq', 'noreq2']
+const probeLeftovers = existsSync(bridgeDir)
+  ? readdirSync(bridgeDir).filter((name) => ownKeys.includes(name.replace(/^\.probe-/, '')))
+  : []
+check('探针目录用完即拆，不在真实 bridge 目录里堆积', probeLeftovers.length === 0, JSON.stringify(probeLeftovers))
 // ---- 候选列表 ----
 // 合并版候选策略：四档（vendor 下载档新→旧 → vendor 兜底依赖 → dsh-app 安装树 → dsh bundle 链）。
 // vendor 档默认不落地（下载 opt-in，DSH_PROVIDER_UPDATE=on 才启用），但档位本身保留——
