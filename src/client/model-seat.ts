@@ -247,7 +247,8 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
     [],
   )
 
-  // 打开时刷新目录、聚焦搜索框；点外部 / Escape 关闭（Escape 先退回根面板）
+  // 打开时刷新目录；点外部 / Escape 关闭（Escape 先退回根面板）。
+  // 不再自动聚焦搜索框（用户批注：打开面板时搜索框不应描黑）
   react.useEffect(
     function () {
       if (!open) return undefined
@@ -256,11 +257,6 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
       // provider 后再打开菜单，列表里还挂着已经删掉的供应商（宿主那边其实已经不报了）。
       if (typeof props.load === 'function') props.load()
       else pullCatalog()
-      if (pane === 'model' && searchRef.current !== null && searchRef.current !== undefined) {
-        try {
-          searchRef.current.focus()
-        } catch (cause) { /* 聚焦失败无所谓 */ }
-      }
       function onPointerDown(event: PointerEvent) {
         if (rootRef.current !== null && !rootRef.current.contains(event.target)) setOpen(false)
       }
@@ -593,9 +589,13 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
 
   var menuBody = pane === 'model' ? modelPane : pane === 'effort' ? effortPane : react.createElement('div', { style: { display: 'flex', flexDirection: 'column' } }, rootPane, effortCell)
 
+  // 面板高度自适应（用户批注）：provider 多（chips 换行）时卡片才放大到 560px，
+  // provider 少（chips 一行装得下）恢复原 360px 尺寸
+  var tallPane = pane === 'model' && groups.length > 4
+
   var menu = react.createElement(
     'div',
-    { className: 'ms_menu' },
+    { className: 'ms_menu' + (tallPane ? ' ms_menuTall' : '') },
     menuBody,
     error === null ? null : react.createElement('div', { className: 'plan_note plan_badText' }, error),
   )

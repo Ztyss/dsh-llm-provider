@@ -59,10 +59,11 @@ var css =
   '.ms_chevOpen{transform:rotate(180deg)}' +
   '.ms_menu{position:absolute;bottom:calc(100% + 6px);right:0;z-index:1100;display:flex;flex-direction:column;' +
   'width:max-content;min-width:min(240px,calc(100vw - 32px));max-width:min(420px,calc(100vw - 32px));' +
-  // provider 多时 chips 会占好几行：卡片上限放宽到 560px，别把下方模型列表挤没（用户批注）
-  'max-height:min(560px,calc(100vh - 96px));overflow:hidden;padding:4px;border:0;border-radius:20px;' +
+  // 高度自适应（用户批注）：默认 360px；provider 多到 chips 换行时（ms_menuTall）才放大
+  'max-height:min(360px,calc(100vh - 96px));overflow:hidden;padding:4px;border:0;border-radius:20px;' +
   'background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));' +
   'box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18));color:var(--dsw-alias-label-primary)}' +
+  '.ms_menu.ms_menuTall{max-height:min(560px,calc(100vh - 96px))}' +
   '.ms_cell{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:auto;min-width:100%;height:40px;' +
   'padding:0 10px;border:0;border-radius:10px;background:transparent;color:var(--dsw-alias-label-primary);' +
   'font:inherit;font-size:14px;line-height:22px;cursor:pointer;text-align:left}' +
