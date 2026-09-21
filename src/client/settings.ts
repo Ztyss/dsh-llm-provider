@@ -2069,6 +2069,11 @@ export function ProviderSettingsSection() {
   var setDelError = delErrorState[1] as (next: string | null) => void
   var refreshingState = react.useState({})
   var setRefreshing = refreshingState[1]
+  // 页面级后台刷新（进入页面 / 添加 / 保存后的 plan 快照重拉）：宿主实查各网关要几秒，
+  // 期间卡片上的 ↻ 也旋转（用户批注）——与单卡手动刷新的 flag 合并判定
+  var planRefreshingState = react.useState(false)
+  var planRefreshing = planRefreshingState[0]
+  var setPlanRefreshing = planRefreshingState[1]
   // 卡片里"补密钥"的输入草稿与保存中标记（都按 provider id 存）
   var keyDraftState = react.useState({})
   var keyDrafts = keyDraftState[0]
@@ -2126,11 +2131,15 @@ export function ProviderSettingsSection() {
       .catch(function () {
         setStatus(statusUnavailable())
       })
+    // plan 快照重拉期间 ↻ 全部旋转（缓存命中时只有几十毫秒，肉眼无感）
+    setPlanRefreshing(true)
     loadPlanStatus(force)
       .then(function (payload) {
         setPlan(payload)
+        setPlanRefreshing(false)
       })
       .catch(function (cause) {
+        setPlanRefreshing(false)
         setNote(cause && cause.message ? String(cause.message) : String(cause))
         // 加载失败：provider 卡片（路由表骨架）仍在，只是没有用量富字段
       })
@@ -3055,9 +3064,9 @@ export function ProviderSettingsSection() {
                   'button',
                   {
                     type: 'button',
-                    className: 'pv_iconBtn' + (refreshingState[0][account.id] === true ? ' pv_spin' : ''),
-                    disabled: refreshingState[0][account.id] === true,
-                    title: refreshingState[0][account.id] === true
+                    className: 'pv_iconBtn' + (refreshingState[0][account.id] === true || planRefreshing === true ? ' pv_spin' : ''),
+                    disabled: refreshingState[0][account.id] === true || planRefreshing === true,
+                    title: refreshingState[0][account.id] === true || planRefreshing === true
                       ? t('prov.refreshing')
                       : (account.fetchedAt !== undefined
                         ? tf('prov.refreshQuotaAt', { time: String(account.fetchedAt).slice(11, 19) })
