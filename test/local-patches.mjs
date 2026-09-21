@@ -126,5 +126,26 @@ check('#5 目录命中的不重复添加', both.length, 1)
 check('#5 目录命中的保留目录元数据', both[0].source, 'pi-ai')
 check('#5 provider+id 键分隔符稳定', modelKey('a', 'b'), 'a\u0000b')
 
+// 声明条目的 reasoning:true 点亮已收录模型的推理徽标（用户批注：编辑器勾推理、清单页不亮）
+const pinned = withDeclaredModels(
+  [
+    { id: 'step-5-preview', name: 'Step 5 Preview', provider: 'stepfun', api: 'openai-completions', vision: true, video: false, reasoning: false, thinkingLevels: [], source: 'adapter' },
+    { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', provider: 'zai-coding-cn', api: 'openai-completions', vision: true, reasoning: true, thinkingLevels: [], source: 'pi-ai' },
+  ],
+  [
+    { id: 'stepfun', models: [{ id: 'step-5-preview', input: ['text', 'image'], reasoning: true }] },
+    { id: 'opencode-go', models: [{ id: 'glm-5.3-flash', reasoning: true }] },
+  ],
+)
+const stepPin = pinned.find((detail) => detail.provider === 'stepfun' && detail.id === 'step-5-preview')
+check('声明 reasoning 点亮本家已收录模型的推理', stepPin.reasoning, true)
+check('点亮不改来源', stepPin.source, 'adapter')
+// 同名模型只有别家有详情：本路由补 qualified 影子，别家的原详情不被顶掉
+const shadow = pinned.find((detail) => detail.provider === 'opencode-go' && detail.id === 'glm-5.3-flash')
+check('跨家同名补 qualified 影子且点亮推理', shadow !== undefined && shadow.reasoning === true, true)
+check('影子标记为声明', shadow.source, 'declared')
+const zaiOrigin = pinned.find((detail) => detail.provider === 'zai-coding-cn' && detail.id === 'glm-5.3-flash')
+check('别家的原详情原样保留', zaiOrigin.source, 'pi-ai')
+
 console.log(failures === 0 ? '\n全部通过' : `\n${failures} 项失败`)
 process.exit(failures === 0 ? 0 : 1)

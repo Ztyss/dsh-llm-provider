@@ -78,6 +78,8 @@ interface DeclaredModel {
   input: string[]
   /** reasoningEfforts 原样：undefined=没写（跟目录走）、false=非推理模型、对象/true=推理模型。 */
   reasoningEfforts: unknown
+  /** 声明条目的 reasoning: true 是用户显式意图（编辑器勾选），点亮已收录模型的推理徽标用。 */
+  reasoning: boolean
   api: string | undefined
   baseUrl: string | undefined
 }
@@ -180,6 +182,7 @@ function declaredModelOf(raw: unknown): DeclaredModel | undefined {
       // inputModalities 是 dsh 回读时的同义字段名：用户从官方 Models 页抄过来时会带它
       : (Array.isArray(entry['inputModalities']) ? entry['inputModalities'].filter((x): x is string => typeof x === 'string') : []),
     reasoningEfforts: entry['reasoningEfforts'],
+    reasoning: entry['reasoning'] === true,
     api: readString(entry['api']),
     baseUrl: readString(entry['baseURL']) ?? readString(entry['baseUrl']),
   }
@@ -226,7 +229,37 @@ export function withDeclaredModels(details: readonly ModelDetail[], routes: Iter
     for (const raw of declaredList) {
       const model = declaredModelOf(raw)
       if (model === undefined) continue
-      if (byKey.has(modelKey(route.id, model.id)) || byId.has(model.id)) continue // 目录优先
+      if (byKey.has(modelKey(route.id, model.id)) || byId.has(model.id)) {
+        // 已收录：声明条目的 reasoning:true 仍要吃到（用户批注：编辑器里勾了推理、
+        // 清单页徽标却不亮）。适配器/目录没报推理 ≠ 不支持——用户声明是显式意图，
+        // 只能点亮不能熄灭（与编辑器 knownReasoning 的粘性语义一致）。
+        // 同名模型只有别家有详情时，给本路由补一条 qualified 影子，别让别家的详情顶掉本家的声明。
+        if (model.reasoning === true) {
+          let upgraded = false
+          for (const detail of merged) {
+            if (detail.id === model.id && detail.provider === route.id) {
+              detail.reasoning = true
+              upgraded = true
+              break
+            }
+          }
+          if (!upgraded) {
+            const base = merged.find((detail) => detail.id === model.id)
+            const baseDetail: ModelDetail = base !== undefined
+              ? base
+              : { id: model.id, name: model.name ?? model.id, provider: route.id, api: model.api, baseUrl: model.baseUrl, thinkingLevels: [] }
+            merged.push({
+              ...baseDetail,
+              id: model.id,
+              provider: route.id,
+              reasoning: true,
+              source: 'declared',
+            })
+            byKey.add(modelKey(route.id, model.id))
+          }
+        }
+        continue // 目录优先
+      }
       const efforts = model.reasoningEfforts
       const levels = efforts !== null && typeof efforts === 'object'
         ? Object.keys(asRecord(efforts)).filter((key) => asRecord(efforts)[key] !== null && asRecord(efforts)[key] !== undefined)
