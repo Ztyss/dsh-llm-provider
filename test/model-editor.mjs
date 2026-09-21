@@ -47,10 +47,11 @@ const {
   isDefaultCatalogEquivalent,
   modelListPayload,
   patchModelRow,
+  payloadFromRows,
   resolveAddDefaults,
   validateModelRows,
 } = moduleExports
-for (const [name, fn] of Object.entries({ addModelRow, buildEditRows, buildModelEditor, isDefaultCatalogEquivalent, modelListPayload, patchModelRow, resolveAddDefaults, validateModelRows })) {
+for (const [name, fn] of Object.entries({ addModelRow, buildEditRows, buildModelEditor, isDefaultCatalogEquivalent, modelListPayload, patchModelRow, payloadFromRows, resolveAddDefaults, validateModelRows })) {
   if (typeof fn !== 'function') {
     console.error(`lib/client.js 没有导出 ${name}（先 npm run build，并确认 src/client/index.ts 的导出名单）`)
     process.exit(2)
@@ -252,6 +253,51 @@ check('没有任何已知值时回退保守值（131072/8192）', (() => {
 check('非法字符串忽略，不进默认值', (() => {
   const d = resolveAddDefaults([{ id: 'x', contextWindow: 'abc', maxTokens: '-5', known: false }], 'm', undefined)
   return d.ctx === '131072' && d.max === '8192'
+})())
+// ---- 8b. 目录外思考模型的「裸 reasoning: true」保存修复（用户报 step-5-preview）----
+// 现场复刻：自定义路由的声明条目只有 reasoning: true、没有 reasoningEfforts（compat 是
+// 用户手写字段，得原样保留）。面板预填的档位「看着配置了」，但没点过任何 chip = edited
+// 不置位，旧逻辑整段原样透传 → 官方 resolver 按非推理物化 → 选择器一选档位就报
+// session/model-unavailable: ... does not support reasoning effort "high"。
+const stepEntry = {
+  id: 'step-5-preview', name: 'step-5-preview', input: ['text', 'image'],
+  compat: { chatTemplateKwargs: {}, chatTemplateArgs: {} },
+  contextWindow: 1000000, maxTokens: 65536, reasoning: true,
+}
+const stepAccount = { id: 'stepfun', deletable: true, models: [stepEntry] }
+const stepPayload = payloadFromRows(buildEditRows(stepAccount, [], undefined), { details: undefined, providerId: 'stepfun' }, () => {})
+const stepEntry0 = stepPayload !== undefined ? stepPayload[0] : undefined
+check('裸 reasoning: true 行没编辑过也补齐 reasoningEfforts（默认档 low/medium/high）', stepEntry0 !== undefined
+  && stepEntry0.reasoningEfforts !== undefined
+  && stepEntry0.reasoningEfforts.low === 'low' && stepEntry0.reasoningEfforts.medium === 'medium'
+  && stepEntry0.reasoningEfforts.high === 'high', JSON.stringify(stepEntry0))
+check('补齐不动手写字段：compat / name / 窗口原样保留', stepEntry0 !== undefined
+  && stepEntry0.compat !== undefined && stepEntry0.compat.chatTemplateKwargs !== undefined
+  && stepEntry0.compat.chatTemplateArgs !== undefined && stepEntry0.name === 'step-5-preview'
+  && stepEntry0.reasoning === true && stepEntry0.contextWindow === 1000000 && stepEntry0.maxTokens === 65536)
+check('pi-ai 目录收录的行不补（参数以上游目录为准）', (() => {
+  const piAiAccount = { id: 'deepseek', deletable: true, models: [{ id: 'deepseek-v4-flash', reasoning: true }] }
+  const p = payloadFromRows(buildEditRows(piAiAccount, catalog, details), { details, providerId: 'deepseek' }, () => {})
+  const e = p !== undefined ? p.find((x) => x.id === 'deepseek-v4-flash') : undefined
+  return e !== undefined && e.reasoningEfforts === undefined && e.reasoning === true
+})())
+check('已声明档位表原样保留（不重写、不重排）', (() => {
+  const acc = { id: 'stepfun', deletable: true, models: [{ id: 'm1', reasoning: true, reasoningEfforts: { low: 'low', xhigh: 'xhigh' } }] }
+  const p = payloadFromRows(buildEditRows(acc, [], undefined), { details: undefined, providerId: 'stepfun' }, () => {})
+  const e = p !== undefined ? p[0] : undefined
+  return e !== undefined && JSON.stringify(e.reasoningEfforts) === JSON.stringify({ low: 'low', xhigh: 'xhigh' })
+})())
+check('勾掉推理仍显式写 reasoningEfforts: false（旧行为不变）', (() => {
+  const rows2 = buildEditRows(stepAccount, [], undefined).map((r) => ({ ...r, reasoning: false, edited: true }))
+  const p = payloadFromRows(rows2, { details: undefined, providerId: 'stepfun' }, () => {})
+  const e = p !== undefined ? p[0] : undefined
+  return e !== undefined && e.reasoning === false && e.reasoningEfforts === false
+})())
+check('草稿优先：effortsDraft 覆盖预填（旧行为不变）', (() => {
+  const rows3 = buildEditRows(stepAccount, [], undefined).map((r) => ({ ...r, effortsDraft: { minimal: 'minimal' }, edited: true }))
+  const p = payloadFromRows(rows3, { details: undefined, providerId: 'stepfun' }, () => {})
+  const e = p !== undefined ? p[0] : undefined
+  return e !== undefined && e.reasoningEfforts !== undefined && e.reasoningEfforts.minimal === 'minimal'
 })())
 console.log(failures === 0 ? '\n逐模型清单编辑测试全部通过' : `\n${failures} 个失败`)
 process.exit(failures === 0 ? 0 : 1)

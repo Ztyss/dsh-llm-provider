@@ -444,6 +444,184 @@ try {
     throw new Error('弹层几何/展开态样式不对：' + JSON.stringify(selMenu))
   }
 
+  // 1c) 目录外思考模型的「裸 reasoning: true」修复（用户报 step-5-preview：档位「看着配置了」、
+  //     保存后模型选择器仍报 model-unavailable ... does not support reasoning effort "high"）——
+  //     打开档位面板确认预填展示，然后不动任何控件直接保存，载荷必须补齐 reasoningEfforts
+  const stepCard0 = await cdp.eval(`(function () {
+    var names = Array.from(document.querySelectorAll('.pv_pc .pv_pcName')).map(function (x) { return x.textContent })
+    var cards = document.querySelectorAll('.pv_pc')
+    for (var i = 0; i < cards.length; i += 1) {
+      var name = cards[i].querySelector('.pv_pcName')
+      if (name !== null && name.textContent === 'StepFun Test') {
+        cards[i].querySelector('.pv_pcHead').click()
+        return { names: names, clicked: true, openClass: cards[i].className }
+      }
+    }
+    return { names: names, clicked: false }
+  })()`)
+  console.log('  stepfun 卡头:', JSON.stringify(stepCard0))
+  await sleep(400)
+  const stepCard1 = await cdp.eval(`(function () {
+    var cards = document.querySelectorAll('.pv_pc')
+    for (var i = 0; i < cards.length; i += 1) {
+      var name = cards[i].querySelector('.pv_pcName')
+      if (name !== null && name.textContent === 'StepFun Test') {
+        return {
+          openClass: cards[i].className,
+          bodyRows: cards[i].querySelectorAll('.pv_row').length,
+          buttons: Array.from(cards[i].querySelectorAll('button')).map(function (x) { return x.textContent }),
+        }
+      }
+    }
+    return { found: false }
+  })()`)
+  console.log('  stepfun 展开后:', JSON.stringify(stepCard1))
+  // 模型框独立折叠（卡片展开时默认收起）：先点「模型（N）」头展开清单页，再进勾选编辑器
+  await cdp.eval(`(function () {
+    var cards = document.querySelectorAll('.pv_pc')
+    for (var i = 0; i < cards.length; i += 1) {
+      var name = cards[i].querySelector('.pv_pcName')
+      if (name === null || name.textContent !== 'StepFun Test') continue
+      var b = Array.from(cards[i].querySelectorAll('button')).find(function (x) { return x.textContent.indexOf('模型（') === 0 })
+      if (b !== undefined) { b.click(); return }
+    }
+  })()`)
+  await sleep(300)
+  await cdp.eval(`(function () {
+    var cards = document.querySelectorAll('.pv_pc')
+    for (var i = 0; i < cards.length; i += 1) {
+      var name = cards[i].querySelector('.pv_pcName')
+      if (name === null || name.textContent !== 'StepFun Test') continue
+      var b = Array.from(cards[i].querySelectorAll('button')).find(function (x) { return x.textContent === '编辑模型' })
+      if (b !== undefined) { b.click(); return }
+    }
+  })()`)
+  const stepEditorWait = await cdp.waitFor('.pv_meRow')
+  console.log('  stepfun 编辑器出现:', stepEditorWait)
+  await sleep(300)
+  // 打开行内面板：推理勾选态来自声明回填，档位 chips 展示预填（用户以为「已配置」的来源）
+  const stepIdClick = await cdp.eval(`(function () {
+    var cards = document.querySelectorAll('.pv_pc')
+    for (var i = 0; i < cards.length; i += 1) {
+      var name = cards[i].querySelector('.pv_pcName')
+      if (name === null || name.textContent !== 'StepFun Test') continue
+      var rows = cards[i].querySelectorAll('.pv_meRow')
+      var idEl = cards[i].querySelector('.pv_meRow .pv_mId')
+      return {
+        rows: rows.length,
+        idFound: idEl !== null,
+        idClass: idEl !== null ? idEl.className : '',
+        idText: idEl !== null ? idEl.textContent : '',
+        editorOpen: cards[i].querySelector('.pv_meList') !== null,
+      }
+    }
+    return { cardFound: false }
+  })()`)
+  console.log('  stepfun 卡诊断:', JSON.stringify(stepIdClick))
+  if (stepIdClick.idFound === true) {
+    await cdp.eval(`(function () {
+      var cards = document.querySelectorAll('.pv_pc')
+      for (var i = 0; i < cards.length; i += 1) {
+        var name = cards[i].querySelector('.pv_pcName')
+        if (name === null || name.textContent !== 'StepFun Test') continue
+        var idEl = cards[i].querySelector('.pv_meRow .pv_mId')
+        if (idEl !== null) { idEl.click(); return }
+      }
+    })()`)
+  }
+  await sleep(300)
+  const stepPanel = await cdp.eval(`(function () {
+    var panel = document.querySelector('.pv_meEditPanel')
+    if (panel === null) return { open: false }
+    var pool = panel.querySelector('.pv_meEffPool')
+    var check = panel.querySelector('input[type=checkbox]')
+    return {
+      open: true,
+      reasoningChecked: check !== null && check.checked === true,
+      chips: pool !== null ? Array.from(pool.querySelectorAll('.pv_meCap')).map(function (x) { return x.textContent.trim() }) : [],
+      on: pool !== null ? Array.from(pool.querySelectorAll('.pv_meCap.pv_meEffOn')).map(function (x) { return x.textContent.trim() }) : [],
+    }
+  })()`)
+  console.log('  裸 reasoning 面板:', JSON.stringify(stepPanel))
+  if (stepPanel.open !== true || stepPanel.reasoningChecked !== true
+    || stepPanel.on.indexOf('low') === -1 || stepPanel.on.indexOf('medium') === -1 || stepPanel.on.indexOf('high') === -1) {
+    throw new Error('思考档位面板没有按预填展示：' + JSON.stringify(stepPanel))
+  }
+  shots.push(await cdp.shot('01c-stepfun-effort-repair'))
+  // 不碰任何控件：完成收面板 → 保存——载荷里必须有补齐的档位表（修复点）。
+  // 保存按钮限定 .pv_meActs（编辑器操作区）：卡片的 API 密钥行也有一个「保存」
+  await cdp.eval(`(function () {
+    var panel = document.querySelector('.pv_meEditPanel')
+    if (panel === null) return
+    var b = Array.from(panel.querySelectorAll('button')).find(function (x) { return x.textContent === '完成' })
+    if (b !== undefined) b.click()
+  })()`)
+  await sleep(200)
+  const stepSaveClick = await cdp.eval(`(function () {
+    var cards = document.querySelectorAll('.pv_pc')
+    for (var i = 0; i < cards.length; i += 1) {
+      var name = cards[i].querySelector('.pv_pcName')
+      if (name === null || name.textContent !== 'StepFun Test') continue
+      var acts = cards[i].querySelectorAll('.pv_meActs button')
+      var texts = Array.from(acts).map(function (x) { return x.textContent + (x.disabled ? '[disabled]' : '') })
+      for (var j = 0; j < acts.length; j += 1) {
+        if (acts[j].textContent === '保存') { acts[j].click(); return { clicked: true, texts: texts } }
+      }
+      return { clicked: false, texts: texts }
+    }
+    return { clicked: false, card: false }
+  })()`)
+  console.log('  stepfun 保存点击:', JSON.stringify(stepSaveClick))
+  await sleep(300)
+  const stepAfterSave = await cdp.eval(`({
+    toast: (document.querySelector('.pv_toast') || {}).textContent || '',
+    editorStillOpen: document.querySelector('.pv_meRow') !== null,
+    errorNote: (document.querySelector('.pv_me .plan_badText') || {}).textContent || '',
+  })`)
+  console.log('  stepfun 保存后:', JSON.stringify(stepAfterSave))
+  // 模型清单保存走插件自己的 /provider/set-models（桩记在 __lastSetModels），不是 settings/mutate
+  const stepMutate = await cdp.eval(`(function () {
+    var m = window.__lastSetModels
+    if (m === undefined || m === null) return { captured: false }
+    var model = m.models && m.models[0]
+    return {
+      captured: true,
+      providerId: m.providerId,
+      efforts: model ? model.reasoningEfforts : undefined,
+      compatKept: model !== undefined && model.compat !== undefined && model.compat.chatTemplateKwargs !== undefined,
+      reasoningTrue: model !== undefined && model.reasoning === true,
+    }
+  })()`)
+  console.log('  裸 reasoning 保存载荷:', JSON.stringify(stepMutate))
+  if (stepMutate.captured !== true || stepMutate.providerId !== 'stepfun-test'
+    || stepMutate.efforts === undefined || stepMutate.efforts.low !== 'low'
+    || stepMutate.efforts.medium !== 'medium' || stepMutate.efforts.high !== 'high'
+    || stepMutate.compatKept !== true || stepMutate.reasoningTrue !== true) {
+    throw new Error('裸 reasoning: true 保存没补齐档位表：' + JSON.stringify(stepMutate))
+  }
+  // 清掉本段留下的桩记录：后面的「勾选草稿」探针断言全场此时没有任何 set-models 调用
+  await cdp.eval('delete window.__lastSetModels')
+  // 还原现场：卡片展开互斥（展开本卡时 opencode-go 被自动收起），后续既有探针假定
+  // 「第一张卡展开、模型框收起」——先收本卡的模型框（复位编辑态）与卡片，再展开 opencode-go
+  await cdp.eval(`(function () {
+    var cards = document.querySelectorAll('.pv_pc')
+    for (var i = 0; i < cards.length; i += 1) {
+      var name = cards[i].querySelector('.pv_pcName')
+      if (name === null || name.textContent !== 'StepFun Test') continue
+      var mh = cards[i].querySelector('.pv_mHead')
+      if (mh !== null) mh.click()
+      return
+    }
+  })()`)
+  await sleep(200)
+  await cdp.eval(`(function () {
+    var cards = document.querySelectorAll('.pv_pc')
+    for (var i = 0; i < cards.length; i += 1) {
+      var name = cards[i].querySelector('.pv_pcName')
+      if (name !== null && name.textContent === 'OpenCode Go') { cards[i].querySelector('.pv_pcHead').click(); return }
+    }
+  })()`)
+  await sleep(300)
 
   // 2) 模型框展开 → 先是「当前清单」只读页；点「编辑模型」才进勾选编辑器
   await cdp.eval(`document.querySelector('.pv_pc .pv_mHead').click()`)
@@ -560,7 +738,21 @@ try {
   })()`)
   console.log('  清单探针:', JSON.stringify(editorProbe))
   if (editorProbe.rows === 0 || editorProbe.colhead !== true || editorProbe.noConfigBtn !== true || editorProbe.allRowsReadOnly !== true || editorProbe.noCustomBadge !== true || editorProbe.idTruncates !== true || editorProbe.noFilter !== true || editorProbe.delOnlyDeclared !== true || editorProbe.headCheckAligned !== true || editorProbe.noNameCol !== true || editorProbe.declaredOnly !== true || editorProbe.noCounter !== true || editorProbe.noInlineAdd !== true || editorProbe.ctxMaxShown !== true || editorProbe.colAligned !== true) {
-    throw new Error('模型清单结构没满足：' + JSON.stringify(editorProbe))
+    const cardCensus = await cdp.eval(`(function () {
+      var out = []
+      var cards = document.querySelectorAll('.pv_pc')
+      for (var i = 0; i < cards.length; i += 1) {
+        out.push({
+          i: i,
+          name: (cards[i].querySelector('.pv_pcName') || {}).textContent,
+          open: cards[i].className.indexOf('pv_pcOpen') !== -1,
+          meRows: cards[i].querySelectorAll('.pv_meRow').length,
+          mRows: cards[i].querySelectorAll('.pv_mRow').length,
+        })
+      }
+      return out
+    })()`)
+    throw new Error('模型清单结构没满足：' + JSON.stringify(editorProbe) + ' 卡片普查：' + JSON.stringify(cardCensus))
   }
   shots.push(await cdp.shot('02b-model-list-editor'))
 

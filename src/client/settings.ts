@@ -1307,6 +1307,128 @@ export function effortsToDeclared(
   return { value: out, error: undefined }
 }
 
+/**
+ * 给定行列表 → settings 的 models 数组（模块级纯函数，供组件与单测共用）。
+ *
+ * 清单做「新增 / 移除 / 行内编辑」：
+ *   声明过的条目 —— 以声明原文为底；行内编辑过的参数（显示名/上下文/最大输出/能力）
+ *     覆盖回条目，其余手写字段（reasoningEfforts / compat）原样保留；
+ *   目录收录的条目 —— 只写 {id}（参数以上游目录为准）；
+ *   自定义条目（目录里没有）—— 上下文 / 最大输出必填，能力开关写进 input 模态。
+ *
+ * @param ctx   组件上下文：元数据索引（预填用）与 provider 路由 id。
+ * @param fail  校验失败时的报错出口（组件里是 setError）；返回 undefined 表示放弃保存。
+ */
+export function payloadFromRows(
+  list: ModelEditRow[],
+  ctx: { details: Record<string, ModelDetail> | undefined | null; providerId: string },
+  fail: (message: string) => void,
+): DeclaredModel[] | undefined {
+  var out: DeclaredModel[] = []
+  for (var i = 0; i < list.length; i += 1) {
+    var row = list[i]
+    if (row.enabled !== true) continue
+    if (row.declared !== undefined) {
+      var declared: DeclaredModel = { ...row.declared, id: row.id }
+      if (row.edited === true) {
+        // 行内编辑过的参数覆盖回声明条目。留空的字段保留声明原值；填了但不是正整数要拦。
+        var name = typeof row.name === 'string' ? row.name.trim() : ''
+        if (name !== '' && name !== row.id) declared.name = name
+        var ctxRaw = row.contextWindow.trim()
+        if (ctxRaw !== '') {
+          var ctxVal = parsePositiveInt(ctxRaw)
+          if (ctxVal === undefined) return fail('「' + row.id + '」的上下文窗口要填正整数')
+          declared.contextWindow = ctxVal
+        }
+        var maxRaw = row.maxTokens.trim()
+        if (maxRaw !== '') {
+          var maxVal = parsePositiveInt(maxRaw)
+          if (maxVal === undefined) return fail('「' + row.id + '」的最大输出要填正整数')
+          declared.maxTokens = maxVal
+        }
+        var modalities = Array.isArray(declared.input) ? declared.input.filter(function (x) { return x !== 'image' && x !== 'video' }) : ['text']
+        if (modalities.indexOf('text') === -1) modalities.unshift('text')
+        if (row.vision === true && modalities.indexOf('image') === -1) modalities.push('image')
+        if (row.vision !== true) modalities = modalities.filter(function (x) { return x !== 'image' })
+        if (row.video === true && modalities.indexOf('video') === -1) modalities.push('video')
+        if (row.video !== true) modalities = modalities.filter(function (x) { return x !== 'video' })
+        declared.input = modalities
+        if (row.reasoning !== undefined) {
+          declared.reasoning = row.reasoning === true
+          if (row.reasoning === true) {
+            // 显式档位表是目录外思考模型真正生效的开关：官方 resolver 对省略 reasoningEfforts
+            // 的目录外条目按非推理物化（base 为空）。草稿/声明都没有就按预填现算一份——
+            // pi-ai 目录收录的行除外（参数以上游为准，保持省略）。
+            var effortDraft = row.effortsDraft !== undefined ? row.effortsDraft : effortsDraftOf(row.declared)
+            if (effortDraft === undefined && row.inPiAi !== true) {
+              effortDraft = prefillEffortsOf(row.declared, ctx.details, ctx.providerId, row.id)
+            }
+            if (effortDraft !== undefined) {
+              var effortOut = effortsToDeclared(effortDraft, row.declared)
+              if (effortOut.error !== undefined) return fail('「' + row.id + '」' + effortOut.error)
+              declared.reasoningEfforts = effortOut.value
+            }
+          } else {
+            // 取消推理必须显式写 false：声明里残留的档位表会让官方 resolver 继续按思考模型物化
+            declared.reasoningEfforts = false
+          }
+        }
+      }
+      // 裸「reasoning: true」修复（用户报：step-5-preview 档位「看着配置了」，保存后模型
+      // 选择器仍报 model-unavailable）：目录外声明条目 reasoning 开着却没有 reasoningEfforts
+      // 时，官方 resolver 按非推理物化，选择器一选档位就被 dsh-llm 拒（UNSUPPORTED_REASONING_
+      // EFFORT）。面板预填的档位只是展示（草稿未动 = edited 不置位），旧逻辑整段原样透传，
+      // 坏状态原样落盘——所以这里不管 edited 与否统一补齐：草稿 > 声明原文 > 预填，与面板
+      // 所见一致。pi-ai 目录收录的行不动（参数以上游为准）；显式 false（非推理声明）也不动。
+      if (declared.reasoning === true && declared.reasoningEfforts === undefined && row.inPiAi !== true) {
+        var repairDraft = row.effortsDraft !== undefined ? row.effortsDraft : effortsDraftOf(row.declared)
+        if (repairDraft === undefined) repairDraft = prefillEffortsOf(row.declared, ctx.details, ctx.providerId, row.id)
+        var repairOut = effortsToDeclared(repairDraft, row.declared)
+        if (repairOut.error !== undefined) return fail('「' + row.id + '」' + repairOut.error)
+        declared.reasoningEfforts = repairOut.value
+      }
+      out.push(declared)
+      continue
+    }
+    if (row.known === true) {
+      out.push({ id: row.id })
+      continue
+    }
+    var ctxText = row.contextWindow.trim()
+    if (ctxText === '') return fail('自定义模型「' + row.id + '」要填上下文窗口')
+    var ctxNum = Number(ctxText)
+    if (!isFinite(ctxNum) || Math.floor(ctxNum) !== ctxNum || ctxNum <= 0) return fail('「' + row.id + '」的上下文窗口要填正整数')
+    var max = row.maxTokens.trim()
+    if (max === '') return fail('自定义模型「' + row.id + '」要填最大输出')
+    var maxNum = Number(max)
+    if (!isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) return fail('「' + row.id + '」的最大输出要填正整数')
+    var input = ['text']
+    if (row.vision === true) input.push('image')
+    // video 不写：官方校验的 input 模态只有 text/image（写 video 整单被拒）
+    // 键序按 settings.yaml 惯例：id、name、contextWindow、maxTokens、input
+    var entry: DeclaredModel = { id: row.id }
+    // 表单里填了显示名（且不等于 ID）才写 name，避免冗余字段进 settings.yaml
+    if (typeof row.name === 'string' && row.name !== '' && row.name !== row.id) entry.name = row.name
+    entry.contextWindow = ctxNum
+    entry.maxTokens = maxNum
+    entry.input = input
+    if (row.reasoning === true) {
+      entry.reasoning = true
+      // 自定义条目（目录外）：保存时物化预填档位表（声明原文/兄弟/家族/全局），
+      // 让官方 resolver 真正按思考模型物化——添加表单不设档位，这里兜底（用户批注）
+      var customDraft = row.effortsDraft !== undefined
+        ? row.effortsDraft
+        : prefillEffortsOf(undefined, ctx.details, ctx.providerId, row.id)
+      var customEffort = effortsToDeclared(customDraft, undefined)
+      if (customEffort.error !== undefined) return fail('「' + row.id + '」' + customEffort.error)
+      entry.reasoningEfforts = customEffort.value
+    }
+    out.push(entry)
+  }
+  if (out.length === 0) return fail('至少要勾选一个模型（全部不勾的清单无法保存）')
+  return out
+}
+
 export function buildEditRows(
   account: PlanAccount,
   catalog: CatalogModel[],
@@ -1538,104 +1660,13 @@ function ModelListEditor(props: {
 
   /**
    * 给定行列表 → settings 的 models 数组；形状不合法时返回 undefined 并写好错误提示。
-   *
-   * 清单做「新增 / 移除 / 行内编辑」：
-   *   声明过的条目 —— 以声明原文为底；行内编辑过的参数（显示名/上下文/最大输出/能力）
-   *     覆盖回条目，其余手写字段（reasoningEfforts / compat）原样保留；
-   *   目录收录的条目 —— 只写 {id}（参数以上游目录为准）；
-   *   自定义条目（目录里没有）—— 上下文 / 最大输出必填，能力开关写进 input 模态。
+   * 清单做「新增 / 移除 / 行内编辑」：声明过的条目以声明原文为底（行内编辑过的参数覆盖回条目，
+   * 其余手写字段（reasoningEfforts / compat）原样保留）；目录收录的条目只写 {id}；
+   * 自定义条目上下文 / 最大输出必填。纯逻辑在模块级 {@link payloadFromRows}（可单测），
+   * 这里只注入本组件上下文。
    */
   function payloadFrom(list: ModelEditRow[]): DeclaredModel[] | undefined {
-    var out: DeclaredModel[] = []
-    for (var i = 0; i < list.length; i += 1) {
-      var row = list[i]
-      if (row.enabled !== true) continue
-      if (row.declared !== undefined) {
-        var declared: DeclaredModel = { ...row.declared, id: row.id }
-        if (row.edited === true) {
-          // 行内编辑过的参数覆盖回声明条目。留空的字段保留声明原值；填了但不是正整数要拦。
-          var name = typeof row.name === 'string' ? row.name.trim() : ''
-          if (name !== '' && name !== row.id) declared.name = name
-          var ctxRaw = row.contextWindow.trim()
-          if (ctxRaw !== '') {
-            var ctxVal = parsePositiveInt(ctxRaw)
-            if (ctxVal === undefined) { setError('「' + row.id + '」的上下文窗口要填正整数'); return undefined }
-            declared.contextWindow = ctxVal
-          }
-          var maxRaw = row.maxTokens.trim()
-          if (maxRaw !== '') {
-            var maxVal = parsePositiveInt(maxRaw)
-            if (maxVal === undefined) { setError('「' + row.id + '」的最大输出要填正整数'); return undefined }
-            declared.maxTokens = maxVal
-          }
-          var modalities = Array.isArray(declared.input) ? declared.input.filter(function (x) { return x !== 'image' && x !== 'video' }) : ['text']
-          if (modalities.indexOf('text') === -1) modalities.unshift('text')
-          if (row.vision === true && modalities.indexOf('image') === -1) modalities.push('image')
-          if (row.vision !== true) modalities = modalities.filter(function (x) { return x !== 'image' })
-          if (row.video === true && modalities.indexOf('video') === -1) modalities.push('video')
-          if (row.video !== true) modalities = modalities.filter(function (x) { return x !== 'video' })
-          declared.input = modalities
-          if (row.reasoning !== undefined) {
-            declared.reasoning = row.reasoning === true
-            if (row.reasoning === true) {
-              // 显式档位表是目录外思考模型真正生效的开关：官方 resolver 对省略 reasoningEfforts
-              // 的目录外条目按非推理物化（base 为空）。草稿/声明都没有就按预填现算一份——
-              // pi-ai 目录收录的行除外（参数以上游为准，保持省略）。
-              var effortDraft = row.effortsDraft !== undefined ? row.effortsDraft : effortsDraftOf(row.declared)
-              if (effortDraft === undefined && row.inPiAi !== true) {
-                effortDraft = prefillEffortsOf(row.declared, props.details, account.id, row.id)
-              }
-              if (effortDraft !== undefined) {
-                var effortOut = effortsToDeclared(effortDraft, row.declared)
-                if (effortOut.error !== undefined) { setError('「' + row.id + '」' + effortOut.error); return undefined }
-                declared.reasoningEfforts = effortOut.value
-              }
-            } else {
-              // 取消推理必须显式写 false：声明里残留的档位表会让官方 resolver 继续按思考模型物化
-              declared.reasoningEfforts = false
-            }
-          }
-        }
-        out.push(declared)
-        continue
-      }
-      if (row.known === true) {
-        out.push({ id: row.id })
-        continue
-      }
-      var ctx = row.contextWindow.trim()
-      if (ctx === '') { setError('自定义模型「' + row.id + '」要填上下文窗口'); return undefined }
-      var ctxNum = Number(ctx)
-      if (!isFinite(ctxNum) || Math.floor(ctxNum) !== ctxNum || ctxNum <= 0) { setError('「' + row.id + '」的上下文窗口要填正整数'); return undefined }
-      var max = row.maxTokens.trim()
-      if (max === '') { setError('自定义模型「' + row.id + '」要填最大输出'); return undefined }
-      var maxNum = Number(max)
-      if (!isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) { setError('「' + row.id + '」的最大输出要填正整数'); return undefined }
-      var input = ['text']
-      if (row.vision === true) input.push('image')
-      // video 不写：官方校验的 input 模态只有 text/image（写 video 整单被拒）
-      // 键序按 settings.yaml 惯例：id、name、contextWindow、maxTokens、input
-      var entry: DeclaredModel = { id: row.id }
-      // 表单里填了显示名（且不等于 ID）才写 name，避免冗余字段进 settings.yaml
-      if (typeof row.name === 'string' && row.name !== '' && row.name !== row.id) entry.name = row.name
-      entry.contextWindow = ctxNum
-      entry.maxTokens = maxNum
-      entry.input = input
-      if (row.reasoning === true) {
-        entry.reasoning = true
-        // 自定义条目（目录外）：保存时物化预填档位表（声明原文/兄弟/家族/全局），
-        // 让官方 resolver 真正按思考模型物化——添加表单不设档位，这里兜底（用户批注）
-        var customDraft = row.effortsDraft !== undefined
-          ? row.effortsDraft
-          : prefillEffortsOf(undefined, props.details, account.id, row.id)
-        var customEffort = effortsToDeclared(customDraft, undefined)
-        if (customEffort.error !== undefined) { setError('「' + row.id + '」' + customEffort.error); return undefined }
-        entry.reasoningEfforts = customEffort.value
-      }
-      out.push(entry)
-    }
-    if (out.length === 0) { setError('至少要勾选一个模型（全部不勾的清单无法保存）'); return undefined }
-    return out
+    return payloadFromRows(list, { details: props.details, providerId: account.id }, setError)
   }
 
   function payload(): DeclaredModel[] | undefined {

@@ -54,6 +54,7 @@
     vendorPiAiVersions: [],
     llmDirectorySize: 12,
     routes: [{ id: 'opencode-go', apiKeyEnv: 'OPENCODE_GO_API_KEY', source: 'llm-pi-ai', api: 'openai-completions', baseURL: 'https://opencode.ai/zen/go/v1' },
+             { id: 'stepfun-test', apiKeyEnv: 'STEPFUN_TEST_API_KEY', source: 'llm-pi-ai', api: 'openai-completions', baseURL: 'https://api.stepfun.com/step_plan/v1' },
              { id: 'zai-coding-cn', apiKeyEnv: 'ZAI_API_KEY', source: 'llm-pi-ai' }],
     deepseekRouteMissing: false,
     testMode: false,
@@ -70,6 +71,18 @@
           { window: '5 小时滚动窗口', percentLeft: 97, resetAt: new Date(Date.now() + 3 * 3600e3 + 47 * 60e3).toISOString() },
           { window: '每周窗口', percentLeft: 78, resetAt: new Date(Date.now() + 5 * 864e5 + 8 * 3600e3).toISOString() },
           { window: '每月窗口', percentLeft: 15, resetAt: new Date(Date.now() + 8 * 864e5 + 17 * 3600e3).toISOString() },
+        ] },
+      { id: 'stepfun-test', displayName: 'StepFun Test', kind: 'quota', authConfigured: true, api: 'openai-completions',
+        apiKeyEnv: 'STEPFUN_TEST_API_KEY', baseUrl: 'https://api.stepfun.com/step_plan/v1',
+        keyHint: 'sk-****test', deletable: true, fetchedAt: new Date().toISOString(),
+        // 现场复刻用户报的坏状态（step-5-preview）：声明条目只有 reasoning: true、没有
+        // reasoningEfforts，compat 是手写字段——编辑器不动它、保存时必须补齐档位表
+        models: [{ id: 'step-5-preview', name: 'step-5-preview', input: ['text', 'image'],
+                   compat: { chatTemplateKwargs: {}, chatTemplateArgs: {} },
+                   contextWindow: 1000000, maxTokens: 65536, reasoning: true }],
+        windows: [
+          { window: '5 小时滚动窗口', percentLeft: 90, resetAt: new Date(Date.now() + 2 * 3600e3).toISOString() },
+          { window: '每月窗口', percentLeft: 40, resetAt: new Date(Date.now() + 8 * 864e5).toISOString() },
         ] },
       { id: 'zai-coding-cn', displayName: 'Z.ai Coding (CN)', kind: 'quota', authConfigured: true, api: 'openai-completions',
         apiKeyEnv: 'ZAI_API_KEY', baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4', websiteUrl: 'https://open.bigmodel.cn',
@@ -89,6 +102,11 @@
         // 超长 ID（用户真实场景：deepseek 官方目录全是 deepseek/deepseek-v4-flash-0731:patch 这类）：
         // 钉住「ID 单行省略号截断、不与能力徽标重叠」的回归
         { id: 'deepseek/deepseek-v4-flash-0731:patch', name: '0731 Patch', contextWindow: 1000000 },
+      ] },
+      // step-5-preview 的声明条目 reasoning:true 但没配 reasoningEfforts → 官方 resolver 按非推理
+      // 物化，目录里没有 reasoning 能力（与用户现场一致）；保存修复后目录才会带出档位
+      { provider: 'stepfun-test', name: 'StepFun Test', models: [
+        { id: 'step-5-preview', name: 'step-5-preview', contextWindow: 1000000 },
       ] },
     ],
     default: { provider: 'opencode-go', model: 'deepseek-flash' },
