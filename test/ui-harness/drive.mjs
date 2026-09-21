@@ -418,12 +418,20 @@ try {
     var menu = document.querySelector('.pv_selMenu')
     if (menu === null) return { open: false }
     var opts = menu.querySelectorAll('.pv_selOption')
+    var trg = document.querySelector('.pv_selTrigger')
+    var b = trg.getBoundingClientRect()
+    var m = menu.getBoundingClientRect()
     return {
       open: true,
       count: opts.length,
       firstOption: opts.length > 0 ? opts[0].textContent : '',
       firstAlign: opts.length > 0 ? getComputedStyle(opts[0]).textAlign : null,
       onCount: menu.querySelectorAll('.pv_selOptionOn').length,
+      // 弹层外沿与触发器严格等宽（用户批注：下拉框和协议填写框长度未对齐）
+      leftDelta: Math.round(Math.abs(m.left - b.left) * 10) / 10,
+      rightDelta: Math.round(Math.abs(m.right - b.right) * 10) / 10,
+      // 展开态=悬停同款 1px 深边框，不得再叠 inset（用户批注：太黑太粗）
+      openShadow: getComputedStyle(trg).boxShadow,
     }
   })()`)
   await cdp.eval(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`)
@@ -431,6 +439,9 @@ try {
   console.log('  协议下拉:', JSON.stringify(selProbe), JSON.stringify(selMenu))
   if (selProbe.found !== true || selMenu.open !== true || selMenu.firstOption !== '（默认）' || selMenu.firstAlign !== 'left' || selMenu.onCount !== 1) {
     throw new Error('协议自绘下拉不对：' + JSON.stringify({ selProbe: selProbe, selMenu: selMenu }))
+  }
+  if (selMenu.leftDelta > 0.6 || selMenu.rightDelta > 0.6 || selMenu.openShadow !== 'none') {
+    throw new Error('弹层几何/展开态样式不对：' + JSON.stringify(selMenu))
   }
 
 

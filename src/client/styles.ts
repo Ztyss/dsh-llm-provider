@@ -239,13 +239,15 @@ var css =
   'color:var(--dsw-alias-label-primary);cursor:pointer}' +
   '.pv_selTrigger:hover{border-color:var(--dsw-alias-label-primary,rgba(0,0,0,.62))}' +
   '.pv_selTrigger:focus{outline:0}' +
-  '.pv_selTrigger.pv_selOpen,.pv_selTrigger.pv_selOpen:hover{' +
-  'border-color:var(--dsw-alias-label-primary,rgba(0,0,0,.62));' +
-  'box-shadow:inset 0 0 0 1px var(--dsw-alias-label-primary,rgba(0,0,0,.62))}' +
+  // 展开态=悬停同款 1px 深边框（用户批注：原 inset 双层视觉 2px 太黑太粗，收回到图1 的粗度）
+  '.pv_selTrigger.pv_selOpen{border-color:var(--dsw-alias-label-primary,rgba(0,0,0,.62))}' +
   '.pv_selValue{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
   '.pv_selChev{display:inline-flex;color:var(--dsw-alias-label-tertiary)}' +
   '.pv_selOpen .pv_selChev{color:var(--dsw-alias-label-primary)}' +
-  '.pv_selMenu{position:absolute;top:calc(100% + 4px);left:0;min-width:100%;z-index:60;' +
+  // 弹层左右锚定容器（left:0;right:0）= 外沿与触发器严格等宽。不用 min-width:100%：
+  // 页面没有全局 border-box，content-box 下弹层外沿会多出自身 padding+border（右侧冒出
+  // 10px，用户批注：下拉框和协议填写框长度未对齐）。选项超宽时靠 overflow:auto 兜底。
+  '.pv_selMenu{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;' +
   'background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));' +
   'border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.14);padding:4px;max-height:240px;overflow:auto}' +
   '.pv_selOption{padding:6px 12px;border-radius:6px;font-size:13px;line-height:20px;text-align:left;' +
