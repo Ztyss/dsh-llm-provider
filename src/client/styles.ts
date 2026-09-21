@@ -152,9 +152,9 @@ var css =
   'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));font-size:13px;line-height:20px;' +
   'color:var(--dsw-alias-label-secondary)}' +
   // 模型区外框
+  // 模型区外框（底部只留 4px：收起态卡片自带 14px 底距足够——用户批注框下沿多余空行）
   '.pv_mBox{border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:12px;' +
-  // 底部 12px 由框自己出（此前靠按钮行的 margin-bottom 兼职，导致它与下方表单拉开 14px）
-  'padding:0 14px 12px;display:flex;flex-direction:column}' +
+  'padding:0 14px 4px;display:flex;flex-direction:column}' +
   '.pv_mRight{margin-left:auto;display:inline-flex;align-items:center;gap:8px}' +
   '.pv_iconBtn{border:0;background:0 0;cursor:pointer;font:inherit;font-size:15px;padding:3px 6px;' +
   'border-radius:6px;color:var(--dsw-alias-label-tertiary)}' +
@@ -222,15 +222,17 @@ var css =
   // select 文本与下拉选项显式左对齐 + 自带盒模型：宿主样式可能用更高特异性的规则
   // 改 select 的对齐/内边距（协议值文本、弹层选项整体右移，箭头贴边）。
   // 类规则是第一道防线，最终以 settings.ts 里渲染时的内联样式钉死（稳赢一切样式表）。
+  // 箭头用官方同款 Chevron（caretSvg 的路径做成 data-URI，用户批注：与模型栏箭头统一）
   'select.pv_field{cursor:pointer;text-align:left;padding:6px 28px 6px 12px;appearance:none;' +
-  'background-image:linear-gradient(45deg,transparent 50%,var(--dsw-alias-label-tertiary,#8a8b8e) 50%),linear-gradient(135deg,var(--dsw-alias-label-tertiary,#8a8b8e) 50%,transparent 50%);' +
-  'background-position:calc(100% - 17px) calc(50% + 1px),calc(100% - 12px) calc(50% + 1px);' +
-  'background-size:5px 5px,5px 5px;background-repeat:no-repeat}' +
+  "background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14' fill='none'%3E%3Cpath fill='%238a8b8e' d='M11.8486 5.5L11.4238 5.92383L8.69727 8.65137C8.44157 8.90706 8.21562 9.13382 8.01172 9.29785C7.79912 9.46883 7.55595 9.61756 7.25 9.66602C7.08435 9.69222 6.91565 9.69222 6.75 9.66602C6.44405 9.61756 6.20088 9.46883 5.98828 9.29785C5.78438 9.13382 5.55843 8.90706 5.30273 8.65137L2.57617 5.92383L2.15137 5.5L3 4.65137L3.42383 5.07617L6.15137 7.80273C6.42595 8.07732 6.59876 8.24849 6.74023 8.3623C6.87291 8.46904 6.92272 8.47813 6.9375 8.48047C6.97895 8.48703 7.02105 8.48703 7.0625 8.48047C7.07728 8.47813 7.12709 8.46904 7.25977 8.3623C7.40124 8.24849 7.57405 8.07732 7.84863 7.80273L10.5762 5.07617L11 4.65137L11.8486 5.5Z'/%3E%3C/svg%3E\");" +
+  'background-position:calc(100% - 12px) center;' +
+  'background-size:14px 14px;background-repeat:no-repeat}' +
   'select.pv_field option{text-align:left}' +
-  // 预置字段（路由 ID/端点/协议）：灰底只读；密钥/待填项：白底提示可输入
+  // 预置字段（路由 ID）：灰底只读；密钥/待填项/协议：白底 + 深边框提示可操作
+  // （用户批注：协议下拉的边框比 API 地址浅——pv_key 原来限定 input，select 吃不到）
   'input.pv_ro{background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.05));' +
   'color:var(--dsw-alias-label-tertiary);cursor:default}' +
-  'input.pv_key{background:var(--dsw-alias-bg-layer-1,#fff);' +
+  '.pv_key{background:var(--dsw-alias-bg-layer-1,#fff);' +
   'border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.2))}' +
   '.pv_actRow{display:flex;gap:10px;align-items:center;padding:8px 0 4px}' +
   // 就地编辑的操作区：提示独立成行，按钮行与其它保存/取消行同款呼吸距（用户报原来太挤）
@@ -387,7 +389,7 @@ var css =
   '.pv_capOff{opacity:.6;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1,rgba(0,0,0,.15))}' +
   // 「添加模型」表单：仿添加供应商面板（标签在左、输入在右的 pv_row 行 + 底部按钮行）
   // 度量与 pv_pcBody 对齐（13px 行 / 6px 间距 / 18px 内边距），输入随行宽伸展，不再限 320px
-  '.pv_meForm{display:flex;flex-direction:column;gap:6px;padding:10px 18px;margin-top:0;' +
+  '.pv_meForm{display:flex;flex-direction:column;gap:6px;padding:10px 18px;margin-top:0;margin-bottom:4px;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;' +
   'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.02))}' +
   '.pv_meFormTitle{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}' +
