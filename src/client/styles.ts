@@ -255,9 +255,13 @@ var css =
   '.pv_mIdOpen{color:var(--dsw-alias-label-primary)}' +
   '.pv_meEditPanel{display:flex;flex-direction:column;gap:6px;padding:8px 10px;' +
   // 左右对称 10px：外框在模型清单框里居中、两侧都留缝（用户报左 18/右 0 既偏又贴外框）
-  'margin:4px 10px 8px 10px;' +
+  // 上沿 8px：离外层清单框远一点（用户批注；此前 4px 太贴）
+  'margin:8px 10px 8px 10px;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;' +
   'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.02))}' +
+  // 「测试/完成」按钮行压掉自身 margin-bottom：按钮到面板下沿 = 内边距 8px，
+  // 与面板内上边距一致（用户批注：两者要一致）
+  '.pv_meEditPanel .pv_meActs{margin-bottom:0}' +
   '.pv_meEditPanel .pv_row{font-size:12px;line-height:20px}' +
   '.pv_meEditPanel .pv_field{min-width:0;flex:1;max-width:320px}' +
   '.pv_mePanelCaps{display:inline-flex;align-items:center;gap:6px}' +
