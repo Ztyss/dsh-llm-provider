@@ -13,7 +13,7 @@ pi-ai 适配器（`llm-pi-ai`）、DeepSeek 适配器（`llm-deepseek`）、模�
 |---|---|
 | 上游 | [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider) |
 | 本 fork | [Ztyss/dsh-llm-provider](https://github.com/Ztyss/dsh-llm-provider)（私有） |
-| 本仓库版本 | [v0.1.3](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.1.3)（安装走 main 分支） |
+| 本仓库版本 | [v0.2.0](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.0)（安装走 main 分支） |
 | 基线 | 上游 `1eb017f`（v0.1.0-rc.2）；上游 0.2.0 无源码发布，其独有功能（OAuth、github-copilot）不在范围 |
 
 ## 安装
