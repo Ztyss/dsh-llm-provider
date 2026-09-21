@@ -984,6 +984,36 @@ try {
   }
   shots.push(await cdp.shot('06-seat-model-panel-modlens-vision'))
 
+  // 5b) 声明模型的推理等级（用户 P0）：官方目录条目没有 reasoning 档位表
+  //    （seat.html 夹具 opencode-go/deepseek-flash 就是这样），选择器要回落到
+  //    本插件详情（declared + thinkingLevels）合成阶梯，档位格不再锁死。
+  await cdp.send('Page.navigate', { url: seatUrl })
+  await sleep(600)
+  await cdp.waitFor('.ms_trigger')
+  await cdp.eval(`document.querySelector('.ms_trigger').click()`)
+  await cdp.waitFor('.ms_menu')
+  await sleep(300)
+  const effortProbe = await cdp.eval(`(function(){
+    var cells = document.querySelectorAll('.ms_cell')
+    if (cells.length < 2) return JSON.stringify({ error: '根面板没有两行' })
+    var cell = cells[1]
+    var disabled = cell.disabled === true
+    var value = (cell.querySelector('.ms_cellValue') || {}).textContent
+    if (!disabled) cell.click()
+    return JSON.stringify({ disabled: disabled, value: value })
+  })()`)
+  await sleep(300)
+  const effortOptions = await cdp.eval(`Array.from(document.querySelectorAll('.ms_option')).map(function (o) { return o.textContent.trim() })`)
+  console.log('  声明模型档位探针:', effortProbe, '选项:', JSON.stringify(effortOptions))
+  const ep = JSON.parse(effortProbe)
+  if (ep.disabled === true || ep.value === '选择模型后可用') {
+    throw new Error('声明模型的推理等级仍锁死：' + effortProbe)
+  }
+  if (effortOptions.indexOf('Low') === -1 || effortOptions.indexOf('Max') === -1) {
+    throw new Error('档位面板没有列出声明详情的 thinkingLevels：' + JSON.stringify(effortOptions))
+  }
+  shots.push(await cdp.shot('06b-seat-declared-effort-pane'))
+
   // 7) 添加供应商：选「Custom Gateway」后，路由 ID 是「建议值」——输入框留空、
   //    custom-gateway 只出现在占位符里，一旦输入即覆盖；清空则凭据名回落到预设建议值。
   //    （更早的问题：readOnly 与「routeId 反查预设」绑定，改一个字符就锁死输入框。）

@@ -10,7 +10,7 @@ import { recordDiagnostic } from './diag.js'
 import { defaultEffortOf, dotClass, effortLabel, formatContext, fuzzyMatch, quotaShortOf, quotaTipOf, reasoningTextOf, toneColor, worstPercent } from './format.js'
 import { caretSvg, checkSvg, chevronRightSvg } from './icons.js'
 import { t, tf } from './i18n.js'
-import type { CatalogGroup, CatalogModel, EffortChoice, FieldEvent, ModelSelection, ModelSwitchSeatProps } from './types.js'
+import type { CatalogGroup, CatalogModel, EffortChoice, FieldEvent, ModelDetail, ModelSelection, ModelSwitchSeatProps } from './types.js'
 
 /**
  * 老的 provider id → 现在的路由 id。官方 llm-deepseek 时代的会话里记的是 `deepseek-official`，
@@ -41,6 +41,22 @@ export function aliasSelection(selection: ModelSelection | undefined, groups: Ca
   return keepEffort
     ? { provider: mapped, model: selection.model, reasoningEffort: effort }
     : { provider: mapped, model: selection.model }
+}
+
+/**
+ * 目录条目没有 reasoning 档位表时，从本插件详情（declared/adapter）合成一个：
+ * 详情标了 reasoning:true 但没写 thinkingLevels → 默认阶梯 low/medium/high
+ * （OpenAI 兼容网关的通用档位）；声明里手写了 reasoningEfforts 的 → 详情已带
+ * thinkingLevels，原样用。两者都不满足（详情不存在/没标推理）返回原模型。
+ * 导出供离线测试钉住两个分支（用户 P0：目录外模型档位选择被锁死）。
+ */
+export function withEffortLadder(model: CatalogModel | undefined, detail: ModelDetail | undefined): CatalogModel | undefined {
+  if (model === undefined || model.reasoning !== undefined) return model
+  if (detail === undefined || detail.reasoning !== true) return model
+  var ladder = Array.isArray(detail.thinkingLevels) && detail.thinkingLevels.length > 0
+    ? detail.thinkingLevels.slice()
+    : ['low', 'medium', 'high']
+  return { ...model, reasoning: { efforts: ladder, default: undefined } }
 }
 
 export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
@@ -293,6 +309,13 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
   var currentModel: CatalogModel | undefined = undefined
   if (selection !== undefined && selection !== null) {
     currentModel = findModel(groups, selection.provider, selection.model)
+  }
+  // 官方目录对声明模型（pi-ai 目录外的自定义 id）不下发 reasoning 档位表，
+  // 档位选择就整段锁死（用户 P0：编辑器勾了「推理」、声明里 reasoning:true，
+  // 选择器里推理等级仍然「选择模型后可用」）。回落到本插件详情合成阶梯，
+  // 见 withEffortLadder。
+  if (currentModel !== undefined && currentModel.reasoning === undefined && selection !== undefined && selection !== null) {
+    currentModel = withEffortLadder(currentModel, lookupDetail(detailsById, selection.provider, selection.model))
   }
   var reasoning = currentModel !== undefined ? currentModel.reasoning : undefined
   // 会话已经定下的档位单独拿出来：目录里没有这个模型时（拿不到 reasoning）

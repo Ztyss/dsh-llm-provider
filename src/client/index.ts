@@ -183,7 +183,7 @@ export function apply(ctx: ClientContext) {
 // 纯函数，离线测试直接调；组件里用的是同一份实现
 
 export { normalizeSelection, onPlanChange, mergePlanAccount, dropPlanAccount, lookupDetail, detailsOfProvider } from './data.js'
-export { aliasSelection, LEGACY_PROVIDER_ALIASES } from './model-seat.js'
+export { aliasSelection, withEffortLadder, LEGACY_PROVIDER_ALIASES } from './model-seat.js'
 export { piAiBridgeRows, piAiUpstreamText, presetPickState, providerSaveOps, isRouteConfigured, refreshFailure, routeYamlOf, capabilityBadges, capabilityKeysOf, capabilitiesKnown, modelRow, modelTip, buildEditRows, resolveAddDefaults } from './settings.js'
 export { providerEditForm, providerEditSaveOps, validateProviderEdit, isProviderEditDirty, PROVIDER_API_OPTIONS } from './provider-edit.js'
 export { reasoningTextOf, defaultEffortOf, headlineChips, shortWindowLabel, relativeTime, resetCountdownText, quotaShortOf, quotaTextOf, quotaTipOf } from './format.js'

@@ -381,6 +381,23 @@ rowsCheck('不是别名的原样返回',
   aliasSelection({ provider: 'kimi-coding', model: 'kimi-k2' }, catalog).provider === 'kimi-coding')
 rowsCheck('没有选择时还是 undefined', aliasSelection(undefined, catalog) === undefined)
 
+// ---- 声明模型的推理档位（用户 P0）：官方目录条目没有 reasoning 档位表时，
+// 从本插件详情合成阶梯，档位选择不再锁死。两个分支都要钉住。
+const { withEffortLadder } = moduleExports
+const noLadderModel = { id: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash' }
+rowsCheck('declared 详情没写档位 → 默认阶梯 low/medium/high（编辑器勾「推理」就够）',
+  JSON.stringify(withEffortLadder(noLadderModel, { id: 'deepseek-v4.1-flash', provider: 'opencode-go', reasoning: true, thinkingLevels: [] })?.reasoning)
+    === JSON.stringify({ efforts: ['low', 'medium', 'high'], default: undefined }))
+rowsCheck('声明里手写了 reasoningEfforts → 用声明的档位表',
+  JSON.stringify(withEffortLadder(noLadderModel, { id: 'deepseek-v4.1-flash', provider: 'opencode-go', reasoning: true, thinkingLevels: ['low', 'high', 'max'] })?.reasoning)
+    === JSON.stringify({ efforts: ['low', 'high', 'max'], default: undefined }))
+rowsCheck('目录条目自带档位表 → 原样保留，不覆盖',
+  withEffortLadder({ id: 'm', name: 'm', reasoning: { efforts: ['tiny'], default: 'tiny' } }, { id: 'm', provider: 'p', reasoning: true, thinkingLevels: [] })
+    ?.reasoning?.efforts?.[0] === 'tiny')
+rowsCheck('详情没标推理（目录外也没勾）→ 不合成，档位保持锁死',
+  withEffortLadder(noLadderModel, { id: 'deepseek-v4.1-flash', provider: 'opencode-go', thinkingLevels: [] }) === noLadderModel)
+rowsCheck('没有详情 → 原样返回', withEffortLadder(noLadderModel, undefined) === noLadderModel)
+
 // ---- issue #3：删除前的配置导出 ----
 // 删除一次做两件事（清路由 + 清凭据）且不可撤销，手写配置一起没。导出是界面上唯一
 // 成本够低的补救，所以它有两条硬要求：内容要能贴回 settings.yaml，且**绝不能带出密钥值**
