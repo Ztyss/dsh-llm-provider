@@ -249,7 +249,9 @@ var css =
   'text-underline-offset:3px;color:var(--dsw-alias-label-secondary)}' +
   '.pv_mIdEdit:hover{color:var(--dsw-alias-label-primary)}' +
   '.pv_mIdOpen{color:var(--dsw-alias-label-primary)}' +
-  '.pv_meEditPanel{display:flex;flex-direction:column;gap:6px;padding:8px 10px;margin:2px 0 4px 18px;' +
+  '.pv_meEditPanel{display:flex;flex-direction:column;gap:6px;padding:8px 10px;' +
+  // 左右对称 10px：外框在模型清单框里居中、两侧都留缝（用户报左 18/右 0 既偏又贴外框）
+  'margin:4px 10px 8px 10px;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;' +
   'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.02))}' +
   '.pv_meEditPanel .pv_row{font-size:12px;line-height:20px}' +
