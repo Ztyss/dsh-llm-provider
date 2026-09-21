@@ -540,11 +540,11 @@ export function apply(ctx: PluginContext, config: unknown): void {
     'dsh-llm-provider: /provider/set-models route',
   )
 
-  // 添加模型前的「测试」：验证端点真的在供这个模型 id。
-  // 与「添加供应商」的 llm/discoverModels 探测同源，但凭据不出宿主——
-  // 这里的路由已经绑好了 apiKeyEnv，直接在宿主侧解析 key 请求端点的模型清单，
-  // 浏览器只拿到「端点共 N 个模型、含不含这个 id」。官方默认端点的路由（没写 baseURL）
-  // 不做网络请求，直接如实回报。清单失败不抛 5xx：测试结果本身就是要展示给用户的内容。
+  // 「测试」：向这个模型 id 真发一条最小对话请求（max_tokens:1，"ping"），验证连通性。
+  // 用户明确要求：不是查模型清单有没有这个 id（清单在 ≠ 真能出活），而是实连——
+  // 端点 + 凭据 + 模型 id 三样一起验证，回包耗时一并报告。凭据不出宿主；
+  // 官方默认端点的路由（没写 baseURL）没有可直接请求的地址，如实回报不硬猜。
+  // 请求失败不抛 5xx：测试结果本身就是要展示给用户的内容（HTTP 状态 + 响应片段）。
   ctx.effect(
     () => webServer.register({
       kind: 'exact',
@@ -557,7 +557,7 @@ export function apply(ctx: PluginContext, config: unknown): void {
         }
         const base = typeof route.baseURL === 'string' ? route.baseURL.replace(/\/+$/, '') : ''
         if (base === '') {
-          json(res, 200, { ok: false, error: '这条路由用的是官方默认端点（未写 baseURL），没有可直接探测的模型清单' })
+          json(res, 200, { ok: false, error: '这条路由用的是官方默认端点（未写 baseURL），没有可直接请求的地址' })
           return
         }
         const credential = await resolveKey(route.apiKeyEnv)
@@ -566,31 +566,27 @@ export function apply(ctx: PluginContext, config: unknown): void {
           return
         }
         const isAnthropic = route.api === 'anthropic-messages'
-        const url = isAnthropic ? base + '/v1/models' : base + '/models'
+        const url = isAnthropic ? base + '/v1/messages' : base + '/chat/completions'
         const headers: Record<string, string> = isAnthropic
-          ? { 'x-api-key': credential.key, 'anthropic-version': '2023-06-01' }
-          : { Authorization: 'Bearer ' + credential.key }
+          ? { 'x-api-key': credential.key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }
+          : { Authorization: 'Bearer ' + credential.key, 'content-type': 'application/json' }
+        const body = JSON.stringify({
+          model: modelId,
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'ping' }],
+        })
+        const startedAt = Date.now()
         try {
-          const response = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) })
+          const response = await fetch(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(20_000) })
+          const latencyMs = Date.now() - startedAt
+          const raw = await response.text()
           if (!response.ok) {
-            json(res, 200, { ok: false, error: `端点返回 HTTP ${response.status}` })
+            const snippet = raw.replace(/\s+/g, ' ').trim().slice(0, 160)
+            json(res, 200, { ok: false, error: `HTTP ${response.status}${snippet !== '' ? '：' + snippet : ''}` })
             return
           }
-          const body = asRecord(await response.json())
-          const list = Array.isArray(body['data'])
-            ? body['data']
-            : Array.isArray(body['models'])
-              ? body['models']
-              : undefined
-          const ids: string[] = []
-          for (const entry of Array.isArray(list) ? list : []) {
-            const record = asRecord(entry)
-            const value = typeof entry === 'string' ? entry : readString(record['id']) ?? readString(record['name'])
-            if (value !== undefined && value !== '') ids.push(value)
-          }
-          const served = ids.includes(modelId)
-          logger?.info?.(`test-model ${route.id}/${modelId}：端点 ${ids.length} 个模型，${served ? '包含' : '不包含'}该 id`)
-          json(res, 200, { ok: true, served, total: ids.length, sample: ids.slice(0, 3) })
+          logger?.info?.(`test-model ${route.id}/${modelId}：连通正常，${latencyMs}ms`)
+          json(res, 200, { ok: true, served: true, latencyMs })
         } catch (error) {
           json(res, 200, { ok: false, error: '端点请求失败：' + messageOf(error) })
         }

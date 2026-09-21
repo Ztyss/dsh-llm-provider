@@ -1258,27 +1258,44 @@ function ModelListEditor(props: {
 
   /**
    * 「测试」的公共实现：走插件宿主的 /provider/test-model——宿主用凭据仓库里的 key
-   * 请求端点的模型清单，key 不出宿主；浏览器只拿到「端点共 N 个模型，含不含这个 id」。
+   * 向这个模型 id 真发一条 1 token 的最小对话请求（实连验证，不是查清单），
+   * key 不出宿主；浏览器拿到「通没通 + 耗时」或 HTTP 状态与响应片段。
    * 添加模型表单与行内编辑面板共用（回调各自落自己的状态）。
    */
   function testModelConn(id: string, set: (next: { phase: string; message: string }) => void) {
     set({ phase: 'run', message: t('prov.testing') })
+    scrollTestResultIntoView()
     postJson('/provider/test-model', { providerId: account.id, modelId: id })
       .then(function (res) {
         if (res === null || res === undefined || res.ok !== true) {
           set({ phase: 'fail', message: '✗ ' + String((res && res.error) || '未知错误') })
+          scrollTestResultIntoView()
           return
         }
         set({
-          phase: res.served === true ? 'ok' : 'fail',
-          message: res.served === true
-            ? '✓ ' + tf('prov.testModelYes', { total: String(res.total ?? ''), id: id })
-            : '✗ ' + tf('prov.testModelNo', { total: String(res.total ?? ''), id: id }),
+          phase: 'ok',
+          message: '✓ ' + tf('prov.pingOk', { id: id, latency: String(res.latencyMs ?? '') }),
         })
+        scrollTestResultIntoView()
       })
       .catch(function (cause) {
         set({ phase: 'fail', message: '✗ ' + String(cause && cause.message ? cause.message : cause) })
+        scrollTestResultIntoView()
       })
+  }
+
+  /**
+   * 测试结果渲染在编辑面板最底部，模型清单容器有滚动条——结果一出就把这行
+   * 滚进可视区（block:'nearest' 只滚必要的距离），不用再手动拖滚动条。
+   * 状态更新后 DOM 才有这行，所以等一帧再找。
+   */
+  function scrollTestResultIntoView() {
+    setTimeout(function () {
+      var el = document.querySelector('.pv_meTestLine')
+      if (el !== null && el !== undefined && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: 'nearest' })
+      }
+    }, 80)
   }
 
   /**
@@ -1436,6 +1453,19 @@ function ModelListEditor(props: {
       'div',
       { className: 'pv_meEditPanel', key: 'panel-' + row.id },
       react.createElement('div', { className: 'pv_meFormTitle' }, '编辑模型参数（只改草稿，点「保存」落盘）'),
+      // 模型 ID 也可改（用户批注）：ID 是草稿行的键，改名 = patch 覆盖 id 字段 + editId 跟随，
+      // 保存时 set-models 写的就是新键。查重范围含目录内条目，避免保存后被官方校验整体打回。
+      panelField('模型 ID', row.id, function (next) {
+        var trimmed = next.trim()
+        if (trimmed === '' || trimmed === row.id) return
+        var clash = rows.some(function (other) { return other !== row && other.id === trimmed })
+        if (clash) {
+          setPanelTest({ phase: 'fail', message: '✗ 模型 ID「' + trimmed + '」已存在（含目录内条目），换个名字' })
+          return
+        }
+        patch(row.id, { id: trimmed, edited: true })
+        setEditId(trimmed)
+      }, 'p-id'),
       panelField('显示名', row.name !== row.id ? row.name : '', function (next) {
         var trimmed = next.trim()
         patch(row.id, { name: trimmed !== '' ? trimmed : row.id, edited: true })
@@ -1461,7 +1491,7 @@ function ModelListEditor(props: {
           className: 'pv_action',
           style: { marginLeft: '0' },
           disabled: busy || panelTest.phase === 'run',
-          title: '验证端点真的在供这个模型（用凭据仓库里的 key 请求端点的模型清单，key 不出宿主）',
+          title: '实连验证：用凭据仓库里的 key 向这个模型发一条 1 token 的最小请求（key 不出宿主）',
           onClick: function () { testModelConn(row.id, setPanelTest) },
         }, panelTest.phase === 'run' ? '测试中…' : '测试'),
         react.createElement('button', {
@@ -1476,7 +1506,7 @@ function ModelListEditor(props: {
       ),
       panelTest.message === ''
         ? null
-        : react.createElement('div', { className: 'pv_line' + (panelTest.phase === 'fail' ? ' plan_badText' : ''), key: 'p-test' }, panelTest.message),
+        : react.createElement('div', { className: 'pv_line pv_meTestLine' + (panelTest.phase === 'fail' ? ' plan_badText' : ''), key: 'p-test' }, panelTest.message),
     )
   }
   var rows_ = []

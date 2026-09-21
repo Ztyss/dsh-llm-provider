@@ -525,9 +525,10 @@ try {
     var texts = Array.from(panel.querySelectorAll('input[type=text]'))
     var caps = Array.from(panel.querySelectorAll('.pv_meCap input'))
     return {
-      name: texts[0].value,
-      ctx: texts[1].value,
-      max: texts[2].value,
+      id: texts[0].value,      // [0]=模型 ID（用户批注：ID 也要可改）
+      name: texts[1].value,
+      ctx: texts[2].value,
+      max: texts[3].value,
       visionOn: caps[0].checked,
       reasonOn: caps[1].checked,
       piAiRowClickable: (function () {
@@ -537,7 +538,7 @@ try {
     }
   })()`)
   console.log('  行内编辑探针:', JSON.stringify(panelProbe))
-  if (panelProbe.name !== 'DeepSeek V4.1 Flash' || panelProbe.ctx !== '1000000' || panelProbe.max !== '384000'
+  if (panelProbe.id !== 'deepseek-flash' || panelProbe.name !== 'DeepSeek V4.1 Flash' || panelProbe.ctx !== '1000000' || panelProbe.max !== '384000'
     || panelProbe.visionOn !== true || panelProbe.reasonOn !== true || panelProbe.piAiRowClickable !== false) {
     throw new Error('行内编辑面板没按预期预填：' + JSON.stringify(panelProbe))
   }
@@ -555,14 +556,15 @@ try {
     }
   })()`)
   console.log('  面板测试探针:', JSON.stringify(panelTest))
-  if (panelTest.msg.indexOf('包含 deepseek-flash') === -1 || panelTest.recorded === null
+  // 实连语义：结果 = 「✓ 连通正常 · <id> · <耗时>ms」（桩固定回 latencyMs:812）
+  if (panelTest.msg.indexOf('deepseek-flash · 812ms') === -1 || panelTest.recorded === null
     || panelTest.recorded.modelId !== 'deepseek-flash' || panelTest.recorded.providerId !== 'opencode-go') {
     throw new Error('行内编辑面板测试按钮没按预期工作：' + JSON.stringify(panelTest))
   }
   await cdp.eval(`
     var texts = Array.from(document.querySelectorAll('.pv_meEditPanel input[type=text]'))
     var set = function (el, v) { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })) }
-    set(texts[2], '200000')
+    set(texts[3], '200000')   // [0]=模型 ID [1]=显示名 [2]=上下文 [3]=最大输出
     var done = Array.from(document.querySelectorAll('.pv_meEditPanel button')).find(function (b) { return b.textContent === '完成' })
     done.click()
   `)
@@ -577,6 +579,64 @@ try {
   console.log('  行内编辑改参:', JSON.stringify(editedCell))
   if (editedCell.panelGone !== true || editedCell.maxCell !== '200K') throw new Error('行内编辑改参没生效：' + JSON.stringify(editedCell))
   shots.push(await cdp.shot('02b1-model-inline-edited'))
+
+  // 2b2) 模型 ID 也可改（用户批注）：改名进草稿、面板跟随不收起、重名要拦（含目录内条目）
+  await cdp.eval(`
+    var b = Array.from(document.querySelectorAll('.pv_meRow'))[0].querySelector('.pv_mIdEdit')
+    b.click()
+  `)
+  await sleep(300)
+  await cdp.eval(`
+    var texts = Array.from(document.querySelectorAll('.pv_meEditPanel input[type=text]'))
+    var set = function (el, v) { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })) }
+    set(texts[0], 'kimi-k3')   // 撞已有条目 → 必须被拦
+  `)
+  await sleep(300)
+  const dupProbe = await cdp.eval(`(function () {
+    var line = document.querySelector('.pv_meTestLine')
+    return { blocked: line !== null && line.textContent.indexOf('已存在') !== -1 }
+  })()`)
+  console.log('  ID 查重探针:', JSON.stringify(dupProbe))
+  if (dupProbe.blocked !== true) throw new Error('改 ID 没有拦截重名：' + JSON.stringify(dupProbe))
+  await cdp.eval(`
+    var texts = Array.from(document.querySelectorAll('.pv_meEditPanel input[type=text]'))
+    var set = function (el, v) { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })) }
+    set(texts[0], 'deepseek-flash-v2')   // 合法改名
+  `)
+  await sleep(300)
+  const renameProbe = await cdp.eval(`(function () {
+    var row = Array.from(document.querySelectorAll('.pv_meRow'))[0]
+    var panel = document.querySelector('.pv_meEditPanel')
+    var inputs = panel === null ? [] : Array.from(panel.querySelectorAll('input[type=text]'))
+    return {
+      rowId: (row.querySelector('.pv_mId') || {}).textContent,
+      panelOpen: panel !== null,
+      idField: inputs.length > 0 ? inputs[0].value : '',
+    }
+  })()`)
+  console.log('  ID 改名探针:', JSON.stringify(renameProbe))
+  if (renameProbe.rowId !== 'deepseek-flash-v2' || renameProbe.panelOpen !== true || renameProbe.idField !== 'deepseek-flash-v2') {
+    throw new Error('改 ID 没生效或面板没收住：' + JSON.stringify(renameProbe))
+  }
+  shots.push(await cdp.shot('02b2-model-id-renamed'))
+  // 改回原名，保持后续步骤的草稿基线（deepseek-flash + kimi-k3 + my-custom）
+  await cdp.eval(`
+    var texts = Array.from(document.querySelectorAll('.pv_meEditPanel input[type=text]'))
+    var set = function (el, v) { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })) }
+    set(texts[0], 'deepseek-flash')
+  `)
+  await sleep(300)
+  const revertProbe = await cdp.eval(`(function () {
+    var row = Array.from(document.querySelectorAll('.pv_meRow'))[0]
+    return { rowId: (row.querySelector('.pv_mId') || {}).textContent }
+  })()`)
+  console.log('  ID 还原探针:', JSON.stringify(revertProbe))
+  if (revertProbe.rowId !== 'deepseek-flash') throw new Error('ID 改回失败：' + JSON.stringify(revertProbe))
+  await cdp.eval(`
+    var done = Array.from(document.querySelectorAll('.pv_meEditPanel button')).find(function (b) { return b.textContent === '完成' })
+    done.click()
+  `)
+  await sleep(200)
 
   // 2mid) 表头复选框 = 一键全选 / 全不选（用户要求）。全不选后手动把 deepseek-flash 勾回来，
   //       保持后续步骤的草稿基线（deepseek-flash + kimi-k3 + my-custom）。
@@ -664,7 +724,7 @@ try {
     return { msg: msg, recorded: window.__lastTestModel ?? null }
   })()`)
   console.log('  测试按钮探针:', JSON.stringify(testProbe))
-  if (testProbe.msg.indexOf('包含 my-custom') === -1 || testProbe.recorded === null
+  if (testProbe.msg.indexOf('my-custom · 812ms') === -1 || testProbe.recorded === null
     || testProbe.recorded.modelId !== 'my-custom' || testProbe.recorded.providerId !== 'opencode-go') {
     throw new Error('测试按钮没有按预期工作：' + JSON.stringify(testProbe))
   }
