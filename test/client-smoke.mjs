@@ -535,11 +535,15 @@ rowsCheck('完全没详情时照旧说明没有本地元数据',
 
 // ---- 思考档位（用户批注：编辑器/添加表单要能自定义 reasoningEfforts，不用手写 yaml）----
 // 语义照官方 resolver：键 = 7 规范档、值 = 线值（off 可 null = 不发送）、≥1 非 off 档。
-const { EFFORT_LEVELS, DEFAULT_EFFORT_LADDER, effortsDraftOf, prefillEffortsOf, effortsToDeclared } = moduleExports
+const { EFFORT_LEVELS, DEFAULT_EFFORT_LADDER, EFFORT_FAMILY_LADDERS, effortsDraftOf, prefillEffortsOf, effortsToDeclared } = moduleExports
 rowsCheck('规范档位表 = 官方 7 档且顺序一致',
   JSON.stringify(EFFORT_LEVELS) === JSON.stringify(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']))
 rowsCheck('默认兜底阶梯是 low/medium/high',
   JSON.stringify(DEFAULT_EFFORT_LADDER) === JSON.stringify(['low', 'medium', 'high']))
+rowsCheck('内置家族档位表覆盖主流模型系（键是模型系前缀不是规范档）',
+  EFFORT_FAMILY_LADDERS.length >= 8
+    && EFFORT_FAMILY_LADDERS.every(function (pair) { return EFFORT_LEVELS.indexOf(pair[0]) === -1 && pair[1].length > 0 })
+    && EFFORT_FAMILY_LADDERS.some(function (pair) { return pair[0] === 'deepseek' }))
 rowsCheck('声明档位解析成草稿：对象进、false/缺失不进',
   JSON.stringify(effortsDraftOf({ id: 'm', reasoningEfforts: { low: 'low', high: 'high', max: 'max' } }))
     === JSON.stringify({ low: 'low', high: 'high', max: 'max' })
@@ -561,6 +565,10 @@ rowsCheck('声明原文优先于兄弟预填',
     === JSON.stringify({ high: 'high' }))
 rowsCheck('兄弟缺失时回默认阶梯且恒等线值',
   JSON.stringify(prefillEffortsOf(undefined, undefined, 'p')) === JSON.stringify({ low: 'low', medium: 'medium', high: 'high' }))
+rowsCheck('内置家族表按模型 id 前缀命中：deepseek 系 = low/high/max（pi-ai 数据众数）',
+  JSON.stringify(prefillEffortsOf(undefined, undefined, 'p', 'deepseek-v4.1-flash')) === JSON.stringify({ low: 'low', high: 'high', max: 'max' }))
+rowsCheck('未知模型系回全局档位（用户批注：实在未知继承全局）',
+  JSON.stringify(prefillEffortsOf(undefined, undefined, 'p', 'my-custom')) === JSON.stringify({ low: 'low', medium: 'medium', high: 'high' }))
 rowsCheck('序列化：off 留空写 null、声明原文未知键原样带回',
   JSON.stringify(effortsToDeclared({ off: '', low: 'low', max: 'ultra' }, { id: 'm', reasoningEfforts: { note: 'keep', low: 'low' } }).value)
     === JSON.stringify({ note: 'keep', off: null, low: 'low', max: 'ultra' }))
