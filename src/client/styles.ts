@@ -138,9 +138,14 @@ var css =
   '.pv_pickItem,.pv_iconBtn,.pv_action,.pv_tab,.pv_addBtn,.pv_fclear,.pv_delYes,.pv_delNo,' +
   '.mp_chip,.pv_pcLink{transition:background-color .16s ease,color .16s ease}' +
   '.pv_iconBtn:focus-visible,.pv_action:focus-visible,.pv_tab:focus-visible,' +
-  '.pv_pickItem:focus-visible,.pv_addBtn:focus-visible,.pv_mFilter:focus-visible,input.pv_field:focus-visible,' +
-  'select.pv_field:focus-visible,select.pv_msEff:focus-visible,a.pv_pcLink:focus-visible{' +
+  '.pv_pickItem:focus-visible,.pv_addBtn:focus-visible,a.pv_pcLink:focus-visible,' +
+  '.pv_selTrigger:focus-visible{' +
   'outline:2px solid var(--dsw-alias-brand-primary,#3b5bdb);outline-offset:1px}' +
+  // 输入框/下拉聚焦不加外圈（用户批注：默认 outline 会在灰框外再套一层黑框）——
+  // 直接把自身边框加黑加粗：border 变深 + inset 1px 同色阴影，视觉 2px 粗边、零布局位移
+  'input.pv_field:not([readonly]):focus,select.pv_field:focus,textarea.pv_field:focus,.pv_mFilter:focus{' +
+  'outline:0;border-color:var(--dsw-alias-label-primary,rgba(0,0,0,.62));' +
+  'box-shadow:inset 0 0 0 1px var(--dsw-alias-label-primary,rgba(0,0,0,.62))}' +
   '.pv_pcBody{border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));' +
   'padding:10px 18px 14px;display:flex;flex-direction:column;gap:4px}' +
   '.pv_line .plan_tag{margin-left:0}' +
@@ -222,15 +227,31 @@ var css =
   'color:var(--dsw-alias-label-secondary)}' +
   '.pv_addBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.03))}' +
   'input.pv_field{cursor:text}' +
-  // select 文本与下拉选项显式左对齐 + 自带盒模型：宿主样式可能用更高特异性的规则
-  // 改 select 的对齐/内边距（协议值文本、弹层选项整体右移，箭头贴边）。
-  // 类规则是第一道防线，最终以 settings.ts 里渲染时的内联样式钉死（稳赢一切样式表）。
-  // 箭头用官方同款 Chevron（caretSvg 的路径做成 data-URI，用户批注：与模型栏箭头统一）
-  'select.pv_field{cursor:pointer;text-align:left;padding:6px 28px 6px 12px;appearance:none;' +
-  "background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14' fill='none'%3E%3Cpath fill='%238a8b8e' d='M11.8486 5.5L11.4238 5.92383L8.69727 8.65137C8.44157 8.90706 8.21562 9.13382 8.01172 9.29785C7.79912 9.46883 7.55595 9.61756 7.25 9.66602C7.08435 9.69222 6.91565 9.69222 6.75 9.66602C6.44405 9.61756 6.20088 9.46883 5.98828 9.29785C5.78438 9.13382 5.55843 8.90706 5.30273 8.65137L2.57617 5.92383L2.15137 5.5L3 4.65137L3.42383 5.07617L6.15137 7.80273C6.42595 8.07732 6.59876 8.24849 6.74023 8.3623C6.87291 8.46904 6.92272 8.47813 6.9375 8.48047C6.97895 8.48703 7.02105 8.48703 7.0625 8.48047C7.07728 8.47813 7.12709 8.46904 7.25977 8.3623C7.40124 8.24849 7.57405 8.07732 7.84863 7.80273L10.5762 5.07617L11 4.65137L11.8486 5.5Z'/%3E%3C/svg%3E\");" +
-  'background-position:calc(100% - 12px) center;' +
-  'background-size:14px 14px;background-repeat:no-repeat}' +
-  'select.pv_field option{text-align:left}' +
+  // 原生 select 已全部替换为自绘下拉（.pv_sel*，用户批注：原生弹层与页面视觉不协调）
+  // ---- 本地版新增：自绘下拉（用户批注：原生弹层与页面视觉不协调）----
+  // 触发器外观与 pv_field 输入框一致（白底/同圆角/同边框），弹层用页面 token：
+  // 白底 + 圆角 + 柔和投影 + 悬停灰底，选中项品牌色加粗。展开时触发器边框加黑加粗。
+  '.pv_sel{position:relative;display:inline-flex}' +
+  '.pv_selTrigger{display:inline-flex;align-items:center;justify-content:space-between;gap:8px;' +
+  'min-width:240px;max-width:100%;padding:6px 12px;text-align:left;' +
+  'border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.2));border-radius:10px;' +
+  'background:var(--dsw-alias-bg-layer-1,#fff);font:inherit;font-size:13px;line-height:20px;' +
+  'color:var(--dsw-alias-label-primary);cursor:pointer}' +
+  '.pv_selTrigger:hover{border-color:var(--dsw-alias-label-primary,rgba(0,0,0,.62))}' +
+  '.pv_selTrigger:focus{outline:0}' +
+  '.pv_selTrigger.pv_selOpen,.pv_selTrigger.pv_selOpen:hover{' +
+  'border-color:var(--dsw-alias-label-primary,rgba(0,0,0,.62));' +
+  'box-shadow:inset 0 0 0 1px var(--dsw-alias-label-primary,rgba(0,0,0,.62))}' +
+  '.pv_selValue{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+  '.pv_selChev{display:inline-flex;color:var(--dsw-alias-label-tertiary)}' +
+  '.pv_selOpen .pv_selChev{color:var(--dsw-alias-label-primary)}' +
+  '.pv_selMenu{position:absolute;top:calc(100% + 4px);left:0;min-width:100%;z-index:60;' +
+  'background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));' +
+  'border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.14);padding:4px;max-height:240px;overflow:auto}' +
+  '.pv_selOption{padding:6px 12px;border-radius:6px;font-size:13px;line-height:20px;text-align:left;' +
+  'cursor:pointer;color:var(--dsw-alias-label-primary);white-space:nowrap}' +
+  '.pv_selOption:hover{background:var(--dsw-alias-fill-tertiary,rgba(0,0,0,.045))}' +
+  '.pv_selOptionOn{color:var(--dsw-alias-brand-primary,#3b5bdb);font-weight:600}' +
   // 预置字段（路由 ID）：灰底只读；密钥/待填项/协议：白底 + 深边框提示可操作
   // （用户批注：协议下拉的边框比 API 地址浅——pv_key 原来限定 input，select 吃不到）
   'input.pv_ro{background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.05));' +

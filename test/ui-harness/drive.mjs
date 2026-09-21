@@ -252,11 +252,11 @@ try {
   const edit0 = await cdp.eval(`(function () {
     var el = document.querySelector('.pv_row input[placeholder="opencode-go"]')
     var url = document.querySelector('.pv_row input[placeholder="留空回到官方默认端点"]')
-    var sel = document.querySelector('.pv_row select')
+    var sel = document.querySelector('.pv_selTrigger .pv_selValue')
     return {
       initial: el ? el.value : null,
       urlInitial: url ? url.value : null,
-      apiInitial: sel ? sel.value : null,
+      apiInitial: sel ? sel.textContent : null,
       actsGone: document.querySelector('.pv_editActs') === null,
       noPencil: Array.from(document.querySelectorAll('.pv_metaActs button')).every(function (b) { return b.textContent !== '✎' }),
     }
@@ -405,21 +405,32 @@ try {
   console.log('  取消后报错已清:', noteGone)
   if (noteGone !== true) throw new Error('取消后校验报错还在（报错应跟着草稿一起清）')
 
-  // 协议下拉：占位/选项显式左对齐（宿主样式可能把 select 文本居中）
+  // 协议下拉：已换成自绘下拉（用户批注：原生弹层与页面视觉不协调）——
+  // 展开 → 选项行左对齐 + 首项（默认）+ 选中项高亮 → Escape 收起
   const selProbe = await cdp.eval(`(function () {
-    var s = document.querySelector('select.pv_field')
-    if (s === null) return { found: false }
-    var opt = s.querySelector('option')
+    var t = document.querySelector('.pv_selTrigger')
+    if (t === null) return { found: false }
+    t.click()
+    return { found: true, label: (t.querySelector('.pv_selValue') || {}).textContent }
+  })()`)
+  await sleep(250)
+  const selMenu = await cdp.eval(`(function () {
+    var menu = document.querySelector('.pv_selMenu')
+    if (menu === null) return { open: false }
+    var opts = menu.querySelectorAll('.pv_selOption')
     return {
-      found: true,
-      textAlign: getComputedStyle(s).textAlign,
-      optAlign: opt !== null ? getComputedStyle(opt).textAlign : null,
-      firstOption: opt !== null ? opt.textContent : '',
+      open: true,
+      count: opts.length,
+      firstOption: opts.length > 0 ? opts[0].textContent : '',
+      firstAlign: opts.length > 0 ? getComputedStyle(opts[0]).textAlign : null,
+      onCount: menu.querySelectorAll('.pv_selOptionOn').length,
     }
   })()`)
-  console.log('  协议下拉对齐:', JSON.stringify(selProbe))
-  if (selProbe.found !== true || selProbe.textAlign !== 'left' || selProbe.optAlign !== 'left' || selProbe.firstOption !== '（默认）') {
-    throw new Error('协议下拉没左对齐：' + JSON.stringify(selProbe))
+  await cdp.eval(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`)
+  await sleep(200)
+  console.log('  协议下拉:', JSON.stringify(selProbe), JSON.stringify(selMenu))
+  if (selProbe.found !== true || selMenu.open !== true || selMenu.firstOption !== '（默认）' || selMenu.firstAlign !== 'left' || selMenu.onCount !== 1) {
+    throw new Error('协议自绘下拉不对：' + JSON.stringify({ selProbe: selProbe, selMenu: selMenu }))
   }
 
 

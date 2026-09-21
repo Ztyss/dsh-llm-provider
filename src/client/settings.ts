@@ -195,6 +195,44 @@ function detailOf(detailsById: Record<string, ModelDetail> | undefined | null, p
   return detailsById[detailKeyOf(provider, modelId)]
 }
 
+/**
+ * 自绘下拉视图（用户批注：原生 select 弹层是 OS 样式，与页面视觉不协调）。
+ * 触发器与 pv_field 输入框同观感，弹层用页面 token（白底/圆角/投影/悬停灰底/选中品牌色）。
+ * 开合状态由调用方持有（展开互斥、外点关闭、Escape 关闭都在调用方的 effect 里做）。
+ */
+function pvSelectView(config: {
+  open: boolean
+  value: string
+  options: Array<{ value: string; label: string }>
+  onToggle: () => void
+  onPick: (value: string) => void
+}) {
+  var currentLabel = config.value
+  for (var i = 0; i < config.options.length; i += 1) {
+    if (config.options[i].value === config.value) { currentLabel = config.options[i].label; break }
+  }
+  return react.createElement('div', { className: 'pv_sel' },
+    react.createElement('button', {
+      type: 'button',
+      className: 'pv_selTrigger' + (config.open ? ' pv_selOpen' : ''),
+      onClick: function () { config.onToggle() },
+    },
+      react.createElement('span', { className: 'pv_selValue' }, currentLabel),
+      react.createElement('span', { className: 'pv_selChev' }, caretSvg(config.open)),
+    ),
+    config.open !== true ? null : react.createElement('div', { className: 'pv_selMenu' },
+      config.options.map(function (option: { value: string; label: string }) {
+        var selected = option.value === config.value
+        return react.createElement('div', {
+          key: option.value === '' ? '__default' : option.value,
+          className: 'pv_selOption' + (selected ? ' pv_selOptionOn' : ''),
+          onClick: function () { config.onPick(option.value) },
+        }, option.label)
+      }),
+    ),
+  )
+}
+
 /** 模型行：ID + 能力徽章（视觉/推理/视频）+ 上下文 / 最大输出标签，悬浮出 Cherry 式详情卡。 */
 export function modelRow(model: CatalogModel, account: PlanAccount, detailsById: Record<string, ModelDetail> | undefined | null) {
   // issue #5：详情按 provider+id 查（同名模型不串家），查不到才退回裸 id
@@ -502,6 +540,28 @@ function AddProviderPanel(props: AddProviderPanelProps) {
   var formState = react.useState({ presetId: '', routeId: '', key: '', baseURL: '', api: '', apiKeyEnv: '', websiteUrl: undefined })
   var form = formState[0]
   var setForm = formState[1]
+  // 协议自绘下拉的开合（用户批注：原生弹层与页面视觉不协调）＋外点/Escape 关闭
+  var apiOpenState = react.useState(false)
+  var apiOpen = apiOpenState[0]
+  var setApiOpen = apiOpenState[1]
+  react.useEffect(
+    function () {
+      if (apiOpen !== true) return undefined
+      function onDown(event: Event) {
+        var target = event.target as AnyRecord | null
+        if (target !== null && typeof target === 'object' && typeof target.closest === 'function' && target.closest('.pv_sel') !== null) return
+        setApiOpen(false)
+      }
+      function onKey(event: Event) { if ((event as KeyboardEvent).key === 'Escape') setApiOpen(false) }
+      document.addEventListener('pointerdown', onDown)
+      document.addEventListener('keydown', onKey)
+      return function () {
+        document.removeEventListener('pointerdown', onDown)
+        document.removeEventListener('keydown', onKey)
+      }
+    },
+    [apiOpen],
+  )
   // 「发现模型」成功时把发现的模型一并留下：自定义网关（目录外路由）在 settings/mutate 时
   // 必须带 models 清单，否则官方校验直接拒绝（"resolves no models"）
   var testState = react.useState({ phase: 'idle', message: '', models: [] as { id: string; name?: string; ctx?: number; max?: number; input?: string[] }[] })
@@ -852,16 +912,19 @@ function AddProviderPanel(props: AddProviderPanelProps) {
         { className: 'pv_line pv_row' },
         react.createElement('span', null, t('prov.protocol')),
         customPicked
-          ? react.createElement(
-              'select',
-              {
-                className: 'pv_field',
-                value: form.api,
-                onChange: function (event: FieldEvent) { patchForm({ api: event.target.value }) },
+          ? pvSelectView({
+              open: apiOpen,
+              value: form.api,
+              options: [
+                { value: 'openai-completions', label: 'OpenAI' },
+                { value: 'anthropic-messages', label: 'Anthropic' },
+              ],
+              onToggle: function () { setApiOpen(!apiOpen) },
+              onPick: function (value: string) {
+                setApiOpen(false)
+                patchForm({ api: value })
               },
-              react.createElement('option', { value: 'openai-completions' }, 'OpenAI'),
-              react.createElement('option', { value: 'anthropic-messages' }, 'Anthropic'),
-            )
+            })
           : react.createElement('input', {
               className: 'pv_field pv_ro',
               value: form.api,
@@ -2069,6 +2132,28 @@ export function ProviderSettingsSection() {
   var setDelError = delErrorState[1] as (next: string | null) => void
   var refreshingState = react.useState({})
   var setRefreshing = refreshingState[1]
+  // 协议自绘下拉的开合（编辑面互斥 → 同时最多一个表单开着下拉）＋外点/Escape 关闭
+  var apiSelOpenState = react.useState(null as string | null)
+  var apiSelOpenId = apiSelOpenState[0]
+  var setApiSelOpenId = apiSelOpenState[1]
+  react.useEffect(
+    function () {
+      if (apiSelOpenId === null) return undefined
+      function onDown(event: Event) {
+        var target = event.target as AnyRecord | null
+        if (target !== null && typeof target === 'object' && typeof target.closest === 'function' && target.closest('.pv_sel') !== null) return
+        setApiSelOpenId(null)
+      }
+      function onKey(event: Event) { if ((event as KeyboardEvent).key === 'Escape') setApiSelOpenId(null) }
+      document.addEventListener('pointerdown', onDown)
+      document.addEventListener('keydown', onKey)
+      return function () {
+        document.removeEventListener('pointerdown', onDown)
+        document.removeEventListener('keydown', onKey)
+      }
+    },
+    [apiSelOpenId],
+  )
   // 页面级后台刷新（进入页面 / 添加 / 保存后的 plan 快照重拉）：宿主实查各网关要几秒，
   // 期间卡片上的 ↻ 也旋转（用户批注）——与单卡手动刷新的 flag 合并判定
   var planRefreshingState = react.useState(false)
@@ -2724,39 +2809,27 @@ export function ProviderSettingsSection() {
             }),
           ),
         )
-        // 协议：就地选择；（默认）= 不写 api 键，由 pi-ai 按端点自行判定。
-        // 对齐用内联样式钉死：宿主样式表里有来历不明的 select 规则会盖过类选择器
-        // （用户实测值文本/弹层选项整体右移、箭头贴边），内联是唯一稳赢的层级。
-        // paddingLeft 与同排输入框同值（12px）；原生箭头无视 padding 永远贴右边，
-        // 所以 appearance:none + 自绘 chevron（right 12px），弹层仍是原生渲染。
+        // 协议：就地选择（自绘下拉，用户批注：原生弹层与页面视觉不协调）。
+        // （默认）= 不写 api 键，由 pi-ai 按端点自行判定。
         bodyRows.push(
           react.createElement(
             'div',
             { className: 'pv_line pv_row', key: 'api' },
             react.createElement('span', null, t('prov.protocol')),
-            react.createElement(
-              'select',
-              {
-                className: 'pv_field pv_key',
-                style: {
-                  textAlign: 'left',
-                  paddingLeft: '12px',
-                  paddingRight: '28px',
-                  appearance: 'none',
-                  // 官方同款 Chevron data-URI（与模型栏箭头统一，用户批注）
-                  backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'14\' height=\'14\' viewBox=\'0 0 14 14\' fill=\'none\'%3E%3Cpath fill=\'%238a8b8e\' d=\'M11.8486 5.5L11.4238 5.92383L8.69727 8.65137C8.44157 8.90706 8.21562 9.13382 8.01172 9.29785C7.79912 9.46883 7.55595 9.61756 7.25 9.66602C7.08435 9.69222 6.91565 9.69222 6.75 9.66602C6.44405 9.61756 6.20088 9.46883 5.98828 9.29785C5.78438 9.13382 5.55843 8.90706 5.30273 8.65137L2.57617 5.92383L2.15137 5.5L3 4.65137L3.42383 5.07617L6.15137 7.80273C6.42595 8.07732 6.59876 8.24849 6.74023 8.3623C6.87291 8.46904 6.92272 8.47813 6.9375 8.48047C6.97895 8.48703 7.02105 8.48703 7.0625 8.48047C7.07728 8.47813 7.12709 8.46904 7.25977 8.3623C7.40124 8.24849 7.57405 8.07732 7.84863 7.80273L10.5762 5.07617L11 4.65137L11.8486 5.5Z\'/%3E%3C/svg%3E")',
-                  backgroundPosition: 'calc(100% - 12px) center',
-                  backgroundSize: '14px 14px',
-                  backgroundRepeat: 'no-repeat',
-                },
-                value: editForm.api,
-                onChange: function (event: FieldEvent) { setEditField(account.id, 'api', event.target.value) },
+            pvSelectView({
+              open: apiSelOpenId === account.id,
+              value: editForm.api,
+              options: [{ value: '', label: t('edit.apiDefault') }].concat(
+                PROVIDER_API_OPTIONS.map(function (option: string) {
+                  return { value: option, label: option }
+                }),
+              ),
+              onToggle: function () { setApiSelOpenId(apiSelOpenId === account.id ? null : account.id) },
+              onPick: function (value: string) {
+                setApiSelOpenId(null)
+                setEditField(account.id, 'api', value)
               },
-              react.createElement('option', { value: '' }, t('edit.apiDefault')),
-              PROVIDER_API_OPTIONS.map(function (option: string) {
-                return react.createElement('option', { value: option, key: option }, option)
-              }),
-            ),
+            }),
           ),
         )
         // 凭据名行已删（用户要求）：密钥的写入目标固定是这条路由的 apiKeyEnv，
