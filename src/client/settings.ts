@@ -2466,6 +2466,9 @@ export function ProviderSettingsSection() {
                 {
                   type: 'button',
                   className: 'pv_action',
+                  // .pv_action 基类默认 margin-left:auto（顶右）；「取消」要贴着「保存修改」
+                  // 排（用户批注），压掉 auto 后由 .pv_editActs 的 gap:8px 给间距
+                  style: { marginLeft: '0' },
                   disabled: busyEdit,
                   onClick: function () {
                     // 取消 = 丢弃草稿，字段回落到 route 快照（操作区随之隐藏）；

@@ -283,13 +283,20 @@ try {
       buttons: buttons.map(function (b) { return b.textContent + (b.disabled ? '(disabled)' : '') }),
       hint: (document.querySelector('.pv_editHint') || {}).textContent || '',
       hintOutsideActs: box.querySelector('.plan_note') === null,
-      cancelRightAligned: cancel === undefined ? false : Math.abs(box.getBoundingClientRect().right - cancel.getBoundingClientRect().right) <= 2,
+      // 取消要贴着保存修改排（用户批注：不要右对齐，但留 8px 间距不紧贴）——
+      // 取「取消」左缘与「保存修改」右缘的水平距离，落在 gap 8px 附近即算贴排
+      cancelNextToSave: (function () {
+        var save = buttons.find(function (b) { return b.textContent === '保存修改' })
+        if (save === undefined || cancel === undefined) return false
+        var gap = cancel.getBoundingClientRect().left - save.getBoundingClientRect().right
+        return gap >= 4 && gap <= 16
+      })(),
     }
   })()`)
   console.log('  就地编辑·草稿:', JSON.stringify(edit1))
   if (edit1 === null || JSON.stringify(edit1.buttons) !== '["保存修改","取消"]' || edit1.hint.indexOf('沿用路由 ID') === -1
-    || edit1.hintOutsideActs !== true || edit1.cancelRightAligned !== true) {
-    throw new Error('草稿态操作区不对（提示独立成行、取消右对齐）：' + JSON.stringify(edit1))
+    || edit1.hintOutsideActs !== true || edit1.cancelNextToSave !== true) {
+    throw new Error('草稿态操作区不对（提示独立成行、取消贴排保存修改）：' + JSON.stringify(edit1))
   }
   shots.push(await cdp.shot('01b-provider-edit-dirty'))
 
