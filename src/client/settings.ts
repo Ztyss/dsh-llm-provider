@@ -656,9 +656,10 @@ function AddProviderPanel(props: AddProviderPanelProps) {
     var ops = providerSaveOps(routeId, form)
     // 目录外的自定义网关必须带 models 清单（官方校验：catalog 不描述这条路由时，
     // models 必须列在配置里，否则 "resolves no models" 整体拒绝——StepFun 就是它）。
-    // 「发现模型」成功后弹出的清单里，只把用户勾选的写进去（条目 {id, name?}，
-    // 上下文/输出由路由默认值兜底 262144 / 32768）。
-    // 已存在的路由不动它的 models（避免覆盖手写清单），走逐模型编辑器改。
+    // 「发现模型」成功后弹出的清单里，只把用户勾选的写进去。
+    // 发现到的元数据（上下文/最大输出/模态）必须一并落盘（用户批注：发现报 1024K、
+    // 落盘变 256K——条目只写 {id,name} 时上下文被路由默认值 262144 兜底掩盖）。
+    // 字段名与逐模型编辑器写盘一致。已存在的路由不动它的 models（避免覆盖手写清单）。
     if (existed !== true && Array.isArray(test.models) && test.models.length > 0) {
       var chosen = test.models.filter(function (m: { id: string; name?: string; ctx?: number; max?: number; input?: string[] }) {
         return modelPick[m.id] !== false
@@ -670,8 +671,13 @@ function AddProviderPanel(props: AddProviderPanelProps) {
       ops = ops.concat([{
         op: 'set',
         path: ['providers', routeId, 'models'],
-        value: chosen.map(function (m: { id: string; name?: string }) {
-          return m.name !== undefined ? { id: m.id, name: m.name } : { id: m.id }
+        value: chosen.map(function (m: { id: string; name?: string; ctx?: number; max?: number; input?: string[] }) {
+          var entry: { id: string; name?: string; contextWindow?: number; maxTokens?: number; input?: string[] } = { id: m.id }
+          if (m.name !== undefined) entry.name = m.name
+          if (typeof m.ctx === 'number' && m.ctx > 0) entry.contextWindow = m.ctx
+          if (typeof m.max === 'number' && m.max > 0) entry.maxTokens = m.max
+          if (Array.isArray(m.input) && m.input.length > 0) entry.input = m.input
+          return entry
         }),
       }])
     }

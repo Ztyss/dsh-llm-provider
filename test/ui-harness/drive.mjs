@@ -1212,8 +1212,10 @@ try {
       if (op.path && op.path[2] === 'models') modelsOp = op
     }
     if (modelsOp === null) return false
+    // 发现到的元数据必须一并落盘（用户批注：发现报 1024K、落盘变 256K）：
+    // step-3.7-flash 桩带 contextWindow 32768 + inputModalities；glm 条目是跨 provider 补显示，落 {id}
     return JSON.stringify(modelsOp.value) === JSON.stringify([
-      { id: 'step-3.7-flash' }, { id: 'glm-5.3-flash' },
+      { id: 'step-3.7-flash', contextWindow: 32768, input: ['text', 'image'] }, { id: 'glm-5.3-flash' },
     ])
   })()
   if (addedOk !== true) throw new Error('添加供应商没有按勾选写入 models（取消的 step-router-v1 不应出现）：' + JSON.stringify(added))
