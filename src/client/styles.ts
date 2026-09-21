@@ -402,6 +402,22 @@ var css =
   '.pv_meFormTitle{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}' +
   '.pv_meForm .pv_field{min-width:0;flex:1}' +
   '.pv_meFormCaps{display:inline-flex;align-items:center;gap:6px}' +
+  // ---- 本地版新增：思考档位编辑块（行内面板与添加表单共用，用户批注）----
+  '.pv_meEffTitle{font-size:12px;color:var(--dsw-alias-label-primary);margin:2px 0 2px}' +
+  '.pv_meEffHint{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);margin-bottom:6px}' +
+  '.pv_meEff{display:flex;flex-direction:column;gap:4px}' +
+  '.pv_meEffLevel{display:flex;align-items:center;gap:10px;min-height:24px}' +
+  '.pv_meEffChip{display:inline-flex;align-items:center;gap:5px;min-width:132px;padding:2px 8px 2px 6px;' +
+  'border-radius:8px;border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));cursor:pointer;' +
+  'font-size:12px;color:var(--dsw-alias-label-secondary);background:0 0}' +
+  '.pv_meEffChip:hover{color:var(--dsw-alias-label-primary)}' +
+  '.pv_meEffChip.pv_meEffOn{border-color:var(--dsw-alias-border-l1,rgba(0,0,0,.24));' +
+  'color:var(--dsw-alias-label-primary);background:var(--dsw-alias-fill-tertiary,rgba(0,0,0,.045))}' +
+  '.pv_meEffChip input{margin:0}' +
+  '.pv_meEffWire{width:150px;padding:3px 8px;font:inherit;font-size:12px;box-sizing:border-box;' +
+  'border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));border-radius:8px;background:#fff;' +
+  'color:var(--dsw-alias-label-primary)}' +
+  '.pv_meEffWire:focus{outline:none;border-color:var(--dsw-alias-border-l1,rgba(0,0,0,.3))}' +
   // 用量快照加载占位：打开页面时「正在刷新用量…」居中一行（转圈 + 文案）
   // pv_pcBody 是纵向 flex，这里必须改回横向行，转圈和文案才并排居中
   '.pv_usageLoading{flex-direction:row;align-items:center;justify-content:center;gap:8px;padding:22px 0;' +

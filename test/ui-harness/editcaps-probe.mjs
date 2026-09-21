@@ -110,6 +110,72 @@ const beforeCaps = await cdp.eval(`(function(){
   throw new Error('面板里没有「视觉」开关')
 })()`)
 console.log('取消视觉：' + beforeCaps)
+// 思考档位块：声明里有 reasoningEfforts {low,high,max} → 应显示 7 档 chips 且 3 档选中
+const ladderProbe = await cdp.eval(`(function(){
+  var block = document.querySelector('.pv_meEff')
+  if (block === null) return JSON.stringify({ error: '思考档位块没出现' })
+  var chips = block.querySelectorAll('.pv_meEffChip')
+  var on = []
+  for (var i = 0; i < chips.length; i += 1) if (chips[i].className.indexOf('pv_meEffOn') !== -1) on.push(chips[i].textContent.trim())
+  return JSON.stringify({ chips: chips.length, on: on })
+})()`)
+console.log('档位块：' + ladderProbe)
+// 勾上 minimal → 线值输入框出现且恒等预填（点击与查询分开：重渲染在帧后才发生）
+await cdp.eval(`(function(){
+  var chips = document.querySelectorAll('.pv_meEffChip')
+  for (var i = 0; i < chips.length; i += 1) {
+    if (chips[i].textContent.trim() === 'minimal') {
+      chips[i].querySelector('input[type=checkbox]').click()
+      return
+    }
+  }
+  throw new Error('找不到 minimal chip')
+})()`)
+await sleep(250)
+const toggleProbe = await cdp.eval(`(function(){
+  var rows = document.querySelectorAll('.pv_meEffLevel')
+  for (var j = 0; j < rows.length; j += 1) {
+    var chip = rows[j].querySelector('.pv_meEffChip')
+    if (chip !== null && chip.textContent.trim() === 'minimal') {
+      var input = rows[j].querySelector('.pv_meEffWire')
+      return JSON.stringify({ wireShown: input !== null, wireValue: input !== null ? input.value : null })
+    }
+  }
+  return JSON.stringify({ error: '找不到 minimal 行' })
+})()`)
+console.log('勾 minimal：' + toggleProbe)
+// 视觉证据：勾上 minimal 后的档位编辑块
+const domDump = await cdp.eval(`(function(){
+  var panel = document.querySelector('.pv_meEditPanel')
+  if (panel === null) return JSON.stringify({ panelGone: true })
+  var kids = []
+  for (var i = 0; i < panel.children.length; i += 1) {
+    var c = panel.children[i]
+    kids.push((c.className || c.tagName) + ':' + (c.textContent || '').slice(0, 18))
+  }
+  return JSON.stringify({ kids: kids })
+})()`)
+console.log('面板 DOM：' + domDump)
+// 视觉证据：勾上 minimal 后的档位编辑块（编辑器列表容器 max-height 320 滚动裁剪——先滚进可视区）
+await cdp.eval(`(function(){ var el = document.querySelector('.pv_meEff'); if (el !== null) el.scrollIntoView({ block: 'nearest' }) })()`)
+await sleep(150)
+const shotBlock = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: await cdp.eval(`(function(){
+  var b = document.querySelector('.pv_meEff').getBoundingClientRect()
+  return { x: b.x - 2, y: b.y - 2, width: b.width + 4, height: b.height + 4, scale: 1 }
+})()`) })
+writeFileSync(join(outDir, 'effort-ladder-panel.png'), Buffer.from(shotBlock.data, 'base64'))
+// 还原：取消 minimal，保持声明原样
+await cdp.eval(`(function(){
+  var chips = document.querySelectorAll('.pv_meEffChip')
+  for (var i = 0; i < chips.length; i += 1) {
+    if (chips[i].textContent.trim() === 'minimal') {
+      var box = chips[i].querySelector('input[type=checkbox]')
+      if (box.checked) box.click()
+      return
+    }
+  }
+})()`)
+await sleep(150)
 // 完成 → 保存
 await cdp.eval(`(function(){
   var btns = document.querySelectorAll('button')

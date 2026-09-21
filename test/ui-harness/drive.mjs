@@ -816,7 +816,8 @@ try {
   const payloadOk = payload !== null && payload.providerId === 'opencode-go' && JSON.stringify(payload.models) === JSON.stringify([
     { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', contextWindow: 1000000, maxTokens: 200000, input: ['text', 'image'], reasoningEfforts: { low: 'low', high: 'high', max: 'max' } },
     { id: 'kimi-k3' },
-    { id: 'my-custom', name: 'My Custom', contextWindow: 1000000, maxTokens: 100000, input: ['text', 'image'], reasoning: true },
+    // 添加表单勾推理 → 物化默认阶梯 low/medium/high（用户批注：自定义档位进 UI，不手写 yaml）
+    { id: 'my-custom', name: 'My Custom', contextWindow: 1000000, maxTokens: 100000, input: ['text', 'image'], reasoning: true, reasoningEfforts: { low: 'low', medium: 'medium', high: 'high' } },
   ])
   if (payloadOk !== true) throw new Error('勾选保存载荷不对（行内编辑覆盖 + reasoningEfforts 原样保留 + 已知只写 id + 自定义全参数含推理）：' + JSON.stringify(payload))
   shots.push(await cdp.shot('03-model-list-saved-toast'))

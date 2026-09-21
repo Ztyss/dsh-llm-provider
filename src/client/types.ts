@@ -100,6 +100,8 @@ export interface ModelEditRow {
   edited?: boolean
   /** 自定义条目的思维链标记：添加表单勾选「推理」时为 true，保存时写进声明条目 reasoning: true。 */
   reasoning?: boolean
+  /** 思考档位草稿（规范档 → 线值；off 的 '' = 不发送参数）。undefined = 未动过（保存时保留声明原文）。 */
+  effortsDraft?: Record<string, string> | undefined
 }
 
 /** /plan/status 的 accounts 项：额度快照里的一家 provider（宿主在通用字段外还会带几个）。 */

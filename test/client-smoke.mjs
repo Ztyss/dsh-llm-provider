@@ -533,6 +533,42 @@ rowsCheck('明确不支持（reasoning:false）照旧写「关闭」，不写成
 rowsCheck('完全没详情时照旧说明没有本地元数据',
   tipText({ id: 'mystery', name: 'Mystery' }, { id: 'some-gateway' }, undefined).indexOf('该模型没有本地元数据') !== -1)
 
+// ---- 思考档位（用户批注：编辑器/添加表单要能自定义 reasoningEfforts，不用手写 yaml）----
+// 语义照官方 resolver：键 = 7 规范档、值 = 线值（off 可 null = 不发送）、≥1 非 off 档。
+const { EFFORT_LEVELS, DEFAULT_EFFORT_LADDER, effortsDraftOf, prefillEffortsOf, effortsToDeclared } = moduleExports
+rowsCheck('规范档位表 = 官方 7 档且顺序一致',
+  JSON.stringify(EFFORT_LEVELS) === JSON.stringify(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']))
+rowsCheck('默认兜底阶梯是 low/medium/high',
+  JSON.stringify(DEFAULT_EFFORT_LADDER) === JSON.stringify(['low', 'medium', 'high']))
+rowsCheck('声明档位解析成草稿：对象进、false/缺失不进',
+  JSON.stringify(effortsDraftOf({ id: 'm', reasoningEfforts: { low: 'low', high: 'high', max: 'max' } }))
+    === JSON.stringify({ low: 'low', high: 'high', max: 'max' })
+    && effortsDraftOf({ id: 'm', reasoningEfforts: false }) === undefined
+    && effortsDraftOf({ id: 'm' }) === undefined)
+rowsCheck('off:null 解析为空线值（不发送参数），未知键不进草稿',
+  JSON.stringify(effortsDraftOf({ id: 'm', reasoningEfforts: { off: null, low: 'low', ultra: 'x' } }))
+    === JSON.stringify({ off: '', low: 'low' }))
+const smokeSiblings = {
+  'p/a': { id: 'a', provider: 'p', source: 'pi-ai', thinkingLevels: ['low', 'high', 'max'] },
+  'p/b': { id: 'b', provider: 'p', source: 'pi-ai', thinkingLevels: ['low', 'high', 'max'] },
+  'p/c': { id: 'c', provider: 'p', source: 'adapter', thinkingLevels: ['high', 'max'] },
+  'p/d': { id: 'd', provider: 'p', source: 'declared', thinkingLevels: ['minimal'] },
+}
+rowsCheck('兄弟模型预填取众数、按规范序排列、declared 兄弟不参与',
+  JSON.stringify(prefillEffortsOf(undefined, smokeSiblings, 'p')) === JSON.stringify({ low: 'low', high: 'high', max: 'max' }))
+rowsCheck('声明原文优先于兄弟预填',
+  JSON.stringify(prefillEffortsOf({ id: 'e', reasoningEfforts: { high: 'high' } }, smokeSiblings, 'p'))
+    === JSON.stringify({ high: 'high' }))
+rowsCheck('兄弟缺失时回默认阶梯且恒等线值',
+  JSON.stringify(prefillEffortsOf(undefined, undefined, 'p')) === JSON.stringify({ low: 'low', medium: 'medium', high: 'high' }))
+rowsCheck('序列化：off 留空写 null、声明原文未知键原样带回',
+  JSON.stringify(effortsToDeclared({ off: '', low: 'low', max: 'ultra' }, { id: 'm', reasoningEfforts: { note: 'keep', low: 'low' } }).value)
+    === JSON.stringify({ note: 'keep', off: null, low: 'low', max: 'ultra' }))
+rowsCheck('校验：只有 off 拒绝；非 off 空线值拒绝；合法无错',
+  effortsToDeclared({ off: '' }, undefined).error !== undefined
+    && effortsToDeclared({ low: '' }, undefined).error !== undefined
+    && effortsToDeclared({ low: 'low', high: 'high' }, undefined).error === undefined)
+
 if (failures > 0) throw new Error(`桥接明细有 ${failures} 条断言没过`)
 
 // ---- i18n：字典完整性 + 插值辅助 + 纯函数的双语输出 ----

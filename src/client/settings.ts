@@ -1112,6 +1112,109 @@ function parsePositiveInt(raw: string | undefined): number | undefined {
 
 /** 编辑器初始行：当前生效的目录模型 + 目录里该 provider 的全部模型 + 路由声明过的模型。 */
 /** 导出供离线测试钉住初始勾选语义（跟随目录勾目录快照 / 自定义清单只勾声明条目）。 */
+/**
+ * 思考档位（用户批注：编辑器/添加表单要能自定义档位，不用手写 yaml）。
+ *
+ * 官方 resolver（dsh-llm-pi-ai 的 THINKING_LEVELS）定义了 7 个**规范档位**，声明键只能从这里选；
+ * 协议差异由「线值」吸收——线值 = 该档实际发给网关的字符串（pi-ai 数据里绝大多数是恒等映射，
+ * 例外如 off→"none"、min→low 这类重命名；README 明文支持 max: ultra）。声明 reasoningEfforts
+ * dict 时官方校验四条：键 ⊆ 规范档位；值 = 非空线值字符串或 null（null 仅 off 合法 = 不发送参数）；
+ * 至少一个非 off 档；空对象拒绝。下面的解析/预填/序列化照这四条来。
+ */
+export var EFFORT_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+
+/** 目录外模型没有声明、兄弟模型也读不到档位表时的兜底阶梯（OpenAI 兼容最通用）。 */
+export var DEFAULT_EFFORT_LADDER = ['low', 'medium', 'high']
+
+/**
+ * 读声明原文里的 reasoningEfforts 为草稿（规范档 → 线值；off 的 '' = 不发送参数）。
+ * 未知键不进草稿（保存时从声明原文原样带回）；`false` / 非对象 / 空对象都算「没声明」。
+ */
+export function effortsDraftOf(entry: DeclaredModel | undefined): Record<string, string> | undefined {
+  if (entry === undefined || entry === null) return undefined
+  var raw = entry['reasoningEfforts']
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  var out: Record<string, string> = {}
+  var has = false
+  for (var level in raw as AnyRecord) {
+    if (EFFORT_LEVELS.indexOf(level) === -1) continue
+    var wire = (raw as AnyRecord)[level]
+    if (typeof wire === 'string' && wire !== '') { out[level] = wire; has = true }
+    else if (wire === null && level === 'off') { out[level] = ''; has = true }
+  }
+  return has ? out : undefined
+}
+
+/**
+ * 档位预填（用户选型：兄弟模型优先）——声明原文 > 同 provider 目录/适配器兄弟模型的
+ * 众数档位表 > 默认 low/medium/high。off 恒预填「不发送参数」（resolver 认可的关思考语义）。
+ */
+export function prefillEffortsOf(
+  entry: DeclaredModel | undefined,
+  details: Record<string, ModelDetail> | undefined | null,
+  providerId: string,
+): Record<string, string> {
+  var fromEntry = effortsDraftOf(entry)
+  if (fromEntry !== undefined) return fromEntry
+  var counts: Record<string, { count: number; levels: string[] }> = {}
+  var own = detailsOfProvider(details, providerId)
+  for (var i = 0; i < own.length; i += 1) {
+    var detail = own[i]
+    // 兄弟只认目录/适配器元数据：declared 是别的声明条目，不是网关真实词表
+    if (detail.source === 'declared') continue
+    var levels = detail.thinkingLevels
+    if (!Array.isArray(levels) || levels.length === 0) continue
+    var ordered = levels.slice().sort(function (a: string, b: string) { return EFFORT_LEVELS.indexOf(a) - EFFORT_LEVELS.indexOf(b) })
+    var sig = ordered.join(',')
+    counts[sig] = counts[sig] || { count: 0, levels: ordered }
+    counts[sig].count += 1
+  }
+  var best: string[] | undefined
+  var bestCount = 0
+  for (var sig2 in counts) {
+    if (counts[sig2].count > bestCount) { bestCount = counts[sig2].count; best = counts[sig2].levels }
+  }
+  var ladder = best !== undefined ? best : DEFAULT_EFFORT_LADDER
+  var out: Record<string, string> = {}
+  for (var j = 0; j < ladder.length; j += 1) {
+    var level = ladder[j]
+    if (EFFORT_LEVELS.indexOf(level) === -1) continue
+    out[level] = level === 'off' ? '' : level
+  }
+  return out
+}
+
+/**
+ * 草稿 + 声明原文（未知键原样带回）→ 官方 resolver 认的 reasoningEfforts dict。
+ * 校验失败返回 error 文案（与官方四条一致：键规范、非 off 线值必填、≥1 非 off 档）。
+ */
+export function effortsToDeclared(
+  draft: Record<string, string>,
+  declared: DeclaredModel | undefined,
+): { value: AnyRecord; error: string | undefined } {
+  var out: AnyRecord = {}
+  var raw = declared === undefined || declared === null ? undefined : declared['reasoningEfforts']
+  if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
+    for (var k in raw as AnyRecord) {
+      if (EFFORT_LEVELS.indexOf(k) === -1) out[k] = (raw as AnyRecord)[k]
+    }
+  }
+  var nonOff = false
+  for (var i = 0; i < EFFORT_LEVELS.length; i += 1) {
+    var level = EFFORT_LEVELS[i]
+    var wire = draft[level]
+    if (wire === undefined) continue
+    if (level === 'off' && wire === '') { out[level] = null; continue }
+    if (typeof wire !== 'string' || wire.trim() === '') {
+      return { value: out, error: '档位「' + level + '」的线值不能为空（只有 off 留空才表示不发送参数）' }
+    }
+    out[level] = wire.trim()
+    if (level !== 'off') nonOff = true
+  }
+  if (!nonOff) return { value: out, error: '至少要提供一个思考档位（off 只表示「关闭思考」，不能单独作为档位表）' }
+  return { value: out, error: undefined }
+}
+
 export function buildEditRows(
   account: PlanAccount,
   catalog: CatalogModel[],
@@ -1153,6 +1256,9 @@ export function buildEditRows(
       originVision: detail !== undefined ? detail.vision === true : declaredInput.indexOf('image') !== -1,
       originVideo: detail !== undefined ? detail.video === true : declaredInput.indexOf('video') !== -1,
       declared: entry,
+      // 思考档位草稿：声明里有 reasoningEfforts 就解析出来（面板勾选态/线值回显），
+      // 没有就 undefined——面板打开时按「兄弟模型优先」预填展示，动过才写进草稿
+      effortsDraft: effortsDraftOf(entry),
     })
   }
   // 1. 声明过的（含别名 id）优先占位；2. 当前生效目录；3. 目录里该 provider 的全量候选
@@ -1268,6 +1374,7 @@ function ModelListEditor(props: {
         declared: undefined,
         added: true,
         reasoning: form.reasoning === true,
+        effortsDraft: form.effortsDraft !== undefined ? (form.effortsDraft as Record<string, string>) : undefined,
       }])
     })
     setForm(emptyForm)
@@ -1377,7 +1484,22 @@ function ModelListEditor(props: {
           if (row.video === true && modalities.indexOf('video') === -1) modalities.push('video')
           if (row.video !== true) modalities = modalities.filter(function (x) { return x !== 'video' })
           declared.input = modalities
-          if (row.reasoning !== undefined) declared.reasoning = row.reasoning === true
+          if (row.reasoning !== undefined) {
+            declared.reasoning = row.reasoning === true
+            if (row.reasoning === true) {
+              // 显式档位表是目录外思考模型真正生效的开关：官方 resolver 对省略 reasoningEfforts
+              // 的目录外条目按非推理物化（base 为空）。草稿没有就用声明原文解析。
+              var effortDraft = row.effortsDraft !== undefined ? row.effortsDraft : effortsDraftOf(row.declared)
+              if (effortDraft !== undefined) {
+                var effortOut = effortsToDeclared(effortDraft, row.declared)
+                if (effortOut.error !== undefined) { setError('「' + row.id + '」' + effortOut.error); return undefined }
+                declared.reasoningEfforts = effortOut.value
+              }
+            } else {
+              // 取消推理必须显式写 false：声明里残留的档位表会让官方 resolver 继续按思考模型物化
+              declared.reasoningEfforts = false
+            }
+          }
         }
         out.push(declared)
         continue
@@ -1404,7 +1526,14 @@ function ModelListEditor(props: {
       entry.contextWindow = ctxNum
       entry.maxTokens = maxNum
       entry.input = input
-      if (row.reasoning === true) entry.reasoning = true
+      if (row.reasoning === true) {
+        entry.reasoning = true
+        if (row.effortsDraft !== undefined) {
+          var customEffort = effortsToDeclared(row.effortsDraft, undefined)
+          if (customEffort.error !== undefined) { setError('「' + row.id + '」' + customEffort.error); return undefined }
+          entry.reasoningEfforts = customEffort.value
+        }
+      }
       out.push(entry)
     }
     if (out.length === 0) { setError('至少要勾选一个模型（全部不勾的清单无法保存）'); return undefined }
@@ -1467,6 +1596,56 @@ function ModelListEditor(props: {
   var panelTest = panelTestState[0] as { phase: string; message: string }
   var setPanelTest = panelTestState[1]
   /** 行内编辑面板：目录外条目的参数编辑（显示名 / 上下文 / 最大输出 / 能力）。改动只进草稿。 */
+  /**
+   * 思考档位编辑块（行内面板与添加表单共用）：7 个规范档 chips + 选中档的线值输入。
+   * 线值 = 实际发给网关的参数字符串（恒等预填，可改名）；off 的线值留空 = 不发送参数。
+   */
+  function effortLadderRows(draft: Record<string, string>, onDraft: (next: Record<string, string>) => void, keyPrefix: string) {
+    var rows = []
+    for (var i = 0; i < EFFORT_LEVELS.length; i += 1) {
+      var level = EFFORT_LEVELS[i]
+      var selected = draft[level] !== undefined
+      var wire = draft[level] !== undefined ? draft[level] : (level === 'off' ? '' : level)
+      rows.push(react.createElement('div', { className: 'pv_meEffLevel', key: keyPrefix + '-' + level },
+        react.createElement('label', { className: 'pv_meEffChip' + (selected ? ' pv_meEffOn' : '') },
+          react.createElement('input', {
+            type: 'checkbox',
+            checked: selected,
+            onChange: (function (level: string) {
+              return function (event: FieldEvent) {
+                var next = { ...draft }
+                if (event.target.checked === true) next[level] = level === 'off' ? '' : (draft[level] !== undefined ? draft[level] : level)
+                else delete next[level]
+                onDraft(next)
+              }
+            })(level),
+          }),
+          level,
+        ),
+        selected ? react.createElement('input', {
+          className: 'pv_meEffWire',
+          value: wire,
+          placeholder: level === 'off' ? '留空=不发送' : level,
+          onChange: (function (level: string) {
+            return function (event: FieldEvent) {
+              var next = { ...draft }
+              next[level] = event.target.value
+              onDraft(next)
+            }
+          })(level),
+        }) : null,
+      ))
+    }
+    return rows
+  }
+
+  /** 档位说明行：面板/表单共用一句，说清线值与 off 的语义。 */
+  function effortLadderHint() {
+    return react.createElement('div', { className: 'pv_meEffHint' },
+      '勾选要提供的档位；线值是实际发给网关的参数（一般与档位同名，可按网关词汇改名）。'
+      + 'off = 关闭思考，线值留空表示不发送参数；至少提供一个非 off 档位。')
+  }
+
   function rowEditPanel(row: ModelEditRow) {
     function panelField(label: string, value: string, onInput: (next: string) => void, key: string, placeholder?: string) {
       return react.createElement('div', { className: 'pv_line pv_row', key: key },
@@ -1524,9 +1703,37 @@ function ModelListEditor(props: {
           capToggle('视觉', 'vision', row.vision === true, '支持图片输入（写进模型的 input 模态）', 'pv_capVision'),
           // 推理勾选态 = 生效状态（knownReasoning 来自目录/声明详情，reasoning 来自本会话
           // 的改动）——只看后者会让声明了 reasoningEfforts 的行在面板里显示成未勾（用户报）
-          capToggle('推理', 'reasoning', row.reasoning === true || row.knownReasoning === true, '支持思维链（声明条目写 reasoning: true）', 'pv_capReason'),
+          react.createElement('label', {
+            className: 'pv_meCap' + (row.reasoning === true || row.knownReasoning === true ? ' pv_capReason' : ' pv_capOff'),
+            title: '支持思维链；勾选后可自定义思考档位（写进声明条目的 reasoningEfforts）',
+          }, react.createElement('input', {
+            type: 'checkbox',
+            checked: row.reasoning === true || row.knownReasoning === true,
+            onChange: function (event: FieldEvent) {
+              var checked = event.target.checked === true
+              var nextPatch: AnyRecord = { reasoning: checked, edited: true }
+              // 勾上推理就按「声明原文 > 兄弟模型 > 默认」物化一份档位草稿：官方 resolver 对
+              // 目录外条目省略 reasoningEfforts 按非推理物化——只勾 reasoning 不写档位等于白勾
+              if (checked === true && row.effortsDraft === undefined) {
+                nextPatch.effortsDraft = prefillEffortsOf(row.declared, props.details, account.id)
+              }
+              patch(row.id, nextPatch)
+            },
+          }), '推理'),
         ),
       ),
+      // 思考档位块：推理勾选时显示（用户批注：自定义档位要有界面，不用手写 yaml）
+      row.reasoning === true || row.knownReasoning === true
+        ? react.createElement('div', { className: 'pv_line pv_row', key: 'p-eff' },
+            react.createElement('div', { className: 'pv_meEffTitle' }, '思考档位（reasoningEfforts）'),
+            effortLadderHint(),
+            react.createElement('div', { className: 'pv_meEff' }, effortLadderRows(
+              row.effortsDraft ?? prefillEffortsOf(row.declared, props.details, account.id),
+              function (next: Record<string, string>) { patch(row.id, { effortsDraft: next, edited: true }) },
+              'p',
+            )),
+          )
+        : null,
       react.createElement('div', { className: 'pv_meActs', key: 'p-acts' },
         react.createElement('button', {
           type: 'button',
@@ -1630,17 +1837,36 @@ function ModelListEditor(props: {
         // 视频不在可选能力里：官方校验的 input 模态只有 text/image，写 video 会被整单拒绝
         react.createElement('label', {
           className: 'pv_meCap' + (form.reasoning ? ' pv_capReason' : ' pv_capOff'),
-          title: '声明支持思维链（声明条目写 reasoning: true）',
+          title: '声明支持思维链；勾选后可自定义思考档位（写进声明条目的 reasoningEfforts）',
         }, react.createElement('input', {
           type: 'checkbox',
           checked: form.reasoning,
           onChange: function (event: FieldEvent) {
             var next = event.target.checked === true
-            setForm(function (prev) { return withKeys(prev as unknown as AnyRecord, { reasoning: next }) as typeof prev })
+            var patch: AnyRecord = { reasoning: next }
+            // 勾上推理就按兄弟模型/默认预填档位草稿（与行内面板同一语义）
+            if (next === true && form.effortsDraft === undefined) {
+              patch.effortsDraft = prefillEffortsOf(undefined, props.details, account.id)
+            }
+            setForm(function (prev) { return withKeys(prev as unknown as AnyRecord, patch) as typeof prev })
           },
         }), '推理'),
       ),
     ),
+    // 思考档位块：添加表单勾选推理时同样可用（用户批注：添加模型的页面也要有）
+    form.reasoning === true
+      ? react.createElement('div', { className: 'pv_line pv_row', key: 'f-eff' },
+          react.createElement('div', { className: 'pv_meEffTitle' }, '思考档位（reasoningEfforts）'),
+          effortLadderHint(),
+          react.createElement('div', { className: 'pv_meEff' }, effortLadderRows(
+            (form.effortsDraft ?? prefillEffortsOf(undefined, props.details, account.id)) as Record<string, string>,
+            function (next: Record<string, string>) {
+              setForm(function (prev) { return withKeys(prev as unknown as AnyRecord, { effortsDraft: next }) as typeof prev })
+            },
+            'f',
+          )),
+        )
+      : null,
     react.createElement('div', { className: 'pv_actRow', key: 'f-acts' },
       react.createElement('button', { type: 'button', className: 'pv_action', style: { marginLeft: '0' }, disabled: busy, onClick: addFromForm }, '添加'),
       react.createElement('button', {

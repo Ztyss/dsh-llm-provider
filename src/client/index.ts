@@ -184,7 +184,7 @@ export function apply(ctx: ClientContext) {
 
 export { normalizeSelection, onPlanChange, mergePlanAccount, dropPlanAccount, lookupDetail, detailsOfProvider } from './data.js'
 export { aliasSelection, withEffortLadder, LEGACY_PROVIDER_ALIASES } from './model-seat.js'
-export { piAiBridgeRows, piAiUpstreamText, presetPickState, providerSaveOps, isRouteConfigured, refreshFailure, routeYamlOf, capabilityBadges, capabilityKeysOf, capabilitiesKnown, modelRow, modelTip, buildEditRows, resolveAddDefaults } from './settings.js'
+export { piAiBridgeRows, piAiUpstreamText, presetPickState, providerSaveOps, isRouteConfigured, refreshFailure, routeYamlOf, capabilityBadges, capabilityKeysOf, capabilitiesKnown, modelRow, modelTip, buildEditRows, resolveAddDefaults, EFFORT_LEVELS, DEFAULT_EFFORT_LADDER, effortsDraftOf, prefillEffortsOf, effortsToDeclared } from './settings.js'
 export { providerEditForm, providerEditSaveOps, validateProviderEdit, isProviderEditDirty, PROVIDER_API_OPTIONS } from './provider-edit.js'
 export { reasoningTextOf, defaultEffortOf, headlineChips, shortWindowLabel, relativeTime, resetCountdownText, quotaShortOf, quotaTextOf, quotaTipOf } from './format.js'
 export { LOCAL_DICT, localT, t, tf, setT } from './i18n.js'
