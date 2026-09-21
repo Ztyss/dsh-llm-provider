@@ -483,6 +483,21 @@ rowsCheck('同名模型在没视觉的那家不出视觉徽章（不串味）',
 rowsCheck('同名模型在有视觉的那家照旧出徽章',
   rowText({ id: 'claude-opus-5', name: 'Claude Opus 5' }, { id: 'anthropic' }).indexOf('视觉') !== -1)
 
+// 「声明」不再进能力列（用户批注：目录外模型保存后多出一枚不明所以的徽标，看着像能力）；
+// 来源说明只留在悬浮详情卡。离线钉住这两个面（tipText 见下方定义）。
+const declaredDetail = { id: 'declared-model', provider: 'opencode-go', name: 'Declared Model', reasoning: true, source: 'declared', thinkingLevels: [] }
+indexed['opencode-go/declared-model'] = declaredDetail
+indexed['declared-model'] = declaredDetail
+// 行文本含悬浮详情卡（sourceDeclared 行也带「声明」二字），断言必须只看能力列单元格
+const capsCellText = (el) => {
+  const kids = Array.isArray(el?.children) ? el.children : []
+  const cell = kids.find((k) => k !== null && typeof k === 'object' && String(k?.props?.className ?? '').indexOf('pv_mCaps') !== -1)
+  return cell === undefined ? '' : flattenText(cell.children)
+}
+const declaredCapsText = capsCellText(modelRow({ id: 'declared-model', name: 'Declared Model' }, { id: 'opencode-go' }, indexed))
+rowsCheck('declared 来源的行能力列没有「声明」徽标（真徽章照常）',
+  declaredCapsText.indexOf('声明') === -1 && declaredCapsText.indexOf('推理') !== -1)
+
 const unknownDetail = { id: 'mystery', provider: 'some-gateway' }
 const tipText = (model, account, detail) => (typeof modelTip === 'function' ? flattenText(modelTip(model, account, detail)) : '')
 rowsCheck('能力未知时不打任何徽章（未知不能渲染成「无视觉」）',
@@ -493,6 +508,9 @@ rowsCheck('能力未知时详情卡注明「能力未知」',
 rowsCheck('详情卡没有窗口时兜底到目录里的值',
   tipText({ id: 'mystery', name: 'Mystery', contextWindow: 8000 }, { id: 'some-gateway' }, unknownDetail)
     .indexOf((8000).toLocaleString('en-US')) !== -1)
+rowsCheck('declared 来源的悬浮详情卡仍注明能力来自路由声明',
+  tipText({ id: 'declared-model', name: 'Declared Model' }, { id: 'opencode-go' }, declaredDetail)
+    .indexOf('能力来自这条路由的声明') !== -1)
 rowsCheck('明确不支持（reasoning:false）照旧写「关闭」，不写成未知',
   tipText({ id: 'claude-opus-5', name: 'Claude Opus 5' }, { id: 'cloudflare-ai-gateway' }, detailAt('cloudflare-ai-gateway', 'claude-opus-5')).indexOf('关闭') !== -1)
 rowsCheck('完全没详情时照旧说明没有本地元数据',

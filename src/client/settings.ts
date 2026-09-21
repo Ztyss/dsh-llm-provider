@@ -206,10 +206,8 @@ export function modelRow(model: CatalogModel, account: PlanAccount, detailsById:
   var caps = capabilityKeysOf(detail).map(function (id) {
     return react.createElement('span', { key: id, className: 'pv_capMini ' + capClassOf(id) }, t(CAP_KEYS[id].label))
   })
-  // 能力来自路由声明（pi-ai 目录没收录这个 id）：标记一下，别让人以为是从上游目录读的
-  if (detail !== undefined && detail.source === 'declared') {
-    caps.push(react.createElement('span', { key: 'declared', className: 'pv_capMini pv_capDeclared', title: t('cap.declaredTip') }, t('cap.declared')))
-  }
+  // 「声明」不再进能力列（用户批注：目录外模型保存后多出一枚不明所以的「声明」，看着像能力）。
+  // 来源说明保留在悬浮详情卡（modelTip 的 cap.sourceDeclared 行），信息不丢。
   // 不放「名称」列：显示名是 ID 的注脚，详情卡悬浮里有，占着最宽的一列还把长 ID 挤成省略号；
   // 「最大输出」才是清单页缺的硬信息（与编辑器同款格式化，目录没给就留空）
   return react.createElement(
