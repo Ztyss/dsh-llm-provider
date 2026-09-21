@@ -124,33 +124,54 @@ try {
 
   const url = 'file:///' + join(here, 'harness.html').replace(/\\/g, '/')
 
-  // 0) 用量加载占位：?planDelay=1500 把 /plan/status 拖慢——页面打开先见「正在刷新用量…」，
-  //    数据到手后才渲染 provider 界面（添加按钮 + 卡片）
+  // 0) providers 立即可见（用户批注）：?planDelay=1500 把 /plan/status 拖慢——
+  //    页面打开即出 provider 界面（路由表骨架卡 + 添加按钮，无用量 chips，绝无整页占位）；
+  //    plan 到货后用量 chips 异步补齐
   await cdp.send('Page.navigate', { url: url + '?planDelay=1500' })
   await sleep(400)
   const waitProbe = await cdp.eval(`(function () {
-    var el = document.querySelector('.pv_usageLoading')
+    var metas = document.querySelectorAll('.pv_pcMeta')
+    var filled = 0
+    for (var i = 0; i < metas.length; i += 1) {
+      // 窗口 chip 有 label（'5h:'）；骨架态只有无 label 的名字兜底 chip，不算用量
+      var labels = metas[i].querySelectorAll('.pv_chipLabel')
+      for (var j = 0; j < labels.length; j += 1) if (labels[j].textContent.indexOf('5h') !== -1) { filled += 1; break }
+    }
     return {
-      loading: el !== null,
-      text: el !== null ? el.textContent : '',
-      noAddBtn: document.querySelector('.pv_addBtn') === null,
-      noCards: document.querySelector('.pv_mHead') === null,
+      loadingGone: document.querySelector('.pv_usageLoading') === null,
+      addBtn: document.querySelector('.pv_addBtn') !== null,
+      cards: document.querySelectorAll('.pv_pc').length,
+      chipsFilled: filled,
     }
   })()`)
-  console.log('  用量占位探针:', JSON.stringify(waitProbe))
-  if (waitProbe.loading !== true || waitProbe.text.indexOf('正在刷新用量') === -1 || waitProbe.noAddBtn !== true || waitProbe.noCards !== true) {
-    throw new Error('用量加载占位没出现：' + JSON.stringify(waitProbe))
+  console.log('  立即渲染探针:', JSON.stringify(waitProbe))
+  if (waitProbe.loadingGone !== true || waitProbe.addBtn !== true || waitProbe.cards < 2 || waitProbe.chipsFilled !== 0) {
+    throw new Error('用量未到时 provider 界面没有立即渲染：' + JSON.stringify(waitProbe))
   }
-  shots.push(await cdp.shot('00-usage-loading-placeholder'))
-  await cdp.waitFor('.pv_addBtn', 8000)
+  shots.push(await cdp.shot('00-providers-first-usage-pending'))
+  // 用量到货：chips 异步补齐（卡片头部出现 5h/7d/30d 窗口）
+  let chipsOk = false
+  for (let wi = 0; wi < 30; wi += 1) {
+    chipsOk = await cdp.eval(`(function () {
+      var metas = document.querySelectorAll('.pv_pcMeta')
+      var filled = 0
+      for (var i = 0; i < metas.length; i += 1) {
+        var labels = metas[i].querySelectorAll('.pv_chipLabel')
+        for (var j = 0; j < labels.length; j += 1) if (labels[j].textContent.indexOf('5h') !== -1) { filled += 1; break }
+      }
+      return filled >= 2
+    })()`)
+    if (chipsOk === true) break
+    await sleep(200)
+  }
   const waitDone = await cdp.eval(`({
-    loadingGone: document.querySelector('.pv_usageLoading') === null,
     cards: document.querySelectorAll('.pv_pc').length,
     addBtn: document.querySelector('.pv_addBtn') !== null,
+    firstChips: (document.querySelector('.pv_pcMeta') || {}).textContent || '',
   })`)
-  console.log('  用量加载完成:', JSON.stringify(waitDone))
-  if (waitDone.loadingGone !== true || waitDone.cards < 2 || waitDone.addBtn !== true) {
-    throw new Error('占位页没被 provider 界面替换：' + JSON.stringify(waitDone))
+  console.log('  用量到货探针:', JSON.stringify({ chipsOk, waitDone }))
+  if (chipsOk !== true || waitDone.cards < 2 || waitDone.addBtn !== true) {
+    throw new Error('用量 chips 没有异步补齐：' + JSON.stringify({ chipsOk, waitDone }))
   }
 
   await cdp.send('Page.navigate', { url })

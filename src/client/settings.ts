@@ -1783,10 +1783,8 @@ export function ProviderSettingsSection() {
   var planState = react.useState(null)
   var plan = planState[0]
   var setPlan = planState[1]
-  // 用量快照首次加载中：页面刚打开时先给「正在刷新用量…」占位，数据到了才渲染 provider 界面
-  var usageWaitState = react.useState(true)
-  var usageWait = usageWaitState[0] as boolean
-  var setUsageWait = usageWaitState[1]
+  // 用量快照（/plan/status，冷缓存要等上游配额接口）不再阻塞 provider 界面：
+  // 名单先从本地路由表出（骨架卡），用量/告警/掩码等富字段到货后异步补齐（用户批注）
   var noteState = react.useState(null)
   var note = noteState[0]
   var setNote = noteState[1]
@@ -1892,12 +1890,10 @@ export function ProviderSettingsSection() {
     loadPlanStatus(force)
       .then(function (payload) {
         setPlan(payload)
-        setUsageWait(false)
       })
       .catch(function (cause) {
         setNote(cause && cause.message ? String(cause.message) : String(cause))
-        // 加载失败也不能把用户晾在占位页上：回落到空列表 + 错误提示
-        setUsageWait(false)
+        // 加载失败：provider 卡片（路由表骨架）仍在，只是没有用量富字段
       })
   }, [])
 
@@ -1907,8 +1903,6 @@ export function ProviderSettingsSection() {
     function () {
       return onPlanChange(function (payload) {
         setPlan(payload)
-        // 广播到了 = 用量数据在手，占位可以撤了
-        setUsageWait(false)
       })
     },
     [],
@@ -2348,7 +2342,24 @@ export function ProviderSettingsSection() {
       ),
     )
   }
-  var accounts = plan !== null && Array.isArray(plan.accounts) ? plan.accounts : []
+  var accounts = plan !== null && Array.isArray(plan.accounts)
+    ? plan.accounts
+    : (function () {
+        // 用量快照没到（或失败）也先把 provider 露出来（用户批注）：名单回退到本地路由表，
+        // 卡片先以骨架形态出现（名字/密钥目标有，用量 chips / 告警 / 掩码等富字段到货后补齐）
+        var routes = status !== null && Array.isArray(status.routes) ? status.routes : []
+        var skeleton: PlanAccount[] = []
+        for (var ri = 0; ri < routes.length; ri += 1) {
+          var route = routes[ri]
+          if (route === null || typeof route !== 'object' || typeof route.id !== 'string') continue
+          skeleton.push({
+            id: route.id,
+            displayName: typeof route.displayName === 'string' ? route.displayName : undefined,
+            apiKeyEnv: typeof route.apiKeyEnv === 'string' ? route.apiKeyEnv : undefined,
+          } as unknown as PlanAccount)
+        }
+        return skeleton
+      })()
   var modelsByProvider: Record<string, CatalogModel[]> = {}
   for (var gi = 0; gi < catalogGroups.length; gi += 1) {
     modelsByProvider[catalogGroups[gi].id] = catalogGroups[gi].models
@@ -2825,19 +2836,9 @@ export function ProviderSettingsSection() {
                 )
               : null),
         )
-      : usageWait === true && plan === null
-        ? // 用量快照还没就绪：先给「正在刷新用量…」占位，刷新完再渲染 provider 界面
-          react.createElement(
-            'div',
-            { className: 'pv_pc', key: 'pane-usage' },
-            react.createElement(
-              'div',
-              { className: 'pv_pcBody pv_usageLoading' },
-              react.createElement('span', { className: 'pv_spin' }, '↻'),
-              react.createElement('span', null, t('prov.usageLoading')),
-            ),
-          )
-        : react.createElement(
+      : // 用量快照不再阻塞界面（用户批注）：provider 界面立即渲染——名单先从本地路由表
+        // 出骨架卡，用量 chips / 告警 / 掩码等富字段等 /plan/status 到货后异步补齐
+        react.createElement(
             'div',
             { style: { display: 'flex', flexDirection: 'column', gap: '10px' }, key: 'pane-providers' },
             react.createElement(AddProviderPanel, {
