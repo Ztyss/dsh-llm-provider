@@ -495,9 +495,12 @@ export function refreshFailure(result: unknown): string | undefined {
 function AddProviderPanel(props: AddProviderPanelProps) {
   var presets: ProviderPreset[] = Array.isArray(props.presets) ? props.presets : []
   var detailsIndex = props.details !== undefined && props.details !== null ? props.details : null
-  var openState = react.useState(false)
-  var open = openState[0]
-  var setOpen = openState[1]
+  // 面板开合受控于父层（用户批注：展开已有 provider 卡时要把这个面板关掉）——
+  // 开合只经 onOpenChange 上报，父层改 open 再传回来
+  var open = props.open === true
+  var setOpen = function (next: boolean) {
+    if (typeof props.onOpenChange === 'function') props.onOpenChange(next)
+  }
   var formState = react.useState({ presetId: '', routeId: '', key: '', baseURL: '', api: '', apiKeyEnv: '', websiteUrl: undefined })
   var form = formState[0]
   var setForm = formState[1]
@@ -693,7 +696,6 @@ function AddProviderPanel(props: AddProviderPanelProps) {
         setForm({ presetId: '', routeId: '', key: '', baseURL: '', api: '', apiKeyEnv: '', websiteUrl: undefined })
         setModelPick({})
         setOpen(false)
-        if (typeof props.onOpenChange === 'function') props.onOpenChange(false)
         if (typeof props.onAdded === 'function') {
           props.onAdded(existed ? tf('prov.updated', { id: routeId }) : tf('prov.added', { id: routeId }))
         }
@@ -712,10 +714,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
       {
         type: 'button',
         className: 'pv_addBtn',
-        onClick: function () {
-          setOpen(true)
-          if (typeof props.onOpenChange === 'function') props.onOpenChange(true)
-        },
+        onClick: function () { setOpen(true) },
       },
       t('addProvider'),
     )
@@ -896,7 +895,6 @@ function AddProviderPanel(props: AddProviderPanelProps) {
           style: { marginLeft: 'auto' },
           onClick: function () {
             setOpen(false)
-            if (typeof props.onOpenChange === 'function') props.onOpenChange(false)
             setTest({ phase: 'idle', message: '' })
             setNote(null)
           },
@@ -2300,10 +2298,24 @@ export function ProviderSettingsSection() {
     })
   }
 
+  // 添加面板开合受控（用户批注：编辑已有 provider 时添加面板也要自动收起）：
+  // 打开面板 → 收起所有卡片；展开卡片 → 面板收起。编辑面永远只有一个。
+  var addPanelOpenState = react.useState(false)
+  var addPanelOpen = addPanelOpenState[0] as boolean
+  var setAddPanelOpen = addPanelOpenState[1]
+  function changeAddPanelOpen(next: boolean) {
+    setAddPanelOpen(next)
+    if (next === true) collapseAllProviderCards()
+  }
+
   function toggle(key: string, dflt: boolean) {
     var opening = isOpen(key, dflt) !== true
-    // 展开互斥（用户批注）：展开一张卡时把其它卡全部收起——同时只留一个 provider 编辑面
-    if (opening) collapseAllProviderCards(key)
+    // 展开互斥（用户批注）：展开一张卡时把其它卡全部收起 + 关掉添加面板——
+    // 同时只留一个 provider 编辑面
+    if (opening) {
+      collapseAllProviderCards(key)
+      setAddPanelOpen(false)
+    }
     setOpenMap(function (prev: AnyRecord) {
       return withKey(prev, key, opening)
     })
@@ -2902,11 +2914,10 @@ export function ProviderSettingsSection() {
             { style: { display: 'flex', flexDirection: 'column', gap: '10px' }, key: 'pane-providers' },
             react.createElement(AddProviderPanel, {
               presets: presets,
+              open: addPanelOpen,
               onAdded: onProviderAdded,
               // 打开添加面板时收起所有已展开的 provider 卡（编辑面互斥，用户批注）
-              onOpenChange: function (next: boolean) {
-                if (next === true) collapseAllProviderCards()
-              },
+              onOpenChange: changeAddPanelOpen,
               details: detailsById,
             }),
             cards,

@@ -200,10 +200,12 @@ export interface EffortChoice {
 /** 添加 provider 面板的注入面。 */
 export interface AddProviderPanelProps {
   presets?: unknown
-  /** 添加/更新成功后回调（带结果文案，父层负责 toast——面板自身随即收起，装不下提示）。 */
-  onAdded?: (message?: string) => void
+  /** 面板开合受控：父层持有状态（展开 provider 卡时要把这个面板关掉）。 */
+  open?: boolean
   /** 面板开合上报：打开时父层把已展开的 provider 卡片全部收起（编辑面互斥）。 */
   onOpenChange?: (open: boolean) => void
+  /** 添加/更新成功后回调（带结果文案，父层负责 toast——面板自身随即收起，装不下提示）。 */
+  onAdded?: (message?: string) => void
   /** 全量模型详情索引（provider/id → 详情）：发现清单用来跨 provider 补能力/上下文展示。 */
   details?: Record<string, ModelDetail> | undefined | null
 }

@@ -1021,6 +1021,26 @@ try {
   const addCollapsed = await cdp.eval(`({ openCount: document.querySelectorAll('.pv_pc.pv_pcOpen').length })`)
   console.log('  打开添加面板后卡片收起探针:', JSON.stringify(addCollapsed))
   if (addCollapsed.openCount !== 0) throw new Error('打开添加面板没有收起已展开的卡片：' + JSON.stringify(addCollapsed))
+  // 反向互斥（用户批注）：添加面板开着时展开一张卡 → 添加面板自动收起
+  await cdp.eval(`
+    var cols = document.querySelectorAll('.pv_pcCaretCol')
+    if (cols.length > 0) cols[0].click()
+  `)
+  await sleep(300)
+  const addClosedByCard = await cdp.eval(`({
+    addBtnBack: document.querySelector('.pv_addBtn') !== null,
+    // pv_pick 类名在密钥行也被复用，加面板专属的标志是 pv_pickBtn（供应商下拉按钮）
+    pickGone: document.querySelector('.pv_pickBtn') === null,
+    openCount: document.querySelectorAll('.pv_pc.pv_pcOpen').length,
+  })`)
+  console.log('  展开卡收起添加面板探针:', JSON.stringify(addClosedByCard))
+  if (addClosedByCard.addBtnBack !== true || addClosedByCard.pickGone !== true || addClosedByCard.openCount !== 1) {
+    throw new Error('展开卡片没有收起添加面板：' + JSON.stringify(addClosedByCard))
+  }
+  // 重新打开添加面板，继续原有发现流程
+  await cdp.eval(`document.querySelector('.pv_addBtn').click()`)
+  await cdp.waitFor('.pv_pick')
+  await sleep(200)
   await cdp.eval(`
     var t = document.querySelector('.pv_pick button')
     t.click()
@@ -1227,7 +1247,7 @@ try {
     return {
       toast: toast === null ? '' : toast.textContent,
       panelClosed: document.querySelector('.pv_addBtn') !== null,
-      pickGone: document.querySelector('.pv_pick') === null,
+      pickGone: document.querySelector('.pv_pickBtn') === null,
     }
   })()`)
   console.log('  添加成功信号:', JSON.stringify(addedSignal))
