@@ -969,6 +969,23 @@ try {
   await cdp.send('Page.navigate', { url: 'file:///' + join(here, 'harness.html').replace(/\\/g, '/') })
   await cdp.waitFor('.pv_addBtn')
   await sleep(400)
+  // 7a) 展开互斥（用户批注）：展开一张卡 → 再展开另一张，前一张自动收起；
+  //     打开添加面板 → 所有卡片收起
+  await cdp.eval(`
+    var cols = document.querySelectorAll('.pv_pcCaretCol')
+    if (cols.length > 0) cols[0].click()
+  `)
+  await sleep(300)
+  await cdp.eval(`
+    var cols = document.querySelectorAll('.pv_pcCaretCol')
+    if (cols.length > 1) cols[1].click()
+  `)
+  await sleep(300)
+  const exclusive = await cdp.eval(`({
+    openCount: document.querySelectorAll('.pv_pc.pv_pcOpen').length,
+  })`)
+  console.log('  展开互斥探针（两张卡都点开后）:', JSON.stringify(exclusive))
+  if (exclusive.openCount !== 1) throw new Error('展开没有互斥：' + JSON.stringify(exclusive))
   await cdp.eval(`
     var t = document.querySelector('.ms_trigger')
     if (t !== null) t.click()
@@ -980,6 +997,9 @@ try {
   `)
   await cdp.waitFor('.pv_pick')
   await sleep(200)
+  const addCollapsed = await cdp.eval(`({ openCount: document.querySelectorAll('.pv_pc.pv_pcOpen').length })`)
+  console.log('  打开添加面板后卡片收起探针:', JSON.stringify(addCollapsed))
+  if (addCollapsed.openCount !== 0) throw new Error('打开添加面板没有收起已展开的卡片：' + JSON.stringify(addCollapsed))
   await cdp.eval(`
     var t = document.querySelector('.pv_pick button')
     t.click()
@@ -1176,17 +1196,21 @@ try {
     ])
   })()
   if (addedOk !== true) throw new Error('添加供应商没有按勾选写入 models（取消的 step-router-v1 不应出现）：' + JSON.stringify(added))
-  // 添加成功的端到端信号：面板提示「已添加 StepFun」
+  // 添加成功的端到端信号（用户批注：成功后面板立即收起）：toast 报「已添加 StepFun」，
+  // 面板收起（pv_addBtn 回归、下拉/清单消失）
   await sleep(300)
-  const addedNote = await cdp.eval(`(function () {
-    var notes = Array.from(document.querySelectorAll('.pv_pcBody .plan_note'))
-    for (var i = notes.length - 1; i >= 0; i -= 1) {
-      if (notes[i].textContent.indexOf('已添加 StepFun') !== -1) return notes[i].textContent
+  const addedSignal = await cdp.eval(`(function () {
+    var toast = document.querySelector('.pv_toast')
+    return {
+      toast: toast === null ? '' : toast.textContent,
+      panelClosed: document.querySelector('.pv_addBtn') !== null,
+      pickGone: document.querySelector('.pv_pick') === null,
     }
-    return ''
   })()`)
-  console.log('  添加成功提示:', addedNote)
-  if (addedNote.indexOf('已添加 StepFun') === -1) throw new Error('添加成功提示没出现：' + addedNote)
+  console.log('  添加成功信号:', JSON.stringify(addedSignal))
+  if (addedSignal.toast.indexOf('已添加 StepFun') === -1 || addedSignal.panelClosed !== true || addedSignal.pickGone !== true) {
+    throw new Error('添加成功后面板没收起或缺成功提示：' + JSON.stringify(addedSignal))
+  }
   shots.push(await cdp.shot('07b-custom-provider-added'))
 
   // 相邻截图不允许完全相同——两张一样说明某个步骤没有真正切过去（01/02 曾这样，md5 都相同）

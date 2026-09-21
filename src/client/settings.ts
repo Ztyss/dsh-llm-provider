@@ -680,10 +680,17 @@ function AddProviderPanel(props: AddProviderPanelProps) {
         return apiCall('credentials/set', { ref: form.apiKeyEnv.trim(), value: form.key.trim() })
       })
       .then(function () {
-        setNote(existed ? tf('prov.updated', { id: routeId }) : tf('prov.added', { id: routeId }))
+        // 添加/更新成功：面板立即自动收起（用户批注）。成功文案改走父层 toast
+        // （面板都没了，自己的提示行没处站）；表单与发现勾选态一并复位，
+        // 下次打开是干净的面板。
         setTest({ phase: 'idle', message: '' })
-        patchForm({ key: '' })
-        if (typeof props.onAdded === 'function') props.onAdded()
+        setForm({ presetId: '', routeId: '', key: '', baseURL: '', api: '', apiKeyEnv: '', websiteUrl: undefined })
+        setModelPick({})
+        setOpen(false)
+        if (typeof props.onOpenChange === 'function') props.onOpenChange(false)
+        if (typeof props.onAdded === 'function') {
+          props.onAdded(existed ? tf('prov.updated', { id: routeId }) : tf('prov.added', { id: routeId }))
+        }
       })
       .catch(function (cause) {
         setNote(tf('prov.addFailed', { reason: cause && cause.message ? cause.message : cause }))
@@ -696,7 +703,14 @@ function AddProviderPanel(props: AddProviderPanelProps) {
   if (!open) {
     return react.createElement(
       'button',
-      { type: 'button', className: 'pv_addBtn', onClick: function () { setOpen(true) } },
+      {
+        type: 'button',
+        className: 'pv_addBtn',
+        onClick: function () {
+          setOpen(true)
+          if (typeof props.onOpenChange === 'function') props.onOpenChange(true)
+        },
+      },
       t('addProvider'),
     )
   }
@@ -870,7 +884,17 @@ function AddProviderPanel(props: AddProviderPanelProps) {
           title: test.phase === 'ok' ? '' : t('prov.needTestFirst'),
           onClick: add,
         }, busy ? t('prov.adding') : t('prov.addToList')),
-        react.createElement('button', { type: 'button', className: 'pv_action', style: { marginLeft: 'auto' }, onClick: function () { setOpen(false); setTest({ phase: 'idle', message: '' }); setNote(null) } }, t('prov.cancel')),
+        react.createElement('button', {
+          type: 'button',
+          className: 'pv_action',
+          style: { marginLeft: 'auto' },
+          onClick: function () {
+            setOpen(false)
+            if (typeof props.onOpenChange === 'function') props.onOpenChange(false)
+            setTest({ phase: 'idle', message: '' })
+            setNote(null)
+          },
+        }, t('prov.cancel')),
       ),
       test.message === ''
         ? null
@@ -2004,11 +2028,13 @@ export function ProviderSettingsSection() {
       .catch(function () { /* 下次刷新会带上 */ })
   }
 
-  // 添加 provider 成功后的收尾：强制刷余额（新 provider 不在缓存里）+ 预设 + 模型目录
-  function onProviderAdded() {
+  // 添加 provider 成功后的收尾：强制刷余额（新 provider 不在缓存里）+ 预设 + 模型目录。
+  // 结果文案由这里 toast——添加面板成功后立即收起（用户批注），自己的提示行没处站。
+  function onProviderAdded(message?: string) {
     refresh(true)
     setCatTick(function (t: number) { return t + 1 })
     reloadPresets()
+    if (message !== undefined && message !== '') showToast(message, true)
   }
 
   // 删除 provider 的收尾：不打上游（余量没变），只本地移除 + 重载预设/目录。
@@ -2249,9 +2275,30 @@ export function ProviderSettingsSection() {
   function isOpen(key: string, dflt: boolean) {
     return openMap[key] === undefined ? dflt : openMap[key]
   }
-  function toggle(key: string, dflt: boolean) {
+  /** 把所有 provider 卡片的顶层展开键显式压灭（exceptId 除外）。子键（:models 等）保留。 */
+  function collapseAllProviderCards(exceptId?: string) {
+    var list = plan !== null && Array.isArray(plan.accounts) ? plan.accounts : []
+    var ids: string[] = []
+    for (var i = 0; i < list.length; i += 1) {
+      var entry = list[i]
+      if (entry !== null && entry !== undefined && typeof entry.id === 'string' && entry.id !== exceptId) ids.push(entry.id)
+    }
+    if (ids.length === 0) return
     setOpenMap(function (prev: AnyRecord) {
-      return withKey(prev, key, isOpen(key, dflt) !== true)
+      var next: AnyRecord = {}
+      for (var key in prev) next[key] = prev[key]
+      // 显式写 false：连「报警/错误默认展开」的卡也被收起，重新点开算新的用户意图
+      for (var j = 0; j < ids.length; j += 1) next[ids[j]] = false
+      return next
+    })
+  }
+
+  function toggle(key: string, dflt: boolean) {
+    var opening = isOpen(key, dflt) !== true
+    // 展开互斥（用户批注）：展开一张卡时把其它卡全部收起——同时只留一个 provider 编辑面
+    if (opening) collapseAllProviderCards(key)
+    setOpenMap(function (prev: AnyRecord) {
+      return withKey(prev, key, opening)
     })
   }
 
@@ -2793,7 +2840,15 @@ export function ProviderSettingsSection() {
         : react.createElement(
             'div',
             { style: { display: 'flex', flexDirection: 'column', gap: '10px' }, key: 'pane-providers' },
-            react.createElement(AddProviderPanel, { presets: presets, onAdded: onProviderAdded, details: detailsById }),
+            react.createElement(AddProviderPanel, {
+              presets: presets,
+              onAdded: onProviderAdded,
+              // 打开添加面板时收起所有已展开的 provider 卡（编辑面互斥，用户批注）
+              onOpenChange: function (next: boolean) {
+                if (next === true) collapseAllProviderCards()
+              },
+              details: detailsById,
+            }),
             cards,
           ),
     toast === null
