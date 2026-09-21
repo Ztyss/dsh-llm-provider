@@ -153,10 +153,11 @@ var css =
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;' +
   'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));font-size:13px;line-height:20px;' +
   'color:var(--dsw-alias-label-secondary)}' +
-  // 模型区外框
-  // 模型区外框（底部只留 4px：收起态卡片自带 14px 底距足够——用户批注框下沿多余空行）
+  // 模型区外框（零纵向内边距：收起态框=头部行本身，「模型（N）」严格竖向居中；
+  // 展开态的底部呼吸感由 .pv_mList / .pv_mEditRow / .pv_me 各自补回——
+  // 此前 4px 底 padding 在收起态把头部顶高 1.5px，用户批注文字偏上）
   '.pv_mBox{border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:12px;' +
-  'padding:0 14px 4px;display:flex;flex-direction:column}' +
+  'padding:0 14px;display:flex;flex-direction:column}' +
   '.pv_mRight{margin-left:auto;display:inline-flex;align-items:center;gap:8px}' +
   '.pv_iconBtn{border:0;background:0 0;cursor:pointer;font:inherit;font-size:15px;padding:3px 6px;' +
   'border-radius:6px;color:var(--dsw-alias-label-tertiary)}' +
@@ -328,7 +329,7 @@ var css =
   'cursor:pointer;color:var(--dsw-alias-label-tertiary)}' +
   '.pv_mCaretCol:hover{color:var(--dsw-alias-label-secondary)}' +
   '.pv_mList{border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));' +
-  'margin-top:0;padding-top:6px;display:flex;flex-direction:column}' +
+  'margin-top:0;padding:6px 0 4px;display:flex;flex-direction:column}' +
   '.pv_mFilter{flex:none;width:240px;box-sizing:border-box;padding:5px 24px 5px 12px;font:inherit;font-size:13px;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:8px;outline:0;' +
   'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));color:var(--dsw-alias-label-primary)}' +
@@ -407,7 +408,9 @@ var css =
   'color:var(--dsw-alias-label-tertiary)}' +
   '.pv_usageLoading .pv_spin{font-size:16px;color:var(--dsw-alias-label-secondary)}' +
   // 清单页的「编辑模型」入口行：底部留足呼吸距，别让按钮贴着模型框下边框
-  '.pv_mEditRow{display:flex;align-items:center;padding:9px 0 12px}' +
+  '.pv_mEditRow{display:flex;align-items:center;padding:9px 0 16px}' +
+  // 编辑页（勾选编辑器）挂在 .pv_mBox 直下：补回外框让出的 4px 底距，展开态视觉不变
+  '.pv_mBox > .pv_me{padding-bottom:4px}' +
   // 编辑器的「添加模型 / 保存」按钮行同样与模型框下边框留呼吸距（模型框自身 padding-bottom 为 0）
   '.pv_meActs{display:flex;align-items:center;gap:8px;margin-top:3px;margin-bottom:4px}' +
   // ---- 本地版新增：删除确认弹层（issue #3）----
