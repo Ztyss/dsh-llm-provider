@@ -1307,7 +1307,9 @@ function ModelListEditor(props: {
         }
         set({
           phase: 'ok',
-          message: '✓ ' + tf('prov.pingOk', { id: id, latency: String(res.latencyMs ?? '') }),
+          // latency 缺席 = 宿主还在跑旧版探测（版本错位窗口）：如实只报连通，不渲染「· ms」
+          message: '✓ ' + tf('prov.pingOk', { id: id })
+            + (typeof res.latencyMs === 'number' ? ' · ' + String(res.latencyMs) + 'ms' : ''),
         })
         scrollTestResultIntoView()
       })
