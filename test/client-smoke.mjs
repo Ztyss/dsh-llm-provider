@@ -304,9 +304,8 @@ rowsCheck('下载中态有进行中文案', piAiUpstreamText({ preference: 'late
 rowsCheck('待重启态带版本与重启提示',
   piAiUpstreamText({ preference: 'latest', safeVersions: ['0.86.0'], needsRestart: true }) === '已下载 0.86.0（重启生效）')
 rowsCheck('未过检验态带版本', piAiUpstreamText({ preference: 'latest', latestRejected: { version: '0.87.0', error: 'x' } }) === '已下载 0.87.0（无法启用）')
-rowsCheck('kill switch 关着时说明功能已关闭', piAiUpstreamText({ featureDisabled: true }) === '已关闭（DSH_PROVIDER_UPDATE=off）')
 rowsCheck('已启用态带版本号（bridge 跑在安全区那版上）',
-  piAiUpstreamText({ preference: 'latest' }, { active: true, piAiVersion: '0.86.0', source: 'safe-0.86.0' }) === '已启用 0.86.0')
+  piAiUpstreamText({ preference: 'latest' }, { active: true, piAiVersion: '0.86.0', source: 'safe-0.86.0' }) === '0.86.0（上游最新）')
 rowsCheck('拨过 ON 但本地无就绪副本（下载卡死/失败后重启）时提示未下载，不假报下载中',
   piAiUpstreamText({ preference: 'latest' }) === '未下载（拨 OFF 再拨 ON 重试）')
 const { piAiToggleState } = moduleExports

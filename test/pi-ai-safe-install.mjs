@@ -7,7 +7,7 @@
 //   3. updateDecision 纯函数：上游 ≤ 当前生效版本时明确「无需下载」（Q2-C），
 //      有新版且本地没有时才 install；
 //   4. 后台自动检查整体移除：触网只发生在用户拨开关那一下（Q1），
-//      DSH_PROVIDER_UPDATE=off 是彻底关闭的 kill switch（Q4）。
+//      功能常驻：无 kill switch，触网只与开关 ON 相关（拨动 + 每次启动检查一次）。
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

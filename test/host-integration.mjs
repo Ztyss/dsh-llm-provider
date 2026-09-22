@@ -5,7 +5,7 @@
  *
  * A. pi-ai 桥接：用本机真实的 DSH_HOME 解析官方 bundle 与 dsh 自带那份 pi-ai，
  *    断言①桥接装载成功（候选/体检链路真的跑通）②vendor/ 里没有 pi-ai 副本
- *    ③启动检查没有发出任何网络请求（无后台检查：触网只发生在拨开关那一下）。
+ *    ③开关 OFF（本机构造）时启动零网络请求：触网只发生在开关 ON 的拨动与每次启动检查。
  * B. 路由契约：把 DSH_HOME 指到一个空目录让桥接退化为纯计费模式，再用桩 ctx 收集
  *    宿主注册的 HTTP 路由，逐个打真实请求体，断言 /provider/status、/provider/models、
  *    /provider/set-models、/provider/remove、/provider/pi-ai（pi-ai 开关）的行为。
@@ -202,9 +202,9 @@ async function call(path, method = 'GET', body) {
 }
 
 const statusRes = await call('/provider/status')
-check('B. /provider/status 报开关缺省（偏好 dsh、功能在线、无自有版本）',
-  [statusRes.body.piAi.preference, statusRes.body.piAi.featureDisabled, statusRes.body.piAi.safeVersions],
-  ['dsh', false, []])
+check('B. /provider/status 报开关缺省（偏好 dsh、无自有版本）',
+  [statusRes.body.piAi.preference, statusRes.body.piAi.safeVersions],
+  ['dsh', []])
 check('B. /provider/status 报 vendor 下 0 份下载来的 pi-ai', statusRes.body.vendorPiAiVersions, [])
 check('B. /provider/status 报出了两条路由', statusRes.body.routes.map((r) => r.id).sort(), ['opencode-go', 'plain-route'])
 
@@ -256,15 +256,6 @@ check('B. 拨 OFF：直报已在使用 DSH 自带（不是失败）',
   check('B. 拨 OFF 后偏好落盘 status.json（piAiPreference=dsh）', pref.piAiPreference, 'dsh')
 }
 checkThat('B. 拨 OFF 全程零网络请求', fetchCalls.length === 0, `fetch: ${fetchCalls.join(', ')}`)
-
-// kill switch（DSH_PROVIDER_UPDATE=off）：拨 ON 也直说功能已关闭，同样零网络请求。
-// 开关调用期现场求值（不重启也生效）——直接设环境变量打同一套已注册的路由。
-process.env.DSH_PROVIDER_UPDATE = 'off'
-const killedRes = await call('/provider/pi-ai', 'POST', { enabled: true })
-check('B. kill switch：拨 ON 直说功能已关闭（不是失败）',
-  [killedRes.body.ok, killedRes.body.disabled, killedRes.body.enabled], [true, true, true])
-checkThat('B. kill switch 全程零网络请求', fetchCalls.length === 0, `fetch: ${fetchCalls.join(', ')}`)
-delete process.env.DSH_PROVIDER_UPDATE
 
 rmSync(emptyHome, { recursive: true, force: true })
 if (sandbox !== undefined) rmSync(sandbox, { recursive: true, force: true })

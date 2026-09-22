@@ -1,5 +1,5 @@
 /**
- * pi-ai 上游更新器：设置页「启用最新版 pi-ai」开关拨 ON 时，查 @earendil-works/pi-ai
+ * pi-ai 上游更新器：设置页「启用最新版 pi-ai」开关拨 ON 后，查 @earendil-works/pi-ai
  * 的 npm registry，下载最新版、装依赖、放进**安全区** `llm-provider-bridge/pi-ai/<版本>/`，
  * 验证通过后标记待生效（重启后桥接才挂到新版本，见 bridge.ts）。
  *
@@ -10,14 +10,13 @@
  * 通过后只写 status.json 的 needsRestart 标记——已 require 的旧模块不受影响，
  * 下一次 dsh 重启时 bridge.ts 才会挂到新版本。/provider/status 会报出来。
  *
- * 触发方式**只有一种**：用户拨开关（POST /provider/pi-ai，见 index.ts）。插件不做任何
- * 后台检查、启动时不触网——拨开关这个动作就是「同意触网」的唯一授权。旧策略（6 小时
- * 节流后台检查 + vendor/pi-ai 落点 + DSH_PROVIDER_UPDATE=on opt-in）整体作废：
- * 下载落点改安全区是因为插件包会被整棵递归删（包管理器/插件市场/宿主），几百 MB 的
+ * 触发方式（用户 09-22 修订，开关 ON = 常驻意图，不是一次性快照）：
+ *   1. 用户拨开关（POST /provider/pi-ai，见 index.ts）；
+ *   2. **每次 dsh 启动时**——只要开关是 ON（preference=latest），无论本地有无就绪副本：
+ *      没副本就补上下载（启动即进入下载中态），有副本也查一次上游、有新版自动下载。
+ *      （60 秒最小间隔是纯工程防抖：防 crash-loop 反复查 registry，正常重启间隔远大于它。）
+ * 下载落点在安全区：插件包会被整棵递归删（包管理器/插件市场/宿主），几百 MB 的
  * pi-ai 放包里等于每次重装插件都要重下。
- *
- * `DSH_PROVIDER_UPDATE=off` 是 kill switch：整个功能关闭（界面隐藏开关、接口拒绝），
- * 给「这段时间就是不想让这个插件碰网络」留的逃生门。
  */
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
@@ -54,19 +53,6 @@ const execFileAsync = promisify(execFile) as unknown as (
 const PACKAGE = '@earendil-works/pi-ai'
 const REGISTRY = `https://registry.npmjs.org/${encodeURIComponent(PACKAGE).replace('%40', '@')}`
 
-/**
- * kill switch：`DSH_PROVIDER_UPDATE=off` 彻底关闭「启用最新版 pi-ai」功能。
- *
- * 缺省（未设置）= 功能在线：开关可见，拨 ON 才触网。用户 09-22 确认的默认行为；
- * 此前「默认停用、DSH_PROVIDER_UPDATE=on 才开」的老语义整体作废。
- *
- * **调用期现场求值**（不是模块级常量）：改了环境变量当场生效、不用重启，
- * 集成测试也能直接注入。
- */
-export function piAiFeatureDisabled(): boolean {
-  return process.env.DSH_PROVIDER_UPDATE === 'off'
-}
-
 /** 安全区里某个自有版本的目录——下载唯一落点（插件包外，插件重装不丢）。 */
 export function safeVersionDir(version: string): string {
   return join(safePiAiDir(), version)
@@ -80,8 +66,6 @@ export interface UpdateResult {
   applied: boolean
   compatible: boolean | undefined
   error: string | undefined
-  /** kill switch 关着：功能被 DSH_PROVIDER_UPDATE=off 停用（不是失败，界面照实说明）。 */
-  disabled?: boolean | undefined
   /** 跳过下载时的明确结论（「已是最新」「本地已就位」……界面上要能看见，Q2-C/Q5）。 */
   reason?: string | undefined
 }
@@ -265,12 +249,10 @@ export async function checkAndUpdate(
     compatible: undefined,
     error: undefined,
   }
-  // kill switch：整个功能关闭，连 registry 都不询问，如实回报（不是失败）
-  if (piAiFeatureDisabled()) {
-    result.disabled = true
-    result.error = 'pi-ai 更新功能已被 DSH_PROVIDER_UPDATE=off 关闭'
-    log('killed switch：pi-ai 更新功能已关闭（DSH_PROVIDER_UPDATE=off）')
-    return result
+  // 每次检查的结论都落盘（status.json 的 lastCheck）：界面（桥接页的 lastCheck 行、
+  // 状态文字）要能看到「已是最新 / 无需下载」这类跳过结论——拨了开关不能一片安静。
+  const record = (patch: Record<string, unknown>): void => {
+    updateStatus({ lastCheck: { at: result.checkedAt, ...patch } })
   }
   try {
     const release = await latestRelease()
@@ -278,6 +260,7 @@ export async function checkAndUpdate(
     const decision = updateDecision(release, activeVersion, safeInstalledVersions())
     if (decision.action === 'skip') {
       result.reason = decision.reason
+      record({ latest: release.version, reason: decision.reason })
       log(decision.reason ?? '无需下载')
       return result
     }
@@ -289,19 +272,22 @@ export async function checkAndUpdate(
     result.compatible = probe.ok && probe.unverified !== true
     if (probe.ok && probe.unverified !== true) {
       updateStatus({ piAiVersion: release.version, needsRestart: true, latestVersion: release.version, latestRejected: undefined })
+      record({ latest: release.version, installed: release.version, reason: `已验证 ${release.version}（完整性 + 兼容性体检）` })
       result.applied = true
       log(`已验证 ${release.version}（完整性 + 兼容性体检），重启 dsh 后生效`)
     } else {
-      // 留着不删：下次启动 loadBridge 还会体检一遍，结论一致；开关保留 OFF，用户看得见原因。
+      // 留着不删：下次启动 loadBridge 还会体检一遍，结论一致；开关保持当前态，用户看得见原因。
       // unverified（需求解析不出）同样不替换——「验证才能替换」没有例外。
       const reason = probe.unverified === true
         ? '体检未执行（解析不出 bridge 的 import 需求），按「验证才能替换」不切换'
         : probe.error
       updateStatus({ latestVersion: release.version, latestRejected: { version: release.version, error: reason } })
+      record({ latest: release.version, installed: release.version, error: reason })
       log(`${release.version} 未通过验证，已跳过（不会切过去）：${String(reason)}`)
     }
   } catch (error) {
     result.error = error instanceof Error ? error.message : String(error)
+    record({ error: result.error })
     log(`更新失败：${result.error}`)
   }
   return result

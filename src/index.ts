@@ -24,7 +24,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { activePiAiRoot, loadBridge, readPiAiPreference, safeInstalledVersions, setPiAiPreference, vendorDir } from './bridge.js'
 import { enrichModelDetails, loadModelDetails, withAdapterModels, withDeclaredModels, type AdapterModelInfo, type ModelDetail } from './model-details.js'
-import { checkAndUpdate, piAiFeatureDisabled } from './updater.js'
+import { checkAndUpdate } from './updater.js'
 import { labelOf, providerRoutes, websiteOf, type ProviderRoute } from './routes.js'
 import { presetsWithMeta } from './provider-presets.js'
 import { findAdapter } from './adapters/registry.js'
@@ -357,18 +357,18 @@ export function apply(ctx: PluginContext, config: unknown): void {
           deepseekRouteMissing: bridge.ok && !routes.some((route) => route.id === 'deepseek'),
           // pi-ai 开关状态（界面「pi-ai 桥接」标签页用）：
           //   preference      —— 'latest'（拨 ON）/ 'dsh'（拨 OFF，缺省）
-          //   featureDisabled —— kill switch（DSH_PROVIDER_UPDATE=off）：整个功能关闭，界面隐藏开关
           //   safeVersions    —— 安全区里已下载就位的自有版本（旧 → 新）
           //   needsRestart    —— 已下载新版本或刚拨了开关：重启后桥接才挂到新状态
           //   latestVersion / latestRejected —— 最近一次检查的结论（未过检验时界面上常驻显示）
           //   download        —— 正在进行中的下载（拨 ON 后异步跑，完成即消失；结论看上面几个字段）
+          //   lastCheck       —— 最近一次检查的明确结论（已是最新/无需下载/失败原因）
           piAi: {
             preference: readPiAiPreference(bridgeState),
-            featureDisabled: piAiFeatureDisabled(),
             safeVersions: safeInstalledVersions(),
             needsRestart: bridgeState['needsRestart'] === true,
             latestVersion: readString(bridgeState['latestVersion']),
             latestRejected: bridgeState['latestRejected'],
+            lastCheck: bridgeState['lastCheck'],
             download: piAiDownload,
           },
           // 测试环境标识（scripts/test-profile.sh 启动时带 DSH_PROVIDER_TEST=1）：
@@ -383,10 +383,29 @@ export function apply(ctx: PluginContext, config: unknown): void {
     'dsh-llm-provider: /provider/status route',
   )
 
-  // 「启用最新版 pi-ai」开关（设置页 toggle）：拨 ON = 写偏好 + 异步检查/下载；
+  /**
+   * 发起一次 pi-ai 检查 + 下载（异步、幂等由 checkAndUpdate 内部保证）。
+   *
+   * 拨 ON 与启动补齐共用这一条：下载进行态记在内存里的 piAiDownload（/provider/status
+   * 报给界面轮询），终态落 status.json（needsRestart / latestRejected / lastCheck）。
+   * checkAndUpdate 内部已兜住全部错误，这里不再 try/catch。
+   */
+  function beginPiAiDownload(): void {
+    if (piAiDownload !== undefined) return // 已在进行中：重复触发直接忽略
+    piAiDownload = { at: new Date().toISOString(), version: undefined, lines: [] }
+    void checkAndUpdate(
+      (line) => {
+        if (piAiDownload !== undefined) piAiDownload.lines.push(line)
+      },
+      bridge.ok ? bridge.piAiVersion : undefined,
+    ).then((result) => {
+      if (piAiDownload !== undefined) piAiDownload.version = result.latest ?? result.installed
+      piAiDownload = undefined
+    })
+  }
+
+  // 「启用最新版 pi-ai」开关（设置页 toggle）：拨 ON = 写偏好 + 立即发起检查/下载；
   // 拨 OFF = 写偏好，桥接重启后回退 DSH 自带那份（已下载文件保留，再拨 ON 零成本）。
-  // 触网只发生在这一条路由上——拨开关这个动作就是用户对触网的授权；插件启动时
-  // 没有任何后台检查。DSH_PROVIDER_UPDATE=off 时整个功能关闭（kill switch）。
   // 下载异步进行：响应立即返回，前端轮询 /provider/status 的 piAi.download 看进度。
   ctx.effect(
     () => webServer.register({
@@ -407,17 +426,6 @@ export function apply(ctx: PluginContext, config: unknown): void {
             return
           }
           const enabled = parsed['enabled'] === true
-          if (piAiFeatureDisabled()) {
-            // kill switch：如实回报功能已关闭（不是失败，界面照实说明）
-            json(res, 200, {
-              ok: true,
-              disabled: true,
-              enabled,
-              error: 'pi-ai 更新功能已被 DSH_PROVIDER_UPDATE=off 关闭',
-              checkedAt: new Date().toISOString(),
-            })
-            return
-          }
           setPiAiPreference(enabled ? 'latest' : 'dsh')
           if (!enabled) {
             // 拨 OFF：不动已下载的文件；当前正跑自有版时才需要重启回退
@@ -434,18 +442,7 @@ export function apply(ctx: PluginContext, config: unknown): void {
             return
           }
           json(res, 200, { ok: true, enabled: true, started: true, checkedAt: new Date().toISOString() })
-          // 下载异步跑：checkAndUpdate 内部已兜住全部错误（result.error / latestRejected），
-          // 这里不需要再 try/catch——真抛了只能是编程错误，交给进程级未捕获处理。
-          piAiDownload = { at: new Date().toISOString(), version: undefined, lines: [] }
-          void checkAndUpdate(
-            (line) => {
-              if (piAiDownload !== undefined) piAiDownload.lines.push(line)
-            },
-            bridge.ok ? bridge.piAiVersion : undefined,
-          ).then((result) => {
-            if (piAiDownload !== undefined) piAiDownload.version = result.latest ?? result.installed
-            piAiDownload = undefined
-          })
+          beginPiAiDownload()
         })()
       },
     }),
@@ -798,8 +795,24 @@ export function apply(ctx: PluginContext, config: unknown): void {
     'dsh-llm-provider: /provider/test route',
   )
 
-  // pi-ai 开关就绪：触网只发生在用户拨开关那一下（POST /provider/pi-ai，见上方路由），
-  // 插件启动时没有任何后台网络检查——旧策略（6 小时节流查 registry）已整体移除。
+  // 开关 ON 是**常驻意图**（用户 09-22 修订）：每次启动都查一次上游——本地没有就绪
+  // 副本就补上下载（启动即进入下载中态，不必等用户再拨一次），已就绪也看看上游有没有
+  // 新版、有就自动下（updateDecision 自己会跳过「上游 ≤ 本地已就位」）。
+  // 60 秒最小间隔是纯工程防抖：防 crash-loop 反复查 registry；正常重启间隔远大于它，
+  // 语义上仍是「每次重启检查一次」。OFF 时一概不触网。
+  const startupState = readVendorState().status
+  if (readPiAiPreference(startupState) === 'latest') {
+    const lastCheck = asRecord(startupState['lastCheck'])
+    const lastAt = readString(lastCheck['at'])
+    const stale = lastAt === undefined || Date.now() - Date.parse(lastAt) > 60_000
+    if (stale) {
+      logger?.info?.('[pi-ai] 开关为 ON：启动即检查上游（本地无就绪副本则补下载）')
+      beginPiAiDownload()
+    } else {
+      logger?.info?.('[pi-ai] 开关为 ON，但上次检查在 60 秒内（防抖），跳过启动检查')
+    }
+  }
+
   logger?.info?.('dsh-llm-provider active: GET /plan/status, GET /provider/status, POST /provider/pi-ai')
 }
 

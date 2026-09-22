@@ -37,8 +37,7 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'bridge.stateMissing': '未下载（拨 OFF 再拨 ON 重试）',
     'bridge.statePending': '已下载 {version}（重启生效）',
     'bridge.stateRejected': '已下载 {version}（无法启用）',
-    'bridge.stateOn': '已启用 {version}',
-    'bridge.featureOff': '已关闭（DSH_PROVIDER_UPDATE=off）',
+    'bridge.stateOn': '{version}（上游最新）',
     'bridge.lastCheckAt': '（检查于 {when}）',
 
     // ---- 模型能力 / 详情卡 ----
@@ -236,8 +235,7 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'bridge.stateMissing': 'Not downloaded (flip OFF then ON to retry)',
     'bridge.statePending': '{version} downloaded (restart to apply)',
     'bridge.stateRejected': '{version} downloaded (cannot be enabled)',
-    'bridge.stateOn': 'Using {version}',
-    'bridge.featureOff': 'Disabled (DSH_PROVIDER_UPDATE=off)',
+    'bridge.stateOn': '{version} (latest upstream)',
     'bridge.lastCheckAt': '(checked {when})',
 
     // ---- model capabilities / detail card ----

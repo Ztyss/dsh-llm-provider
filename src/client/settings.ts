@@ -153,7 +153,6 @@ export function piAiToggleState(piAi: unknown): { enabled: boolean; downloading:
  */
 export function piAiUpstreamText(piAi: unknown, bridge?: unknown): string | undefined {
   var rec: AnyRecord = piAi === undefined || piAi === null ? {} : (piAi as AnyRecord)
-  if (rec.featureDisabled === true) return t('bridge.featureOff')
   if (rec.download !== undefined && rec.download !== null) return t('bridge.stateDownloading')
   var safeNewest = newestSafeVersion(rec)
   if (rec.preference === 'latest') {
@@ -2648,11 +2647,6 @@ export function ProviderSettingsSection() {
     if (next !== true) setNote('正在切换到 DSH 自带版本 ...')
     postJson('/provider/pi-ai', { enabled: next })
       .then(function (result) {
-        if (result !== null && result !== undefined && result.disabled === true) {
-          setNote(String(result.error))
-          setPiAiBusy(false)
-          return
-        }
         if (next !== true) {
           // 拨 OFF：结论响应里就带了（needsRestart = 当前正跑自有版，重启才回退）
           setNote(
@@ -2800,10 +2794,8 @@ export function ProviderSettingsSection() {
   if (status !== null) {
     var piAiRecord: AnyRecord = piAi === undefined || piAi === null ? {} : (piAi as AnyRecord)
     var piToggle = piAiToggleState(piAiRecord)
-    var featureDisabled = piAiRecord.featureDisabled === true
     var stateText = piAiUpstreamText(piAiRecord, bridge)
-    var badTone = featureDisabled === true
-      || (piAiRecord.latestRejected !== undefined && piAiRecord.latestRejected !== null)
+    var badTone = piAiRecord.latestRejected !== undefined && piAiRecord.latestRejected !== null
     var warnTone = badTone !== true && piAiRecord.needsRestart === true
     var toggleChildren = [
       react.createElement(
@@ -2814,7 +2806,7 @@ export function ProviderSettingsSection() {
           className: 'pv_switch',
           key: 'input',
           checked: piToggle.enabled,
-          disabled: featureDisabled || piAiBusy,
+          disabled: piAiBusy,
           onChange: function (event: FieldEvent) {
             togglePiAi(event.target.checked === true)
           },

@@ -93,7 +93,7 @@ const probeLeftovers = existsSync(bridgeDir)
 check('探针目录用完即拆，不在真实 bridge 目录里堆积', probeLeftovers.length === 0, JSON.stringify(probeLeftovers))
 // ---- 候选列表 ----
 // 合并版候选策略：四档（vendor 下载档新→旧 → vendor 兜底依赖 → dsh-app 安装树 → dsh bundle 链）。
-// vendor 档默认不落地（下载 opt-in，DSH_PROVIDER_UPDATE=on 才启用），但档位本身保留——
+// vendor 档默认不落地（下载由设置页开关控制，不再有 env opt-in），但档位本身保留——
 // 那是「未来切换插件管理的更新版 pi-ai」的既定路径。
 const candidates = piAiCandidates()
 check('候选里没有内容残缺的下载档（在册的都有 package.json）', candidates.filter((c) => /^\d+\.\d+\.\d+/.test(c.key)).every((c) => existsSync(join(c.root, 'package.json'))))

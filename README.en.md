@@ -47,9 +47,12 @@ release" demand, landed as one settings toggle:
   back to the DSH-bundled copy and **keeps the downloaded files** — flipping back ON costs
   nothing. **Only the newest downloaded version is kept**: `loadBridge` cleans the older ones
   after the switch has completed (the running process never steps on a directory being deleted).
-- **The network is touched only when the switch flips**: no background check at startup (the old
-  6-hour throttle is gone); `DSH_PROVIDER_UPDATE=off` is the kill switch — the whole feature is
-  off and the toggle is not rendered.
+- **The network is touched only while the switch is ON, in two places**: the flip itself, and
+  **one check on every startup** — no local copy ready, the download starts right away (the UI
+  enters its downloading state, no second flip needed); a copy ready, upstream is still checked
+  and a newer version is downloaded automatically (`updateDecision` skips "upstream ≤ newest
+  local"). The 60-second floor is crash-loop damping, not a throttle on intent. **OFF never
+  touches the network.**
 - **All four outcomes have explicit copy**: current x.y.z (DSH-bundled / safe zone) / already
   latest (stated explicitly when upstream ≤ current, no wasted download) / downloaded, restart
   pending / failed verification with the reason (persistent). While downloading, poll every 2s.
@@ -85,9 +88,8 @@ release" demand, landed as one settings toggle:
   survive; "Follow catalog (restore)" deletes the key and returns to the full catalog.
 - **pi-ai bridge card, now a toggle**: the "Enable latest pi-ai" switch plus a status line
   (current version + source / already latest / downloaded, restart pending / failed verification
-  with the reason, persistent); after flipping ON it polls every 2s until the download settles.
-- With `DSH_PROVIDER_UPDATE=off` the whole toggle row is not rendered (feature off, stated
-  explicitly in the UI).
+  with the reason, persistent); after flipping ON — and during each startup check — it polls
+  every 2s until the download settles.
 - **Delete confirmation modal**: cost list + "Export config (YAML)" backup (secrets excluded).
 - **Three-state capability badges**: supported / explicitly unsupported / **unknown** are rendered
   separately; models missing from the catalog get capabilities from the route declaration and
