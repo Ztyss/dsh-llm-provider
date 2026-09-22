@@ -264,7 +264,7 @@ rowsCheck('版本行带来源档位（dependency 归入 vendor 桶）', healthy[
 rowsCheck('版本行带来源说明', typeof healthy[0].title === 'string' && healthy[0].title.length > 0)
 rowsCheck('官方档（dsh）标「官方」', piAiBridgeRows({ active: true, piAiVersion: '0.85.1', source: 'dsh' }, undefined)[0].value === '0.85.1（官方）')
 rowsCheck('官方档（dsh-app）也标「官方」（曾被误标成「已下载」）', piAiBridgeRows({ active: true, piAiVersion: '0.85.1', source: 'dsh-app' }, undefined)[0].value === '0.85.1（官方）')
-rowsCheck('安全区档（safe-0.86.0）标「安全区自有」', piAiBridgeRows({ active: true, piAiVersion: '0.86.0', source: 'safe-0.86.0' }, undefined)[0].value === '0.86.0（安全区自有）')
+rowsCheck('安全区档（safe-0.86.0）在版本行标「上游最新」', piAiBridgeRows({ active: true, piAiVersion: '0.86.0', source: 'safe-0.86.0' }, undefined)[0].value === '0.86.0（上游最新）')
 
 const fellBack = piAiBridgeRows(
   { active: true, piAiVersion: '0.85.1', source: 'dependency', rejected: [{ version: '0.86.0', error: '不提供导出 createModels' }] },
@@ -304,8 +304,8 @@ rowsCheck('下载中态有进行中文案', piAiUpstreamText({ preference: 'late
 rowsCheck('待重启态带版本与重启提示',
   piAiUpstreamText({ preference: 'latest', safeVersions: ['0.86.0'], needsRestart: true }) === '已下载 0.86.0（重启生效）')
 rowsCheck('未过检验态带版本', piAiUpstreamText({ preference: 'latest', latestRejected: { version: '0.87.0', error: 'x' } }) === '已下载 0.87.0（无法启用）')
-rowsCheck('已启用态带版本号（bridge 跑在安全区那版上）',
-  piAiUpstreamText({ preference: 'latest' }, { active: true, piAiVersion: '0.86.0', source: 'safe-0.86.0' }) === '0.86.0（上游最新）')
+rowsCheck('已启用态右侧不显示（版本行已标上游最新，用户批注不重复）',
+  piAiUpstreamText({ preference: 'latest' }, { active: true, piAiVersion: '0.86.0', source: 'safe-0.86.0' }) === undefined)
 rowsCheck('拨过 ON 但本地无就绪副本（下载卡死/失败后重启）时提示未下载，不假报下载中',
   piAiUpstreamText({ preference: 'latest' }) === '未下载（拨 OFF 再拨 ON 重试）')
 const { piAiToggleState } = moduleExports

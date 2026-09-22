@@ -36,7 +36,9 @@ import type { AddProviderPanelProps, BridgeRow, CatalogModel, DeclaredModel, Fie
 /** 当前用的是哪一档 pi-ai，分三桶：官方（'dsh' / 'dsh-app'）vs 安全区自有（'safe-<版本>'）vs vendor。 */
 function piAiSourceLabel(source: unknown): string {
   if (source === 'dsh' || source === 'dsh-app') return t('bridge.srcOfficial')
-  if (typeof source === 'string' && source.startsWith('safe-')) return t('bridge.srcSafe')
+  // 安全区自有版（safe-<版本>）在版本行直接标「上游最新」——用户 09-22 批注：
+  // 「用着上游最新」这件事归版本行说，开关右侧不再重复
+  if (typeof source === 'string' && source.startsWith('safe-')) return t('bridge.srcLatest')
   return t('bridge.srcVendored')
 }
 
@@ -162,8 +164,9 @@ export function piAiUpstreamText(piAi: unknown, bridge?: unknown): string | unde
     }
     // 已启用且当前跑的就是安全区那一版
     var bridgeRecord: AnyRecord = bridge === undefined || bridge === null ? {} : (bridge as AnyRecord)
+    // 已启用态：右侧不显示——「0.87.0（上游最新）」版本行已经说了（用户 09-22 批注）
     if (bridgeRecord.active === true && typeof bridgeRecord.source === 'string' && bridgeRecord.source.startsWith('safe-')) {
-      return tf('bridge.stateOn', { version: bridgeRecord.piAiVersion })
+      return undefined
     }
     var lastCheck = rec.lastCheck
     if (lastCheck !== undefined && lastCheck !== null && (lastCheck as AnyRecord).reason !== undefined) {

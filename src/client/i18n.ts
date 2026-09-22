@@ -28,7 +28,7 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'bridge.probeUnverified': '当前这份 pi-ai 没做过兼容性体检',
     'bridge.probeUnverifiedTip': '解析不出桥接副本的 import 需求（上游改了打包格式），按目录存在放行。建议关注 pi-ai 发版说明',
     'bridge.skip': '跳过 {version}：兼容性检查没通过',
-    'bridge.srcSafe': '安全区自有',
+    'bridge.srcLatest': '上游最新',
     'bridge.hintSafe': '拨「启用最新版 pi-ai」开关后从 npm 下载的最新版，放在 ~/.dsh/llm-provider-bridge/pi-ai/<版本>/（插件重装不丢）',
     'bridge.toggle': '启用最新版 pi-ai',
     'bridge.toggleTip': '拨到 ON：下载上游最新的 pi-ai 并替代 DSH 自带版本（重启后生效）；拨到 OFF：回退 DSH 自带版本，已下载的文件保留',
@@ -37,7 +37,6 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'bridge.stateMissing': '未下载（拨 OFF 再拨 ON 重试）',
     'bridge.statePending': '已下载 {version}（重启生效）',
     'bridge.stateRejected': '已下载 {version}（无法启用）',
-    'bridge.stateOn': '{version}（上游最新）',
     'bridge.lastCheckAt': '（检查于 {when}）',
 
     // ---- 模型能力 / 详情卡 ----
@@ -226,7 +225,7 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'bridge.probeUnverified': 'This pi-ai copy never passed the compatibility probe',
     'bridge.probeUnverifiedTip': "Could not resolve the bridge copy's import requirements (upstream changed its bundle format), so it was accepted based on the directory existing. Watch the pi-ai release notes",
     'bridge.skip': 'Skipped {version}: compatibility check failed',
-    'bridge.srcSafe': 'safe zone',
+    'bridge.srcLatest': 'latest upstream',
     'bridge.hintSafe': 'Latest version downloaded from npm after flipping the "Enable latest pi-ai" switch; lives in ~/.dsh/llm-provider-bridge/pi-ai/<version>/ (survives plugin reinstalls)',
     'bridge.toggle': 'Enable latest pi-ai',
     'bridge.toggleTip': 'ON: download the latest upstream pi-ai and use it instead of the DSH-bundled copy (after a restart); OFF: fall back to the DSH-bundled copy, downloaded files are kept',
@@ -235,7 +234,6 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'bridge.stateMissing': 'Not downloaded (flip OFF then ON to retry)',
     'bridge.statePending': '{version} downloaded (restart to apply)',
     'bridge.stateRejected': '{version} downloaded (cannot be enabled)',
-    'bridge.stateOn': '{version} (latest upstream)',
     'bridge.lastCheckAt': '(checked {when})',
 
     // ---- model capabilities / detail card ----

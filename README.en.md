@@ -53,9 +53,12 @@ release" demand, landed as one settings toggle:
   and a newer version is downloaded automatically (`updateDecision` skips "upstream ≤ newest
   local"). The 60-second floor is crash-loop damping, not a throttle on intent. **OFF never
   touches the network.**
-- **All four outcomes have explicit copy**: current x.y.z (DSH-bundled / safe zone) / already
-  latest (stated explicitly when upstream ≤ current, no wasted download) / downloaded, restart
-  pending / failed verification with the reason (persistent). While downloading, poll every 2s.
+- **The version row tells the truth**: current x.y.z (DSH-bundled / **latest upstream** / vendor) —
+  which copy is in use at a glance. The toggle row only speaks when there is something in
+  progress or to do: Downloading upstream pi-ai... / x.y.z downloaded (restart to apply) /
+  x.y.z downloaded (cannot be enabled) / x.y.z downloaded (not in use); already-latest (stated
+  explicitly when upstream ≤ current, no wasted download) and verification failures live in the
+  detail rows. While downloading, poll every 2s.
 - **Pre-load integrity check unchanged**: `src/pi-ai-source.ts` verifies the manifest, the entry
   file and the four subpaths the official bundle actually imports; when broken it prints an
   executable restore recipe (`npm pack` over the host directory — the plugin never downloads for
