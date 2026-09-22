@@ -33,11 +33,11 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'bridge.toggle': '启用最新版 pi-ai',
     'bridge.toggleTip': '拨到 ON：下载上游最新的 pi-ai 并替代 DSH 自带版本（重启后生效）；拨到 OFF：回退 DSH 自带版本，已下载的文件保留',
     'bridge.stateOffKept': '已下载 {version}（未启用）',
+    'bridge.stateOffPending': '已下载 {version}（重启后回退官方）',
     'bridge.stateDownloading': '正在下载上游pi-ai...',
     'bridge.stateMissing': '未下载（拨 OFF 再拨 ON 重试）',
     'bridge.statePending': '已下载 {version}（重启生效）',
     'bridge.stateRejected': '已下载 {version}（无法启用）',
-    'bridge.lastCheckAt': '（检查于 {when}）',
 
     // ---- 模型能力 / 详情卡 ----
     'cap.vision': '视觉',
@@ -230,11 +230,11 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'bridge.toggle': 'Enable latest pi-ai',
     'bridge.toggleTip': 'ON: download the latest upstream pi-ai and use it instead of the DSH-bundled copy (after a restart); OFF: fall back to the DSH-bundled copy, downloaded files are kept',
     'bridge.stateOffKept': '{version} downloaded (not in use)',
+    'bridge.stateOffPending': '{version} downloaded (restart to fall back to official)',
     'bridge.stateDownloading': 'Downloading upstream pi-ai...',
     'bridge.stateMissing': 'Not downloaded (flip OFF then ON to retry)',
     'bridge.statePending': '{version} downloaded (restart to apply)',
     'bridge.stateRejected': '{version} downloaded (cannot be enabled)',
-    'bridge.lastCheckAt': '(checked {when})',
 
     // ---- model capabilities / detail card ----
     'cap.vision': 'Vision',

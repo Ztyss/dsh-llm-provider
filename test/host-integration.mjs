@@ -11,7 +11,7 @@
  *    /provider/set-models、/provider/remove、/provider/pi-ai（pi-ai 开关）的行为。
  * C. 写入面：set-models 落到 settings.mutate 的 op/path 与清洗后的值（issue #1）。
  */
-import { mkdtempSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -207,6 +207,28 @@ check('B. /provider/status 报开关缺省（偏好 dsh、无自有版本）',
   ['dsh', []])
 check('B. /provider/status 报 vendor 下 0 份下载来的 pi-ai', statusRes.body.vendorPiAiVersions, [])
 check('B. /provider/status 报出了两条路由', statusRes.body.routes.map((r) => r.id).sort(), ['opencode-go', 'plain-route'])
+
+// 待重启事实现场推导（原地启用 ON：安全区已就位、进程没在跑它）。曾经的坑：
+// needsRestart 只在 updater 真下载了时置位，这个局面永远不置——界面只说「无需下载」。
+{
+  const safeDir = join(emptyHome, 'llm-provider-bridge', 'pi-ai', '9.9.9')
+  mkdirSync(join(safeDir, 'node_modules'), { recursive: true })
+  writeFileSync(join(safeDir, 'package.json'), JSON.stringify({ version: '9.9.9' }))
+  const statusPath = join(pluginDir, 'vendor', 'status.json')
+  const setPref = (pref) => writeFileSync(
+    statusPath,
+    JSON.stringify({ ...JSON.parse(readFileSync(statusPath, 'utf8')), piAiPreference: pref }),
+  )
+  setPref('latest')
+  const pending = await call('/provider/status')
+  check('B. 原地启用 ON（安全区就位、本进程没在跑）→ needsRestart 推导为 true',
+    [pending.body.piAi.preference, pending.body.piAi.safeVersions, pending.body.piAi.needsRestart],
+    ['latest', ['9.9.9'], true])
+  setPref('dsh')
+  const quiet = await call('/provider/status')
+  check('B. 拨 OFF（本进程没跑安全区版）→ needsRestart 推导为 false',
+    [quiet.body.piAi.preference, quiet.body.piAi.needsRestart], ['dsh', false])
+}
 
 const modelsRes = await call('/provider/models')
 const declared = modelsRes.body.models.find((m) => m.id === 'deepseek-flash')

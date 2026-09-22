@@ -14,7 +14,7 @@ covers **this repository's customizations only**.
 |---|---|
 | Upstream | [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider) |
 | This fork | [Ztyss/dsh-llm-provider](https://github.com/Ztyss/dsh-llm-provider) (private) |
-| This fork's version | [v0.2.1](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.1) (installs from main) |
+| This fork's version | [v0.2.2](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.2) (installs from main) |
 | Base | upstream `1eb017f` (v0.1.0-rc.2); upstream 0.2.0 has no published source, so its exclusive features (OAuth, github-copilot) are out of scope |
 
 ## Install
@@ -56,9 +56,11 @@ release" demand, landed as one settings toggle:
 - **The version row tells the truth**: current x.y.z (DSH-bundled / **latest upstream** / vendor) —
   which copy is in use at a glance. The toggle row only speaks when there is something in
   progress or to do: Downloading upstream pi-ai... / x.y.z downloaded (restart to apply) /
-  x.y.z downloaded (cannot be enabled) / x.y.z downloaded (not in use); already-latest (stated
-  explicitly when upstream ≤ current, no wasted download) and verification failures live in the
-  detail rows. While downloading, poll every 2s.
+  x.y.z downloaded (restart to fall back to official) / x.y.z downloaded (cannot be enabled) /
+  x.y.z downloaded (not in use). Whether a restart is pending is derived live by
+  `piAiNeedsRestart` (preference + newest ready safe version + the copy currently loaded) — the
+  enable-in-place state (nothing to download) says so too instead of repeating “already local,
+  no download”; verification failures live in the detail rows. While downloading, poll every 2s.
 - **Pre-load integrity check unchanged**: `src/pi-ai-source.ts` verifies the manifest, the entry
   file and the four subpaths the official bundle actually imports; when broken it prints an
   executable restore recipe (`npm pack` over the host directory — the plugin never downloads for

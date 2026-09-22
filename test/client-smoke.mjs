@@ -275,29 +275,37 @@ rowsCheck('被跳过的版本单列一行', skipRow !== undefined)
 rowsCheck('跳过行带警告色', skipRow.warn === true)
 rowsCheck('跳过行把原因挂在 title 上', skipRow.title === '不提供导出 createModels')
 
-const pending = piAiBridgeRows(
-  { active: true, piAiVersion: '0.85.1', source: 'dsh' },
-  { preference: 'latest', safeVersions: ['0.86.0'], needsRestart: true },
+// 原地启用 ON（拨了 ON、安全区就位、进程没在跑它）：明细行只剩版本行。
+// 曾经的 bug：这一态 UI 说「本地已就位 0.87.0（上游 0.87.0），无需下载」——同一句在
+// lastCheck 明细行与开关行右侧各出现一次，唯独不说「要重启」（needsRestart 只在真下载
+// 时才置位，跳过分支永远不置）。现在待重启由 /provider/status 现场推导喂进来。
+const inPlaceOn = piAiBridgeRows(
+  { active: true, piAiVersion: '0.85.1', source: 'dsh-app' },
+  {
+    preference: 'latest',
+    safeVersions: ['0.87.0'],
+    needsRestart: true,
+    lastCheck: { at: new Date().toISOString(), latest: '0.87.0', reason: '本地已就位 0.87.0（上游 0.87.0），无需下载' },
+  },
 )
-rowsCheck('待生效版本提示重启', pending.some((r) => r.key === 'pending' && r.text.indexOf('重启生效') !== -1))
+rowsCheck('原地启用 ON：明细行只剩版本行（待重启/检查结论不进来重复）', inPlaceOn.length === 1 && inPlaceOn[0].key === 'pi')
+rowsCheck('原地启用 ON：版本行照实显示当前跑的官方那份', inPlaceOn[0].value === '0.85.1（官方）')
+rowsCheck('原地启用 ON：开关行右侧说「重启生效」，不念「无需下载」',
+  piAiUpstreamText(
+    {
+      preference: 'latest',
+      safeVersions: ['0.87.0'],
+      needsRestart: true,
+      lastCheck: { at: 'x', reason: '本地已就位 0.87.0（上游 0.87.0），无需下载' },
+    },
+    { active: true, piAiVersion: '0.85.1', source: 'dsh-app' },
+  ) === '已下载 0.87.0（重启生效）')
 
 const rejectedByUpdater = piAiBridgeRows(
   { active: true, piAiVersion: '0.85.1', source: 'dsh' },
   { preference: 'latest', latestRejected: { version: '0.87.0', error: '子路径没了' } },
 )
 rowsCheck('体检没过的那版也列出来', rejectedByUpdater.some((r) => r.key === 'rejected' && r.title === '子路径没了'))
-
-const lastCheckRow = piAiBridgeRows(
-  { active: true, piAiVersion: '0.85.1', source: 'dsh' },
-  { preference: 'latest', lastCheck: { at: new Date().toISOString(), reason: '当前已在用 0.85.1（上游 0.85.1），无需下载' } },
-)
-rowsCheck('上次检查的明确结论也出行（已是最新/无需下载）', lastCheckRow.some((r) => r.key === 'lastCheck' && r.text.indexOf('无需下载') !== -1))
-// 已启用态（bridge 正跑安全区版）时 lastCheck 行退场——版本行已标「上游最新」
-const onSafeLastCheck = piAiBridgeRows(
-  { active: true, piAiVersion: '0.87.0', source: 'safe-0.87.0' },
-  { preference: 'latest', lastCheck: { at: new Date().toISOString(), reason: '当前已在用 0.87.0（上游 0.87.0），无需下载' } },
-)
-rowsCheck('已启用态不再解释「当前已在用…无需下载」（版本行即真相）', onSafeLastCheck.every((r) => r.key !== 'lastCheck') && onSafeLastCheck.length === 1)
 
 const broken = piAiBridgeRows({ active: false, error: '没有能用的 pi-ai：…' }, undefined)
 rowsCheck('桥接挂掉时只报错误行', broken.length === 1 && broken[0].bad === true)
@@ -306,6 +314,10 @@ rowsCheck('没有 bridge 时不出行', piAiBridgeRows(undefined, undefined).len
 rowsCheck('OFF 且未下载时不给右侧文案（默认态不复读）', piAiUpstreamText({ preference: 'dsh' }) === undefined)
 rowsCheck('拨 OFF 但有已下载文件时说明「未启用」',
   piAiUpstreamText({ preference: 'dsh', safeVersions: ['0.86.0'] }) === '已下载 0.86.0（未启用）')
+rowsCheck('拨 OFF 且进程还在跑安全区版：说重启后回退（那一态标「未启用」是假的——版本行显示的就是它）',
+  piAiUpstreamText({ preference: 'dsh', safeVersions: ['0.87.0'], needsRestart: true }) === '已下载 0.87.0（重启后回退官方）')
+rowsCheck('拨 OFF 且已在跑官方：文件留着没在用 → 已下载（未启用）',
+  piAiUpstreamText({ preference: 'dsh', safeVersions: ['0.87.0'], needsRestart: false }) === '已下载 0.87.0（未启用）')
 rowsCheck('下载中态有进行中文案', piAiUpstreamText({ preference: 'latest', download: { at: 'x', version: '0.86.0', lines: [] } }) === '正在下载上游pi-ai...')
 rowsCheck('待重启态带版本与重启提示',
   piAiUpstreamText({ preference: 'latest', safeVersions: ['0.86.0'], needsRestart: true }) === '已下载 0.86.0（重启生效）')
@@ -689,6 +701,7 @@ const zhRelUnder = relativeTime(new Date(Date.now() - 30000).toISOString())
 const zhRow = piAiBridgeRows({ active: true, piAiVersion: '0.85.1', source: 'dependency' }, undefined)[0]
 const zhUpstream = piAiUpstreamText({ preference: 'dsh' })
 const zhUpstreamChecked = piAiUpstreamText({ preference: 'latest', safeVersions: ['0.86.0'], needsRestart: true })
+const zhOffPending = piAiUpstreamText({ preference: 'dsh', safeVersions: ['0.87.0'], needsRestart: true })
 const zhYaml = exported
 const zhCaps = capabilityBadges({ id: 'm', vision: true, reasoning: true, video: true })
 const zhSkip = skipRowOf()
@@ -701,6 +714,7 @@ const enRelUnder = relativeTime(new Date(Date.now() - 30000).toISOString())
 const enRow = piAiBridgeRows({ active: true, piAiVersion: '0.85.1', source: 'dependency' }, undefined)[0]
 const enUpstream = piAiUpstreamText({ preference: 'dsh' })
 const enUpstreamChecked = piAiUpstreamText({ preference: 'latest', safeVersions: ['0.86.0'], needsRestart: true })
+const enOffPending = piAiUpstreamText({ preference: 'dsh', safeVersions: ['0.87.0'], needsRestart: true })
 // 现取而不是复用 exported：exported 是模块顶层（默认语言）那次的结果，复用就测不出切语言
 const enYaml = routeYamlOf({ id: 'opencode-go', apiKeyEnv: 'OPENCODE_GO_API_KEY' })
 const enCaps = capabilityBadges({ id: 'm', vision: true, reasoning: true, video: true })
@@ -718,6 +732,8 @@ i18nCheck('开关 OFF 且未下载时 zh 不给文案（默认态不复读）', 
 i18nCheck('开关 OFF 且未下载时 en 不给文案', enUpstream === undefined)
 i18nCheck('待重启 zh = 已下载 0.86.0（重启生效）', zhUpstreamChecked === '已下载 0.86.0（重启生效）')
 i18nCheck('待重启 en = 0.86.0 downloaded (restart to apply)', enUpstreamChecked === '0.86.0 downloaded (restart to apply)')
+i18nCheck('拨 OFF 待回退 zh = 已下载 0.87.0（重启后回退官方）', zhOffPending === '已下载 0.87.0（重启后回退官方）')
+i18nCheck('拨 OFF 待回退 en = 0.87.0 downloaded (restart to fall back to official)', enOffPending === '0.87.0 downloaded (restart to fall back to official)')
 i18nCheck('跳过行 zh 带版本号与原因短语', zhSkip.text === '跳过 0.86.0：兼容性检查没通过')
 i18nCheck('跳过行 en 带版本号与原因短语',
   enSkip.text === 'Skipped 0.86.0: compatibility check failed' && !hasHan(enSkip.text))

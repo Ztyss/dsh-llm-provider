@@ -13,7 +13,7 @@ pi-ai 适配器（`llm-pi-ai`）、DeepSeek 适配器（`llm-deepseek`）、模�
 |---|---|
 | 上游 | [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider) |
 | 本 fork | [Ztyss/dsh-llm-provider](https://github.com/Ztyss/dsh-llm-provider)（私有） |
-| 本仓库版本 | [v0.2.1](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.1)（安装走 main 分支） |
+| 本仓库版本 | [v0.2.2](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.2)（安装走 main 分支） |
 | 基线 | 上游 `1eb017f`（v0.1.0-rc.2）；上游 0.2.0 无源码发布，其独有功能（OAuth、github-copilot）不在范围 |
 
 ## 安装
@@ -46,8 +46,9 @@ dsh web     # 需要重启：插件树在进程启动时组装
   的工程防抖。**拨 OFF 一概不触网**。
 - **版本行即真相**：当前 x.y.z（DSH 自带 / **上游最新** / vendor——上方 toggle 一列即可判断
   在用哪份）；开关右侧只在有「进行/待办」时说话：正在下载上游pi-ai... / 已下载 x.y.z（重启生效）/
-  已下载 x.y.z（无法启用）/ 已下载 x.y.z（未启用）；已是最新（上游 ≤ 当前时明示，不白下）与
-  未过检验的原因常驻在桥接明细行。下载中 2s 轮询。
+  已下载 x.y.z（重启后回退官方）/ 已下载 x.y.z（无法启用）/ 已下载 x.y.z（未启用）。「要不要重启」
+  由 `piAiNeedsRestart` 现场推导（偏好 + 安全区已就位版本 + 当前跑的那档）——原地启用（无需下载）
+  那一态也照实说重启，不再念「已就位、无需下载」；未过检验的原因常驻在桥接明细行。下载中 2s 轮询。
 - **加载前体检不变**：`src/pi-ai-source.ts` 校验 manifest、入口与官方 bundle 实际 import 的
   四条子路径；残缺时给出可执行的恢复指引（npm pack 覆盖回宿主目录，插件不代劳）。
   `piAiCandidates()` 候选链 = 安全区（拨 ON 时，新→旧）→ vendor 遗留档 → 内置依赖 → dsh 自带，

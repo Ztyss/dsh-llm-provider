@@ -7,8 +7,9 @@
  *   1. tarball 完整性：按 registry packument 里的 dist.integrity（sha512）校验下载内容；
  *   2. 兼容性体检：用桥接副本自己的 import 需求 probe 那份新 pi-ai（见 bridge.ts 的
  *      probePiAi）。体检没跑起来（unverified，需求解析不出）一样不替换。
- * 通过后只写 status.json 的 needsRestart 标记——已 require 的旧模块不受影响，
- * 下一次 dsh 重启时 bridge.ts 才会挂到新版本。/provider/status 会报出来。
+ * 「重启后才生效」不在这里落盘：已 require 的旧模块不受影响，而要不要重启由
+ * /provider/status 按偏好与当前档位现场推（piAiNeedsRestart）——写时标志会和不写
+ * 的场景脱节（原地启用走跳过分支，标志永远不置位，界面于是不说重启）。
  *
  * 触发方式（用户 09-22 修订，开关 ON = 常驻意图，不是一次性快照）：
  *   1. 用户拨开关（POST /provider/pi-ai，见 index.ts）；
@@ -274,7 +275,7 @@ export async function checkAndUpdate(
     const probe = probePiAi(bridgeRequirements(), target, `check-${release.version}`)
     result.compatible = probe.ok && probe.unverified !== true
     if (probe.ok && probe.unverified !== true) {
-      updateStatus({ piAiVersion: release.version, needsRestart: true, latestVersion: release.version, latestRejected: undefined })
+      updateStatus({ piAiVersion: release.version, latestVersion: release.version, latestRejected: undefined })
       record({ latest: release.version, installed: release.version, reason: `已验证 ${release.version}（完整性 + 兼容性体检）` })
       result.applied = true
       log(`已验证 ${release.version}（完整性 + 兼容性体检），重启 dsh 后生效`)

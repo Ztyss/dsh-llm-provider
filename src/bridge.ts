@@ -177,6 +177,30 @@ export function setPiAiPreference(preference: PiAiPreference): void {
 }
 
 /**
+ * 下次启动会不会挂到与**当前不同**的桥接（纯函数，离线可测）。
+ *
+ * 这是界面上「重启生效」的唯一事实来源，不再读 status.json 里那个写时不一的
+ * needsRestart 标志——它只在 updater「真的下载安装了」时置位，而原地启用（安全区已就位、
+ * 走跳过分支）永远不置位，于是开关拨了界面却只说「无需下载」，像没拨一样
+ * （用户 09-22 报的 bug：同一句结论在明细行与开关行各出现一次，唯独不说要重启）。
+ * 该不该重启本来就是三个现成事实的算术：
+ *   - 'latest' + 安全区有 newest + 当前跑的不是它 → true（下载好了 / 刚拨 ON，重启才切）；
+ *   - 'latest' + 安全区空 → false（没东西可切，界面走「未下载」/ 上次检查结论）；
+ *   - 'dsh' + 当前正跑安全区版 → true（拨了 OFF，重启才回退官方）；
+ *   - 其余 → false（当前跑的就是偏好将选中的那档，重启与否一个样）。
+ * @param preference - 当前偏好（设置页开关）。
+ * @param safeVersions - 安全区已就位版本，旧 → 新（{@link safeInstalledVersions} 的形状）。
+ * @param runningSource - 当前进程加载的那档 key（loadBridge 的 chosen.key）；桥接没装上时 undefined。
+ */
+export function piAiNeedsRestart(preference: PiAiPreference, safeVersions: readonly string[], runningSource: string | undefined): boolean {
+  if (preference === 'latest') {
+    const newest = safeVersions[safeVersions.length - 1]
+    return newest !== undefined && runningSource !== `safe-${newest}`
+  }
+  return runningSource !== undefined && runningSource.startsWith('safe-')
+}
+
+/**
  * 安全区版本清单 → 候选档（纯函数）：新 → 旧，key 带 `safe-` 前缀。
  *
  * 前缀是 loadBridge「选定即清理」的识别依据：只有选中的是安全区档时才清旧版，
@@ -963,7 +987,6 @@ ${restoreHint(host.integrity.version)}`
     }
     writeStatus({
       piAiVersion: chosen.version,
-      needsRestart: false,
       piAiSource: chosen.key,
       probeUnverified: probeUnverified || undefined,
       safeCopy: safeCopy ?? undefined,

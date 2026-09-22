@@ -61,8 +61,12 @@ function newestSafeVersion(piAi: AnyRecord): string | undefined {
 /**
  * 「pi-ai 桥接」标签页的明细行。纯函数，只返回数据，组件照着渲染——这样能离线测，
  * 也免得一堆拼字符串的逻辑埋在组件里。
+ *
+ * 只放**桥接事实**：版本 / 没体检 / 加载时被跳过的候选 / 未过检验的下载。开关态文字
+ * （正在下载 / 重启生效 / 回退官方…）一句都不在这儿——那是 {@link piAiUpstreamText}
+ * 在开关行右侧的专职，两处都写就会同一句出现两次（用户 09-22 报的坑）。
  * @param bridge - /provider/status 的 bridge 段（当前加载的那份）。
- * @param piAi - 同上的 piAi 段（开关偏好、安全区版本、待重启、未过检验、上次检查结论）。
+ * @param piAi - 同上的 piAi 段（未过检验的下载结论）。
  * @returns `[{ key, text, value?, title?, warn?, bad? }]`；value 是右侧的次要文字。
  */
 export function piAiBridgeRows(bridge: unknown, piAi?: unknown): BridgeRow[] {
@@ -101,12 +105,11 @@ export function piAiBridgeRows(bridge: unknown, piAi?: unknown): BridgeRow[] {
       warn: true,
     })
   }
-  // 开关态：待重启 / 未过检验 / 上次检查的明确结论（已是最新、无需下载……）
+  // 未过检验的最近一次下载（常驻，原因挂 title）。开关态文字（待重启 / 下载中 / 回退官方…）
+  // 一律只在开关行右侧——明细行是桥接事实，不替开关说话。用户 09-22 批注的坑：同一句
+  // 「本地已就位 0.87.0（上游 0.87.0），无需下载」曾在明细行与开关行各出现一次，
+  // 而该说「重启生效」的时候偏偏不说。
   var piAiRecord: AnyRecord = piAi === undefined || piAi === null ? {} : (piAi as AnyRecord)
-  var safeNewest = newestSafeVersion(piAiRecord)
-  if (piAiRecord.needsRestart === true && safeNewest !== undefined) {
-    rows.push({ key: 'pending', text: tf('bridge.statePending', { version: safeNewest }), warn: true })
-  }
   var latestRejected = piAiRecord.latestRejected
   if (latestRejected !== undefined && latestRejected !== null) {
     var rej = latestRejected as AnyRecord
@@ -116,19 +119,6 @@ export function piAiBridgeRows(bridge: unknown, piAi?: unknown): BridgeRow[] {
       value: t('bridge.reason'),
       title: String(rej.error),
       warn: true,
-    })
-  }
-  // lastCheck（上次检查结论）行：仅当没在用安全区自有版时才有信息量——已启用态
-  // 版本行已经标了「上游最新」，再解释一次「当前已在用 0.87.0，无需下载」就是噪音
-  // （用户 09-22 批注：版本行即真相，解释性文字在已启用态全部退场）。
-  var onSafeVersion = bridgeRecord.active === true && typeof bridgeRecord.source === 'string' && bridgeRecord.source.startsWith('safe-')
-  var lastCheck = piAiRecord.lastCheck
-  if (onSafeVersion !== true && lastCheck !== undefined && lastCheck !== null && (lastCheck as AnyRecord).reason !== undefined) {
-    var checkRecord = lastCheck as AnyRecord
-    rows.push({
-      key: 'lastCheck',
-      text: String(checkRecord.reason ?? checkRecord.error ?? ''),
-      title: checkRecord.at === undefined ? '' : tf('bridge.lastCheckAt', { when: relativeTime(String(checkRecord.at)) }),
     })
   }
   return rows
@@ -154,6 +144,7 @@ export function piAiToggleState(piAi: unknown): { enabled: boolean; downloading:
  *
  * OFF 且未下载时返回 **undefined**（不渲染右侧文字）：那一态本来就是默认态，
  * 无需向用户复读「你在用 DSH 自带版本」——版本行已经写了（0.85.1（官方））。
+ * OFF 且进程还在跑安全区版时返回「重启后回退官方」：文件确实还在用，不能标「未启用」。
  * @param piAi - /provider/status 的 piAi 段。
  * @param bridge - 同上的 bridge 段（判「已启用 x.y.z」用）。
  */
@@ -180,7 +171,13 @@ export function piAiUpstreamText(piAi: unknown, bridge?: unknown): string | unde
     // 这绝不能再显示「正在下载」（假的进行态），给一个可执行的下一步
     return t('bridge.stateMissing')
   }
-  if (safeNewest !== undefined) return tf('bridge.stateOffKept', { version: safeNewest })
+  // 拨了 OFF：进程还在跑安全区版时该说「重启后回退」——那一态标「未启用」是假的
+  // （版本行显示的就是它，文件也确实还在用）。已在跑官方版才是真的「已下载、没在用」。
+  if (safeNewest !== undefined) {
+    return rec.needsRestart === true
+      ? tf('bridge.stateOffPending', { version: safeNewest })
+      : tf('bridge.stateOffKept', { version: safeNewest })
+  }
   return undefined
 }
 

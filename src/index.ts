@@ -22,7 +22,7 @@
 import Schema from '@deepseek-ai/schemastery'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { activePiAiRoot, loadBridge, readPiAiPreference, removeTree, safeInstalledVersions, safeRootDir, setPiAiPreference, vendorDir } from './bridge.js'
+import { activePiAiRoot, loadBridge, piAiNeedsRestart, readPiAiPreference, removeTree, safeInstalledVersions, safeRootDir, setPiAiPreference, vendorDir } from './bridge.js'
 import { enrichModelDetails, loadModelDetails, withAdapterModels, withDeclaredModels, type AdapterModelInfo, type ModelDetail } from './model-details.js'
 import { checkAndUpdate } from './updater.js'
 import { labelOf, providerRoutes, websiteOf, type ProviderRoute } from './routes.js'
@@ -291,8 +291,9 @@ export function apply(ctx: PluginContext, config: unknown): void {
   )
 
   /**
-   * 正在进行的 pi-ai 下载（拨 ON 后异步跑）。进程内存态：重启即消失——而重启时
-   *「 pending」的结论本来就已经落进 status.json（needsRestart / latestRejected）。
+   * 正在进行的 pi-ai 下载（拨 ON 后异步跑）。进程内存态：重启即消失——而「待生效」的
+   * 结论不依赖它：needsRestart 由 /provider/status 现场推导（见 {@link piAiNeedsRestart}），
+   * 失败与未过检验落 status.json（latestRejected / lastCheck）。
    * /provider/status 的 piAi.download 报它，前端轮询着显示「下载中」。
    */
   let piAiDownload: { at: string; version: string | undefined; lines: string[] } | undefined
@@ -333,6 +334,9 @@ export function apply(ctx: PluginContext, config: unknown): void {
                 : { modelOverrides: route.modelOverrides }),
             }))
         } catch { /* 路由发现失败时留空 */ }
+        // 待重启是现场推导，不读 status.json 里写时不一的标志（见 piAiNeedsRestart）
+        const piAiPreference = readPiAiPreference(bridgeState)
+        const safeVersions = safeInstalledVersions()
         json(res, 200, {
           bridge: bridge.ok
             ? {
@@ -358,14 +362,14 @@ export function apply(ctx: PluginContext, config: unknown): void {
           // pi-ai 开关状态（界面「pi-ai 桥接」标签页用）：
           //   preference      —— 'latest'（拨 ON）/ 'dsh'（拨 OFF，缺省）
           //   safeVersions    —— 安全区里已下载就位的自有版本（旧 → 新）
-          //   needsRestart    —— 已下载新版本或刚拨了开关：重启后桥接才挂到新状态
+          //   needsRestart    —— 重启后桥接会挂到与当前不同的档位（现场推导，见 piAiNeedsRestart）
           //   latestVersion / latestRejected —— 最近一次检查的结论（未过检验时界面上常驻显示）
           //   download        —— 正在进行中的下载（拨 ON 后异步跑，完成即消失；结论看上面几个字段）
           //   lastCheck       —— 最近一次检查的明确结论（已是最新/无需下载/失败原因）
           piAi: {
-            preference: readPiAiPreference(bridgeState),
-            safeVersions: safeInstalledVersions(),
-            needsRestart: bridgeState['needsRestart'] === true,
+            preference: piAiPreference,
+            safeVersions,
+            needsRestart: piAiNeedsRestart(piAiPreference, safeVersions, bridge.ok ? bridge.piAiSource : undefined),
             latestVersion: readString(bridgeState['latestVersion']),
             latestRejected: bridgeState['latestRejected'],
             lastCheck: bridgeState['lastCheck'],
@@ -387,7 +391,8 @@ export function apply(ctx: PluginContext, config: unknown): void {
    * 发起一次 pi-ai 检查 + 下载（异步、幂等由 checkAndUpdate 内部保证）。
    *
    * 拨 ON 与启动补齐共用这一条：下载进行态记在内存里的 piAiDownload（/provider/status
-   * 报给界面轮询），终态落 status.json（needsRestart / latestRejected / lastCheck）。
+   * 报给界面轮询），终态落 status.json（latestRejected / lastCheck）；「要不要重启」
+   * 不由这里写——那是 status 路由按偏好与当前档位现场推的（piAiNeedsRestart）。
    * checkAndUpdate 内部已兜住全部错误，这里不再 try/catch。
    */
   function beginPiAiDownload(): void {

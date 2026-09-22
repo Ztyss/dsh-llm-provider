@@ -88,6 +88,23 @@ check(
 check('待清清单不含选中版自己', !obsoleteSafeVersions(['0.85.1', '0.86.0'], '0.86.0').includes('0.86.0'))
 check('只有一版时无事可清', obsoleteSafeVersions(['0.86.0'], '0.86.0').length === 0)
 
+// ---- 6. 待重启事实的现场推导：下次启动会不会挂到与当前不同的桥（纯函数）----
+// 曾经的坑：needsRestart 只在 updater「真的下载安装了」时置位——原地启用（安全区已就位、
+// 走 skip 分支）永远不置位，界面于是显示「本地已就位，无需下载」而不说重启，开关拨了像没拨。
+// 这个事实本该现场推：(偏好, 安全区已就位版本, 当前跑的那档) 三样都是现成的。
+const { piAiNeedsRestart } = await import('../lib/bridge.js')
+check('piAiNeedsRestart 已导出（纯函数）', typeof piAiNeedsRestart === 'function')
+if (typeof piAiNeedsRestart === 'function') {
+  check('原地启用 ON：文件就位但进程跑的还是官方 → 待重启', piAiNeedsRestart('latest', ['0.87.0'], 'dsh-app') === true)
+  check('正在跑的就是将选中的安全区版 → 无待办', piAiNeedsRestart('latest', ['0.87.0'], 'safe-0.87.0') === false)
+  check('安全区进了新版、进程还跑旧安全区版 → 待重启', piAiNeedsRestart('latest', ['0.86.0', '0.87.0'], 'safe-0.86.0') === true)
+  check('latest 但安全区空 → 无待重启（没东西可切，界面走未下载/检查结论）', piAiNeedsRestart('latest', [], 'dsh') === false)
+  check('拨 OFF 且进程还在跑安全区版 → 待重启（重启才回退官方）', piAiNeedsRestart('dsh', ['0.87.0'], 'safe-0.87.0') === true)
+  check('拨 OFF 且进程正跑官方 → 无待办', piAiNeedsRestart('dsh', ['0.87.0'], 'dsh-app') === false)
+  check('latest、有就位副本、桥接档位未知（降级态）→ 待重启', piAiNeedsRestart('latest', ['0.87.0'], undefined) === true)
+  check('dsh、桥接档位未知（降级态）→ 无待办', piAiNeedsRestart('dsh', ['0.87.0'], undefined) === false)
+}
+
 delete process.env.DSH_HOME
 rmSync(sandbox, { force: true, recursive: true })
 
