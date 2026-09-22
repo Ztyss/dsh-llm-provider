@@ -121,7 +121,7 @@ export function piAiBridgeRows(bridge: unknown, piAi?: unknown): BridgeRow[] {
     var checkRecord = lastCheck as AnyRecord
     rows.push({
       key: 'lastCheck',
-      text: String(checkRecord.reason),
+      text: String(checkRecord.reason ?? checkRecord.error ?? ''),
       title: checkRecord.at === undefined ? '' : tf('bridge.lastCheckAt', { when: relativeTime(String(checkRecord.at)) }),
     })
   }
@@ -167,7 +167,7 @@ export function piAiUpstreamText(piAi: unknown, bridge?: unknown): string | unde
     }
     var lastCheck = rec.lastCheck
     if (lastCheck !== undefined && lastCheck !== null && (lastCheck as AnyRecord).reason !== undefined) {
-      return String((lastCheck as AnyRecord).reason)
+      return String((lastCheck as AnyRecord).reason ?? (lastCheck as AnyRecord).error)
     }
     // 拨过 ON 但本地没就绪副本、也没有进行态（典型：上次下载失败/卡死后重启）——
     // 这绝不能再显示「正在下载」（假的进行态），给一个可执行的下一步

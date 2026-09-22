@@ -34,6 +34,7 @@ import {
   safeRootDir,
   updateStatus,
 } from './bridge.js'
+import { extractTarGz } from './tar-gz.js'
 import { asRecord, readString } from './types.js'
 
 /**
@@ -180,20 +181,13 @@ export async function installVersion(release: RegistryRelease, log: (line: strin
   }
   writeFileSync(tgzPath, bytes)
 
-  log('解压 ...')
-  // stdio 必须是 'ignore'：dsh 跑在 electron 沙箱里，child_process 的 stdio **管道**创建
-  // 会 EPERM（本仓库宿主实测：stdio:'pipe' 的 spawn 直接挂起，'ignore'/'inherit' 才 work）。
-  // 2026-09-22 事故：默认 pipe 的 execFile('tar') 在沙箱里 promise 永不 settle——tarball
-  // 早落盘了、解压目录却 7 分钟空着，下载态永远收不了尾。timeout 是第二道防线：
-  // 真卡住也要在 2 分钟后 reject，不能把拨开关的用户挂在「正在下载」上。
-  try {
-    await execFileAsync('tar', ['-xzf', tgzPath, '-C', target, '--strip-components', '1'], {
-      stdio: 'ignore',
-      timeout: 120_000,
-    })
-  } catch (error) {
-    throw new Error(`解压失败：${messageOfExecError(error)}（tarball 保留在 ${tgzPath}）`)
-  }
+  // 解压：**纯 Node，不调外部 tar**。Windows 自带 tar（System32 的 MSYS GNU tar）在
+  // Node execFile 直起、非 MSYS 环境下路径解析层直接崩（2026-09-22 实测报
+  // "Cannot connect to C: resolve failed" → status 128）——外部 tar 这条路在 Windows
+  // 上不可靠。内置解析零子进程、跨平台、离线可测。
+  // tarball 落盘那份留给失败时人工排查。
+  log('解压（内置 tar 解析）...')
+  extractTarGz(bytes, target, 1)
   rmSync(tgzPath, { force: true })
 
   log('安装依赖（--omit=dev --ignore-scripts）...')
@@ -204,12 +198,14 @@ export async function installVersion(release: RegistryRelease, log: (line: strin
     'install', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--loglevel=error',
     `--cache=${npmCache}`,
   ])
-  // stdio 全 ignore：同上，沙禁里不能用管道接子进程输出。npm 的失败诊断改成「退出码 +
+  // stdio 全 ignore：沙禁里不能用管道接子进程输出。npm 的失败诊断改成「退出码 +
   // 可手动复现的命令」——用户照着敲一遍就能看到 npm 自己的错误输出。
+  // timeout 放到 10 分钟：依赖闭包约 79 MB，慢网（260 KB/s 实测）要 5 分钟，
+  // 300 秒会误杀。
   try {
     await execFileAsync(npm.file, npm.args, {
       cwd: target,
-      timeout: 300_000,
+      timeout: 600_000,
       stdio: 'ignore',
       ...(npm.shell ? { shell: true } : {}),
     })
@@ -219,6 +215,8 @@ export async function installVersion(release: RegistryRelease, log: (line: strin
   }
   return target
 }
+
+
 
 /** 子进程错误的一句人话：含 command / code / signal——沙禁里大多是 EPERM 或 exit≠0。 */
 function messageOfExecError(error: unknown): string {
@@ -287,7 +285,7 @@ export async function checkAndUpdate(
     }
   } catch (error) {
     result.error = error instanceof Error ? error.message : String(error)
-    record({ error: result.error })
+    record({ reason: `检查失败：${result.error}`, error: result.error })
     log(`更新失败：${result.error}`)
   }
   return result
