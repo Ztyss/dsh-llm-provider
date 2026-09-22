@@ -118,8 +118,12 @@ export function piAiBridgeRows(bridge: unknown, piAi?: unknown): BridgeRow[] {
       warn: true,
     })
   }
+  // lastCheck（上次检查结论）行：仅当没在用安全区自有版时才有信息量——已启用态
+  // 版本行已经标了「上游最新」，再解释一次「当前已在用 0.87.0，无需下载」就是噪音
+  // （用户 09-22 批注：版本行即真相，解释性文字在已启用态全部退场）。
+  var onSafeVersion = bridgeRecord.active === true && typeof bridgeRecord.source === 'string' && bridgeRecord.source.startsWith('safe-')
   var lastCheck = piAiRecord.lastCheck
-  if (lastCheck !== undefined && lastCheck !== null && (lastCheck as AnyRecord).reason !== undefined) {
+  if (onSafeVersion !== true && lastCheck !== undefined && lastCheck !== null && (lastCheck as AnyRecord).reason !== undefined) {
     var checkRecord = lastCheck as AnyRecord
     rows.push({
       key: 'lastCheck',

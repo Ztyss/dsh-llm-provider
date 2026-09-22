@@ -292,6 +292,12 @@ const lastCheckRow = piAiBridgeRows(
   { preference: 'latest', lastCheck: { at: new Date().toISOString(), reason: '当前已在用 0.85.1（上游 0.85.1），无需下载' } },
 )
 rowsCheck('上次检查的明确结论也出行（已是最新/无需下载）', lastCheckRow.some((r) => r.key === 'lastCheck' && r.text.indexOf('无需下载') !== -1))
+// 已启用态（bridge 正跑安全区版）时 lastCheck 行退场——版本行已标「上游最新」
+const onSafeLastCheck = piAiBridgeRows(
+  { active: true, piAiVersion: '0.87.0', source: 'safe-0.87.0' },
+  { preference: 'latest', lastCheck: { at: new Date().toISOString(), reason: '当前已在用 0.87.0（上游 0.87.0），无需下载' } },
+)
+rowsCheck('已启用态不再解释「当前已在用…无需下载」（版本行即真相）', onSafeLastCheck.every((r) => r.key !== 'lastCheck') && onSafeLastCheck.length === 1)
 
 const broken = piAiBridgeRows({ active: false, error: '没有能用的 pi-ai：…' }, undefined)
 rowsCheck('桥接挂掉时只报错误行', broken.length === 1 && broken[0].bad === true)
