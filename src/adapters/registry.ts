@@ -12,6 +12,7 @@ import moonshot from './moonshot.js'
 import opencodeGo from './opencode-go.js'
 import openrouter from './openrouter.js'
 import qwen from './qwen.js'
+import stepfun from './stepfun.js'
 import zenmux from './zenmux.js'
 import type { BillingAdapter } from './shared.js'
 
@@ -25,6 +26,7 @@ export const adapters = [
   zenmux,
   openrouter,
   qwen,
+  stepfun,
 ]
 
 /** 按 provider id（必要时兜 baseURL）找适配器。 */
