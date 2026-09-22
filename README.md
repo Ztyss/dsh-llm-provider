@@ -55,6 +55,7 @@ dsh web     # 需要重启：插件树在进程启动时组装
 - **桥接工作区在包外安全区** `$DSH_HOME/llm-provider-bridge/`。插件包随时可能被整棵递归删
   （Node ≥24.15 的 `rmSync` 会顺 junction 清空目标，实测），安全区方案下没有任何链接可供跟随。
   不变量：**安装插件包整包零链接**（`test/host-safety.mjs` 实证）。
+- **npm cache 不常驻**：下载时的 npm cache 放系统临时目录、装完即删（成败都删）；启动时另有一道兜底——清理安全区里历史遗留的 `.npm-cache`（老版本曾把 cache 放安全区，实测一台机常驻 177 MB）。
 - **官方条目条件禁用（fail-open）**：`cordis.patch.yml` 用 `!!js` 表达式——pi-ai 完好才禁用
   官方四条目，缺失/残缺时保留它们，宿主照常启动。表达式由 `src/patch-condition.ts` 生成，
   `scripts/sync-patch-condition.mjs --check` 防止与 patch 文件漂移。

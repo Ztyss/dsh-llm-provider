@@ -22,7 +22,7 @@
 import Schema from '@deepseek-ai/schemastery'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { activePiAiRoot, loadBridge, readPiAiPreference, safeInstalledVersions, setPiAiPreference, vendorDir } from './bridge.js'
+import { activePiAiRoot, loadBridge, readPiAiPreference, removeTree, safeInstalledVersions, safeRootDir, setPiAiPreference, vendorDir } from './bridge.js'
 import { enrichModelDetails, loadModelDetails, withAdapterModels, withDeclaredModels, type AdapterModelInfo, type ModelDetail } from './model-details.js'
 import { checkAndUpdate } from './updater.js'
 import { labelOf, providerRoutes, websiteOf, type ProviderRoute } from './routes.js'
@@ -795,6 +795,10 @@ export function apply(ctx: PluginContext, config: unknown): void {
     'dsh-llm-provider: /provider/test route',
   )
 
+  // 历史遗留兜底清理：老版本曾把 npm cache 放在安全区（实测一台机常驻 177 MB）。
+  // 新逻辑 cache 只放 tmpdir 且装完即删（见 updater.ts）——这里只可能扫到旧遗留，
+  // 幂等：不存在就跳过。安全区是受管目录，removeTree 只摘链、不跟进目标。
+  removeTree(join(safeRootDir(), '.npm-cache'))
   // 开关 ON 是**常驻意图**（用户 09-22 修订）：每次启动都查一次上游——本地没有就绪
   // 副本就补上下载（启动即进入下载中态，不必等用户再拨一次），已就绪也看看上游有没有
   // 新版、有就自动下（updateDecision 自己会跳过「上游 ≤ 本地已就位」）。

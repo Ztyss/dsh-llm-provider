@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { installVersion, safeVersionDir, updateDecision } from '../lib/updater.js'
+import { readFileSync } from 'node:fs'
 
 let failures = 0
 function check(name, cond, extra) {
@@ -59,6 +60,14 @@ check(
   updateDecision({ version: '0.86.0' }, undefined, ['0.85.1']).action === 'install',
 )
 
+
+// ---- 4. npm cache 不常驻：放 tmpdir 且装完即删（用户 09-22 批注：安全区那 177MB）----
+const root = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const updaterSrc = readFileSync(join(root, 'lib', 'updater.js'), 'utf8')
+const indexSrc = readFileSync(join(root, 'lib', 'index.js'), 'utf8')
+check('npm cache 用 tmpdir 临时目录（不放安全区）', /pi-ai-npm-cache-/.test(updaterSrc))
+check('npm cache 用完即删（removeTree finally）', /removeTree\(npmCache\)/.test(updaterSrc))
+check('index 启动兜底清理安全区遗留 cache', /removeTree\(join\(safeRootDir\(\), ['"]\.npm-cache['"]\)\)/.test(indexSrc))
 delete process.env.DSH_HOME
 rmSync(sandbox, { force: true, recursive: true })
 

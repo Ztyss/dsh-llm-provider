@@ -191,8 +191,10 @@ export async function installVersion(release: RegistryRelease, log: (line: strin
   rmSync(tgzPath, { force: true })
 
   log('安装依赖（--omit=dev --ignore-scripts）...')
-  // 用安全区本地缓存：用户默认缓存可能因权限问题（root 属主残留）不可写，不该让它挡住下载
-  const npmCache = join(safeRootDir(), '.npm-cache')
+  // npm cache 放**临时目录、装完即删**：放安全区会常驻一两百 MB（_cacache 只增不减，
+  // 实测一台机 177 MB）——而「重装已就绪版本」的加速场景本来就被 installVersion 的
+  // 幂等跳过挡掉，cache 的复用价值趋近于零，常驻成本却是实打实的磁盘。
+  const npmCache = join(tmpdir(), `pi-ai-npm-cache-${Date.now()}`)
   mkdirSync(npmCache, { recursive: true })
   const npm = npmCommand([
     'install', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--loglevel=error',
@@ -212,6 +214,9 @@ export async function installVersion(release: RegistryRelease, log: (line: strin
   } catch (error) {
     const repro = `cd "${target}" && ${npm.file === process.execPath ? `"${process.execPath}"` : npm.file} ${npm.args.join(' ')}`
     throw new Error(`依赖安装失败：${messageOfExecError(error)}。可手动复现：${repro}`)
+  } finally {
+    // 成败都删：cache 用完即清，不在磁盘上留痕迹
+    removeTree(npmCache)
   }
   return target
 }
