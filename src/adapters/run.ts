@@ -32,6 +32,7 @@ const KEY_ENV_NAMES: Record<string, string[]> = {
   'opencode-go': ['OPENCODE_API_KEY'],
   zenmux: ['ZENMUX_API_KEY'],
   openrouter: ['OPENROUTER_API_KEY'],
+  stepfun: ['STEPFUN_API_KEY', 'STEP_API_KEY'],
 }
 
 /** 各适配器的默认 baseURL（settings 里通常不写）。 */
@@ -43,6 +44,7 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
   minimax: 'https://api.minimaxi.com',
   'opencode-go': 'https://opencode.ai/zen/go/v1',
   openrouter: 'https://openrouter.ai/api/v1',
+  stepfun: 'https://api.stepfun.com/v1',
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
