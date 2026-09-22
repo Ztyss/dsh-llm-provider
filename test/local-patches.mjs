@@ -91,8 +91,8 @@ check('#5 detailsOfProvider 只吐该家的', client.detailsOfProvider(map, 'ope
 // 4. pi-ai 桥接页：缺省（未拨开关）只留版本一行；开关 OFF 有已下载文件时有明确文案
 const rows = client.piAiBridgeRows({ active: true, piAiVersion: '0.85.1', source: 'dsh' })
 check('#4 缺省（未传 piAi）只留版本一行且标官方', rows.length === 1 && rows[0].value, '0.85.1 (official)')
-check('#4 偏好 dsh 时状态文字是「使用 DSH 自带版本」', client.piAiUpstreamText({ preference: 'dsh' }), 'Using the DSH-bundled version')
-check('#4 已下载未启用时英文明确提示', client.piAiUpstreamText({ preference: 'dsh', safeVersions: ['0.86.0'] }), '0.86.0 downloaded (not in use; flip ON to use it)')
+check('#4 OFF 且未下载时无文案（默认态不复读）', client.piAiUpstreamText({ preference: 'dsh' }), undefined)
+check('#4 已下载未启用时英文明确提示', client.piAiUpstreamText({ preference: 'dsh', safeVersions: ['0.86.0'] }), '0.86.0 downloaded (not in use)')
 check('#4 开关勾态跟随 preference', client.piAiToggleState({ preference: 'latest' }).enabled, true)
 check('#4 下载中态开关忙碌', client.piAiToggleState({ preference: 'latest', download: { at: 'x', version: '0.86.0', lines: [] } }).downloading, true)
 

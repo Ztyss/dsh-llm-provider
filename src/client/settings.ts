@@ -143,12 +143,15 @@ export function piAiToggleState(piAi: unknown): { enabled: boolean; downloading:
 }
 
 /**
- * 开关右侧的状态文字（纯函数）：四种终态 + 下载中，全部有明确文案（Q2-C/Q5）——
+ * 开关右侧的状态文字（纯函数）：下载中 + 各终态，全部有明确文案（Q2-C/Q5）——
  * 拨了开关的用户回来要看得到结论，而不是一片安静。
+ *
+ * OFF 且未下载时返回 **undefined**（不渲染右侧文字）：那一态本来就是默认态，
+ * 无需向用户复读「你在用 DSH 自带版本」——版本行已经写了（0.85.1（官方））。
  * @param piAi - /provider/status 的 piAi 段。
  * @param bridge - 同上的 bridge 段（判「已启用 x.y.z」用）。
  */
-export function piAiUpstreamText(piAi: unknown, bridge?: unknown): string {
+export function piAiUpstreamText(piAi: unknown, bridge?: unknown): string | undefined {
   var rec: AnyRecord = piAi === undefined || piAi === null ? {} : (piAi as AnyRecord)
   if (rec.featureDisabled === true) return t('bridge.featureOff')
   if (rec.download !== undefined && rec.download !== null) return t('bridge.stateDownloading')
@@ -167,10 +170,12 @@ export function piAiUpstreamText(piAi: unknown, bridge?: unknown): string {
     if (lastCheck !== undefined && lastCheck !== null && (lastCheck as AnyRecord).reason !== undefined) {
       return String((lastCheck as AnyRecord).reason)
     }
-    return t('bridge.stateDownloading')
+    // 拨过 ON 但本地没就绪副本、也没有进行态（典型：上次下载失败/卡死后重启）——
+    // 这绝不能再显示「正在下载」（假的进行态），给一个可执行的下一步
+    return t('bridge.stateMissing')
   }
   if (safeNewest !== undefined) return tf('bridge.stateOffKept', { version: safeNewest })
-  return t('bridge.stateOff')
+  return undefined
 }
 
 /** 单个摘要 chip：「5h余量:90% 34min后重置」；余额类无标签只显示金额；sep 为组间分割线。 */
@@ -2635,10 +2640,12 @@ export function ProviderSettingsSection() {
 
   // 「启用最新版 pi-ai」开关。ON = 写偏好 + 后台检查/下载（异步，轮询等收尾）；
   // OFF = 写偏好，重启后回退 DSH 自带（已下载文件保留）。终态文案由 piAiUpstreamText
-  // 给（纯函数），这里只负责发起与轮询；失败/即时结论走 note 区。
+  // 给（纯函数），这里只负责发起与轮询。
+  // 下载态**不上框外 note**（用户批注）：进行中只看开关行右侧的「正在下载上游pi-ai...」，
+  // note 区只留给失败与拨 OFF 的同步结论。
   function togglePiAi(next: boolean) {
     setPiAiBusy(true)
-    setNote(next ? '正在检查上游 pi-ai ...' : '正在切换到 DSH 自带版本 ...')
+    if (next !== true) setNote('正在切换到 DSH 自带版本 ...')
     postJson('/provider/pi-ai', { enabled: next })
       .then(function (result) {
         if (result !== null && result !== undefined && result.disabled === true) {
@@ -2657,9 +2664,8 @@ export function ProviderSettingsSection() {
           refresh(false)
           return
         }
-        // 拨 ON：下载异步跑（可能几分钟），保持 busy 轮询；「已是最新/无需下载」这类
-        // 即时结论也会在 download 消失后由状态行给出（lastCheck.reason）
-        setNote('正在检查/下载上游 pi-ai ...')
+        // 拨 ON：下载异步跑（可能几分钟），保持 busy 轮询；下载中/终态只显示在开关行
+        // （piAiUpstreamText：正在下载 → 待重启/无法启用/已是最新），note 不插话
       })
       .catch(function (cause) {
         setNote('开关失败：' + String(cause && cause.message ? cause.message : cause))
@@ -2788,8 +2794,9 @@ export function ProviderSettingsSection() {
       children,
     ))
   }
-  // 「启用最新版 pi-ai」开关一行：左 label +  toggle，右状态文字（纯函数给文案）。
-  // status 还在加载（null）时不渲染——否则开关会先闪一下又被收走。
+  // 「启用最新版 pi-ai」开关一行：左 label + toggle，右状态文字（纯函数给文案）。
+  // OFF 且未下载时 piAiUpstreamText 返回 undefined——那一侧不渲染（用户批注：
+  // 默认态无需复读「在用 DSH 自带」）。status 还在加载（null）时整行不渲染。
   if (status !== null) {
     var piAiRecord: AnyRecord = piAi === undefined || piAi === null ? {} : (piAi as AnyRecord)
     var piToggle = piAiToggleState(piAiRecord)
@@ -2798,25 +2805,25 @@ export function ProviderSettingsSection() {
     var badTone = featureDisabled === true
       || (piAiRecord.latestRejected !== undefined && piAiRecord.latestRejected !== null)
     var warnTone = badTone !== true && piAiRecord.needsRestart === true
-    bridgeLines.push(
+    var toggleChildren = [
       react.createElement(
-        'div',
-        { className: 'pv_line', key: 'toggle' },
-        react.createElement(
-          'label',
-          { className: 'pv_toggle', key: 'label', title: t('bridge.toggleTip') },
-          react.createElement('input', {
-            type: 'checkbox',
-            className: 'pv_switch',
-            key: 'input',
-            checked: piToggle.enabled,
-            disabled: featureDisabled || piAiBusy,
-            onChange: function (event: FieldEvent) {
-              togglePiAi(event.target.checked === true)
-            },
-          }),
-          react.createElement('span', { key: 'text' }, t('bridge.toggle')),
-        ),
+        'label',
+        { className: 'pv_toggle', key: 'label', title: t('bridge.toggleTip') },
+        react.createElement('input', {
+          type: 'checkbox',
+          className: 'pv_switch',
+          key: 'input',
+          checked: piToggle.enabled,
+          disabled: featureDisabled || piAiBusy,
+          onChange: function (event: FieldEvent) {
+            togglePiAi(event.target.checked === true)
+          },
+        }),
+        react.createElement('span', { key: 'text' }, t('bridge.toggle')),
+      ),
+    ]
+    if (stateText !== undefined && stateText !== '') {
+      toggleChildren.push(
         react.createElement(
           'span',
           {
@@ -2826,7 +2833,10 @@ export function ProviderSettingsSection() {
           },
           stateText,
         ),
-      ),
+      )
+    }
+    bridgeLines.push(
+      react.createElement('div', { className: 'pv_line', key: 'toggle' }, toggleChildren),
     )
   }
   var accounts = plan !== null && Array.isArray(plan.accounts)

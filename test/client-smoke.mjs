@@ -279,7 +279,7 @@ const pending = piAiBridgeRows(
   { active: true, piAiVersion: '0.85.1', source: 'dsh' },
   { preference: 'latest', safeVersions: ['0.86.0'], needsRestart: true },
 )
-rowsCheck('待生效版本提示重启', pending.some((r) => r.key === 'pending' && r.text.indexOf('重启 dsh') !== -1))
+rowsCheck('待生效版本提示重启', pending.some((r) => r.key === 'pending' && r.text.indexOf('重启生效') !== -1))
 
 const rejectedByUpdater = piAiBridgeRows(
   { active: true, piAiVersion: '0.85.1', source: 'dsh' },
@@ -297,16 +297,18 @@ const broken = piAiBridgeRows({ active: false, error: '没有能用的 pi-ai：�
 rowsCheck('桥接挂掉时只报错误行', broken.length === 1 && broken[0].bad === true)
 rowsCheck('没有 bridge 时不出行', piAiBridgeRows(undefined, undefined).length === 0)
 
-rowsCheck('偏好 dsh（缺省）时状态文字是「使用 DSH 自带版本」', piAiUpstreamText({ preference: 'dsh' }) === '使用 DSH 自带版本')
-rowsCheck('拨 OFF 但有已下载文件时说明「未启用，拨到 ON 即用」',
-  piAiUpstreamText({ preference: 'dsh', safeVersions: ['0.86.0'] }) === '已下载 0.86.0（未启用，拨到 ON 即用）')
-rowsCheck('下载中态有进行中文案', piAiUpstreamText({ preference: 'latest', download: { at: 'x', version: '0.86.0', lines: [] } }) === '正在检查/下载上游 pi-ai ...')
+rowsCheck('OFF 且未下载时不给右侧文案（默认态不复读）', piAiUpstreamText({ preference: 'dsh' }) === undefined)
+rowsCheck('拨 OFF 但有已下载文件时说明「未启用」',
+  piAiUpstreamText({ preference: 'dsh', safeVersions: ['0.86.0'] }) === '已下载 0.86.0（未启用）')
+rowsCheck('下载中态有进行中文案', piAiUpstreamText({ preference: 'latest', download: { at: 'x', version: '0.86.0', lines: [] } }) === '正在下载上游pi-ai...')
 rowsCheck('待重启态带版本与重启提示',
-  piAiUpstreamText({ preference: 'latest', safeVersions: ['0.86.0'], needsRestart: true }).indexOf('重启 dsh') !== -1)
-rowsCheck('未过检验态带版本', piAiUpstreamText({ preference: 'latest', latestRejected: { version: '0.87.0', error: 'x' } }).indexOf('0.87.0') !== -1)
-rowsCheck('kill switch 关着时说明功能已关闭', piAiUpstreamText({ featureDisabled: true }) === 'pi-ai 更新功能已关闭（DSH_PROVIDER_UPDATE=off）')
+  piAiUpstreamText({ preference: 'latest', safeVersions: ['0.86.0'], needsRestart: true }) === '已下载 0.86.0（重启生效）')
+rowsCheck('未过检验态带版本', piAiUpstreamText({ preference: 'latest', latestRejected: { version: '0.87.0', error: 'x' } }) === '已下载 0.87.0（无法启用）')
+rowsCheck('kill switch 关着时说明功能已关闭', piAiUpstreamText({ featureDisabled: true }) === '已关闭（DSH_PROVIDER_UPDATE=off）')
 rowsCheck('已启用态带版本号（bridge 跑在安全区那版上）',
-  piAiUpstreamText({ preference: 'latest' }, { active: true, piAiVersion: '0.86.0', source: 'safe-0.86.0' }).indexOf('0.86.0') !== -1)
+  piAiUpstreamText({ preference: 'latest' }, { active: true, piAiVersion: '0.86.0', source: 'safe-0.86.0' }) === '已启用 0.86.0')
+rowsCheck('拨过 ON 但本地无就绪副本（下载卡死/失败后重启）时提示未下载，不假报下载中',
+  piAiUpstreamText({ preference: 'latest' }) === '未下载（拨 OFF 再拨 ON 重试）')
 const { piAiToggleState } = moduleExports
 rowsCheck('开关勾态 = preference 是否 latest', piAiToggleState({ preference: 'latest' }).enabled === true && piAiToggleState({ preference: 'dsh' }).enabled === false)
 rowsCheck('下载中态开关忙碌', piAiToggleState({ preference: 'latest', download: { at: 'x' } }).downloading === true)
@@ -704,12 +706,10 @@ i18nCheck('相对时间 1 分钟前 = 1m（单位是机器口径，两边都不�
 i18nCheck('相对时间 30 秒前 = <1min', zhRelUnder === '<1min' && enRelUnder === '<1min')
 i18nCheck('桥接版本行 zh 是中文来源档（dependency 归入 vendor 桶）', zhRow.value === '0.85.1（vendor）')
 i18nCheck('桥接版本行 en 是英文来源档', enRow.value === '0.85.1 (vendor)' && !hasHan(enRow.value))
-i18nCheck('开关 OFF 时 zh = 使用 DSH 自带版本', zhUpstream === '使用 DSH 自带版本')
-i18nCheck('开关 OFF 时 en = Using the DSH-bundled version', enUpstream === 'Using the DSH-bundled version' && !hasHan(enUpstream))
-i18nCheck('待重启 zh 带版本与重启提示',
-  zhUpstreamChecked.indexOf('已下载 0.86.0') === 0 && zhUpstreamChecked.indexOf('重启 dsh') !== -1)
-i18nCheck('待重启 en 带版本与重启提示',
-  enUpstreamChecked.indexOf('0.86.0') !== -1 && enUpstreamChecked.indexOf('restart') !== -1 && !hasHan(enUpstreamChecked))
+i18nCheck('开关 OFF 且未下载时 zh 不给文案（默认态不复读）', zhUpstream === undefined)
+i18nCheck('开关 OFF 且未下载时 en 不给文案', enUpstream === undefined)
+i18nCheck('待重启 zh = 已下载 0.86.0（重启生效）', zhUpstreamChecked === '已下载 0.86.0（重启生效）')
+i18nCheck('待重启 en = 0.86.0 downloaded (restart to apply)', enUpstreamChecked === '0.86.0 downloaded (restart to apply)')
 i18nCheck('跳过行 zh 带版本号与原因短语', zhSkip.text === '跳过 0.86.0：兼容性检查没通过')
 i18nCheck('跳过行 en 带版本号与原因短语',
   enSkip.text === 'Skipped 0.86.0: compatibility check failed' && !hasHan(enSkip.text))

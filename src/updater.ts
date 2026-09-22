@@ -37,7 +37,19 @@ import {
 } from './bridge.js'
 import { asRecord, readString } from './types.js'
 
-const execFileAsync = promisify(execFile)
+/**
+ * execFile 的 promise 包装。
+ *
+ * options 断言成 `Record<string, unknown>`：`stdio` 在**运行时**是 execFile 的透传参数
+ * （转手交给 spawn），但 @types/node 的 `ExecFileOptions` 没收这个键（dsh 的 electron
+ * 沙禁场景必须显式 `stdio:'ignore'`——见 installVersion 的说明）。集中在这一处放宽，
+ * 调用处保持干净。
+ */
+const execFileAsync = promisify(execFile) as unknown as (
+  file: string,
+  args: readonly string[],
+  options: Record<string, unknown>,
+) => Promise<{ stdout: string; stderr: string }>
 
 const PACKAGE = '@earendil-works/pi-ai'
 const REGISTRY = `https://registry.npmjs.org/${encodeURIComponent(PACKAGE).replace('%40', '@')}`
@@ -185,7 +197,19 @@ export async function installVersion(release: RegistryRelease, log: (line: strin
   writeFileSync(tgzPath, bytes)
 
   log('解压 ...')
-  await execFileAsync('tar', ['-xzf', tgzPath, '-C', target, '--strip-components', '1'])
+  // stdio 必须是 'ignore'：dsh 跑在 electron 沙箱里，child_process 的 stdio **管道**创建
+  // 会 EPERM（本仓库宿主实测：stdio:'pipe' 的 spawn 直接挂起，'ignore'/'inherit' 才 work）。
+  // 2026-09-22 事故：默认 pipe 的 execFile('tar') 在沙箱里 promise 永不 settle——tarball
+  // 早落盘了、解压目录却 7 分钟空着，下载态永远收不了尾。timeout 是第二道防线：
+  // 真卡住也要在 2 分钟后 reject，不能把拨开关的用户挂在「正在下载」上。
+  try {
+    await execFileAsync('tar', ['-xzf', tgzPath, '-C', target, '--strip-components', '1'], {
+      stdio: 'ignore',
+      timeout: 120_000,
+    })
+  } catch (error) {
+    throw new Error(`解压失败：${messageOfExecError(error)}（tarball 保留在 ${tgzPath}）`)
+  }
   rmSync(tgzPath, { force: true })
 
   log('安装依赖（--omit=dev --ignore-scripts）...')
@@ -196,12 +220,31 @@ export async function installVersion(release: RegistryRelease, log: (line: strin
     'install', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--loglevel=error',
     `--cache=${npmCache}`,
   ])
-  await execFileAsync(npm.file, npm.args, {
-    cwd: target,
-    timeout: 300_000,
-    ...(npm.shell ? { shell: true } : {}),
-  })
+  // stdio 全 ignore：同上，沙禁里不能用管道接子进程输出。npm 的失败诊断改成「退出码 +
+  // 可手动复现的命令」——用户照着敲一遍就能看到 npm 自己的错误输出。
+  try {
+    await execFileAsync(npm.file, npm.args, {
+      cwd: target,
+      timeout: 300_000,
+      stdio: 'ignore',
+      ...(npm.shell ? { shell: true } : {}),
+    })
+  } catch (error) {
+    const repro = `cd "${target}" && ${npm.file === process.execPath ? `"${process.execPath}"` : npm.file} ${npm.args.join(' ')}`
+    throw new Error(`依赖安装失败：${messageOfExecError(error)}。可手动复现：${repro}`)
+  }
   return target
+}
+
+/** 子进程错误的一句人话：含 command / code / signal——沙禁里大多是 EPERM 或 exit≠0。 */
+function messageOfExecError(error: unknown): string {
+  if (error === null || typeof error !== 'object') return String(error)
+  const rec = error as { cmd?: unknown; code?: unknown; signal?: unknown; message?: unknown; killed?: unknown }
+  const parts = [String(rec.message ?? error)]
+  if (rec.code !== undefined) parts.push(`code=${String(rec.code)}`)
+  if (rec.signal !== undefined) parts.push(`signal=${String(rec.signal)}`)
+  if (rec.killed === true) parts.push('（被 timeout 杀掉）')
+  return parts.join(' ')
 }
 
 /**
