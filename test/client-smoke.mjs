@@ -311,6 +311,9 @@ rowsCheck('拨过 ON 但本地无就绪副本（下载卡死/失败后重启）�
 const { piAiToggleState } = moduleExports
 rowsCheck('开关勾态 = preference 是否 latest', piAiToggleState({ preference: 'latest' }).enabled === true && piAiToggleState({ preference: 'dsh' }).enabled === false)
 rowsCheck('下载中态开关忙碌', piAiToggleState({ preference: 'latest', download: { at: 'x' } }).downloading === true)
+rowsCheck('下载中态：开关保持勾着（拨动的意图还在），但 busy 置灰——退出再进页面也靠 download 字段认出来',
+  piAiToggleState({ preference: 'latest', download: { at: 'x', version: '0.87.0', lines: [] } }).enabled === true
+  && piAiToggleState({ preference: 'latest', download: { at: 'x', version: '0.87.0', lines: [] } }).downloading === true)
 
 // ---- 推理等级文案（纯函数，不渲染）----
 // 目录收录的是 listProviders 报上来的路由，会话里存着的 provider 可能不在其中（原生路由缺席、

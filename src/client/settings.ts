@@ -2806,7 +2806,9 @@ export function ProviderSettingsSection() {
           className: 'pv_switch',
           key: 'input',
           checked: piToggle.enabled,
-          disabled: piAiBusy,
+          // 灰态由服务端事实驱动：piAiBusy（本次拨动后的轮询窗口）+ piToggle.downloading
+        // （download 还在跑——退出再进页面组件重挂载，piAiBusy 归零，但 download 不会撒谎）
+        disabled: piAiBusy || piToggle.downloading,
           onChange: function (event: FieldEvent) {
             togglePiAi(event.target.checked === true)
           },
