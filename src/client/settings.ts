@@ -2658,7 +2658,7 @@ export function ProviderSettingsSection() {
           // 拨 OFF：结论响应里就带了（needsRestart = 当前正跑自有版，重启才回退）
           setNote(
             result !== null && result !== undefined && result.needsRestart === true
-              ? '已拨到「DSH 自带」，重启 dsh 后生效（已下载的文件保留）'
+              ? '即将启用官方自带pi-ai，重启 dsh 后生效'
               : '已在使用 DSH 自带的 pi-ai',
           )
           setPiAiBusy(false)
