@@ -88,10 +88,13 @@ check('#5 同名模型按 provider 分开查（zai-coding-cn）', client.lookupD
 check('#5 裸 id 兜底还在', client.lookupDetail({ 'x': { id: 'x', vision: true } }, 'any', 'x').vision, true)
 check('#5 detailsOfProvider 只吐该家的', client.detailsOfProvider(map, 'opencode-go').length, 1)
 
-// 4. issue #4：桥接页在「更新停用」时只留版本一行（官方 / vendor），说明行与上游行整行不渲染
-const rows = client.piAiBridgeRows({ active: true, piAiVersion: '0.85.1', source: 'dsh' }, undefined, false)
-check('#4 停用更新时只留版本一行且标「官方」', rows.length === 1 && rows[0].value, '0.85.1 (official)')
-check('#4 上游文案标已停用', client.piAiUpstreamText({ latest: '0.86.0' }, false), 'Upstream auto-check disabled (no vendored copies)')
+// 4. pi-ai 桥接页：缺省（未拨开关）只留版本一行；开关 OFF 有已下载文件时有明确文案
+const rows = client.piAiBridgeRows({ active: true, piAiVersion: '0.85.1', source: 'dsh' })
+check('#4 缺省（未传 piAi）只留版本一行且标官方', rows.length === 1 && rows[0].value, '0.85.1 (official)')
+check('#4 偏好 dsh 时状态文字是「使用 DSH 自带版本」', client.piAiUpstreamText({ preference: 'dsh' }), 'Using the DSH-bundled version')
+check('#4 已下载未启用时英文明确提示', client.piAiUpstreamText({ preference: 'dsh', safeVersions: ['0.86.0'] }), '0.86.0 downloaded (not in use; flip ON to use it)')
+check('#4 开关勾态跟随 preference', client.piAiToggleState({ preference: 'latest' }).enabled, true)
+check('#4 下载中态开关忙碌', client.piAiToggleState({ preference: 'latest', download: { at: 'x', version: '0.86.0', lines: [] } }).downloading, true)
 
 // ---- 宿主端：真跑 lib/model-details.js ----
 const { withDeclaredModels, modelKey } = await import(new URL('../lib/model-details.js', import.meta.url).href)

@@ -48,8 +48,7 @@
   ]
   var STATUS = {
     bridge: { active: true, piAiVersion: '0.85.1', source: 'dsh' },
-    update: { lastCheck: new Date().toISOString(), latest: undefined },
-    updatesEnabled: false,
+    piAi: { preference: 'dsh', featureDisabled: false, safeVersions: [], needsRestart: false },
     localBuild: true,
     vendorPiAiVersions: [],
     llmDirectorySize: 12,
@@ -178,7 +177,18 @@
     if (path.indexOf('/api/credentials/set') === 0) return reply({ result: { ok: true, value: {} } })
     if (path.indexOf('/provider/refresh') === 0) return reply({ ok: true, account: PLAN.accounts[0] })
     if (path.indexOf('/provider/remove') === 0) { window.__lastRemove = body; return reply({ ok: true, keyCleared: true }) }
-    if (path.indexOf('/provider/update') === 0) return reply({ ok: true, disabled: true, error: '本地版已停用 pi-ai 自动下载' })
+    if (path.indexOf('/provider/pi-ai') === 0) {
+      // 拨开关的探测 mock：ON 走「已下载待重启」终态，OFF 回「使用 DSH 自带」
+      if (body && body.enabled === true) {
+        STATUS.piAi.preference = 'latest'
+        STATUS.piAi.safeVersions = ['0.86.0']
+        STATUS.piAi.needsRestart = true
+        return reply({ ok: true, enabled: true, started: true })
+      }
+      STATUS.piAi.preference = 'dsh'
+      STATUS.piAi.needsRestart = false
+      return reply({ ok: true, enabled: false, needsRestart: false })
+    }
     return reply({})
   }
 

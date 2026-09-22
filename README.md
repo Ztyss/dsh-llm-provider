@@ -28,14 +28,26 @@ dsh web     # 需要重启：插件树在进程启动时组装
 
 ## 本仓库的定制
 
-### pi-ai 只读 + 安全桥接
+### pi-ai 开关：启用最新版
 
-两次 P0 事故（递归删除顺 junction 清空宿主 pi-ai → DSH 起不来）之后的结构性收敛：
+两次 P0 事故（递归删除顺 junction 清空宿主 pi-ai → DSH 起不来）之后的结构性收敛，
+加上「上游出新模型不用等 dsh 发版」的诉求，落地成一个设置页开关：
 
-- **只用 dsh 自带那份 pi-ai，绝不下载**。没有后台检查；`/provider/update` 回一句"已停用"。
-  唯一入口是 `DSH_PROVIDER_UPDATE=on`（opt-in；vendor 档保留，平时不落地任何副本）。
-- **加载前体检**：`src/pi-ai-source.ts` 校验 manifest、入口与官方 bundle 实际 import 的
+- **「启用最新版 pi-ai」toggle**（桥接页，形态同系统开关）：拨 ON = 从 npm registry 拉
+  `dist-tags.latest` 的 `@earendil-works/pi-ai`——sha512 校验 → 解压 → 装依赖闭包 →
+  按桥接副本的 import 需求体检，落**安全区** `$DSH_HOME/llm-provider-bridge/pi-ai/<版本>/`
+  （插件包会被整棵递归删，几百 MB 不放包里）；重启后桥接软链指向自有版，顶替 DSH 自带那份，
+  体检不过自动回退，开关永远有兜底。拨 OFF = 回退 DSH 自带版，**已下载文件保留**，
+  再拨 ON 零成本。**只保留最新一个自有版本**：loadBridge 选中新版、切换完成后才清旧版
+  （当前进程绝不踩待删目录）。
+- **触网只发生在拨开关那一下**：插件启动无任何后台检查（旧策略 6 小时节流已移除）；
+  `DSH_PROVIDER_UPDATE=off` 是 kill switch——整个功能关闭，界面不渲染开关。
+- **四种终态全有明确文案**：当前 x.y.z（DSH 自带 / 安全区自有）/ 已是最新（上游 ≤ 当前
+  时明示，不白下）/ 已下载待重启 / 未过检验带原因（常驻）；下载中 2s 轮询。
+- **加载前体检不变**：`src/pi-ai-source.ts` 校验 manifest、入口与官方 bundle 实际 import 的
   四条子路径；残缺时给出可执行的恢复指引（npm pack 覆盖回宿主目录，插件不代劳）。
+  `piAiCandidates()` 候选链 = 安全区（拨 ON 时，新→旧）→ vendor 遗留档 → 内置依赖 → dsh 自带，
+  逐个体检，第一个通过的入选。
 - **桥接工作区在包外安全区** `$DSH_HOME/llm-provider-bridge/`。插件包随时可能被整棵递归删
   （Node ≥24.15 的 `rmSync` 会顺 junction 清空目标，实测），安全区方案下没有任何链接可供跟随。
   不变量：**安装插件包整包零链接**（`test/host-safety.mjs` 实证）。
@@ -54,8 +66,9 @@ dsh web     # 需要重启：插件树在进程启动时组装
   自定义 ID 才填上下文/最大输出与视觉/视频。保存写专用路由 `POST /provider/set-models`
   （服务端校验、拒绝内置路由），声明原文为底稿——保全手写的 `reasoningEfforts` / `compat`；
   「跟随目录（还原）」即删掉该键回到目录全量。
-- **pi-ai 桥接页一行化**：默认（自动下载停用）只显示「当前 pi-ai 版本 x.y.z（官方 / vendor）」；
-  `DSH_PROVIDER_UPDATE=on` 时上游版本与「检查更新」按钮自动回归。
+- **pi-ai 桥接页 toggle 化**：「启用最新版 pi-ai」开关 + 右侧状态行（当前版本+来源 /
+  已是最新 / 已下载待重启 / 未过检验常驻原因）；拨 ON 后 2s 轮询等下载收尾。
+- `DSH_PROVIDER_UPDATE=off` 时开关整行不渲染（功能关闭，界面照实说明）。
 - **删除确认弹层**：代价清单 + 「导出配置（YAML）」备份（密钥不导出）。
 - **能力三态徽章**：支持 / 明确不支持 / **未知** 分开渲染；目录查不到的模型从路由声明与
   适配器自报补齐能力（modlens 这类合成 provider）。
@@ -68,6 +81,6 @@ dsh web     # 需要重启：插件树在进程启动时组装
 ## 测试
 
 ```sh
-npm test                      # 构建 + 13 步离线测试链（不需要 dsh）
+npm test                      # 构建 + 15 步离线测试链（不需要 dsh）
 node test/host-safety.mjs     # junction 安全回归：须在 node 24.14 与 DSH 自带运行时（≥24.15）各跑一遍
 ```

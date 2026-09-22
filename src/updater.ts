@@ -1,48 +1,66 @@
 /**
- * pi-ai 上游更新器：盯 @earendil-works/pi-ai 的 npm registry，
- * 有新版本就下载、装依赖、放进 vendor/pi-ai/<版本>/，验证通过后标记待生效。
+ * pi-ai 上游更新器：设置页「启用最新版 pi-ai」开关拨 ON 时，查 @earendil-works/pi-ai
+ * 的 npm registry，下载最新版、装依赖、放进**安全区** `llm-provider-bridge/pi-ai/<版本>/`，
+ * 验证通过后标记待生效（重启后桥接才挂到新版本，见 bridge.ts）。
  *
  * 替换的硬规矩：**验证通过才能替换**，两道都过才算数——
  *   1. tarball 完整性：按 registry packument 里的 dist.integrity（sha512）校验下载内容；
- *   2. 兼容性体检：用桥接副本自己的 import 需求 probe 那份新 pi-ai（见 bridge.js 的
+ *   2. 兼容性体检：用桥接副本自己的 import 需求 probe 那份新 pi-ai（见 bridge.ts 的
  *      probePiAi）。体检没跑起来（unverified，需求解析不出）一样不替换。
  * 通过后只写 status.json 的 needsRestart 标记——已 require 的旧模块不受影响，
- * 下一次 dsh 重启时 bridge.js 才会挂到新版本。/provider/status 会报出来。
+ * 下一次 dsh 重启时 bridge.ts 才会挂到新版本。/provider/status 会报出来。
  *
- * 触发方式：启动时后台自动查一次（6 小时节流，startBackgroundCheck），以及设置页按钮
- * → POST /provider/update 手动触发。
+ * 触发方式**只有一种**：用户拨开关（POST /provider/pi-ai，见 index.ts）。插件不做任何
+ * 后台检查、启动时不触网——拨开关这个动作就是「同意触网」的唯一授权。旧策略（6 小时
+ * 节流后台检查 + vendor/pi-ai 落点 + DSH_PROVIDER_UPDATE=on opt-in）整体作废：
+ * 下载落点改安全区是因为插件包会被整棵递归删（包管理器/插件市场/宿主），几百 MB 的
+ * pi-ai 放包里等于每次重装插件都要重下。
+ *
+ * `DSH_PROVIDER_UPDATE=off` 是 kill switch：整个功能关闭（界面隐藏开关、接口拒绝），
+ * 给「这段时间就是不想让这个插件碰网络」留的逃生门。
  */
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
-import { bridgeRequirements, compareVersions, installedVersions, probePiAi, removeTree, updateStatus, vendorDir } from './bridge.js'
-import { asRecord, readString, type AnyRecord, type Logger } from './types.js'
+import {
+  bridgeRequirements,
+  compareVersions,
+  probePiAi,
+  removeTree,
+  safeInstalledVersions,
+  safePiAiDir,
+  safeRootDir,
+  updateStatus,
+} from './bridge.js'
+import { asRecord, readString } from './types.js'
 
 const execFileAsync = promisify(execFile)
 
 const PACKAGE = '@earendil-works/pi-ai'
 const REGISTRY = `https://registry.npmjs.org/${encodeURIComponent(PACKAGE).replace('%40', '@')}`
-const VERSIONS_DIR = join(vendorDir, 'pi-ai')
-const STATE_FILE = join(vendorDir, 'updater-state.json')
-const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 小时
 
 /**
- * 本地版（-local）开关：pi-ai 自动下载**默认关闭**。
+ * kill switch：`DSH_PROVIDER_UPDATE=off` 彻底关闭「启用最新版 pi-ai」功能。
  *
- * 上游 rc.2 在启动时（6 小时节流）与点「检查更新」时会把 @earendil-works/pi-ai 连依赖闭包
- * 下到 `vendor/pi-ai/<版本>/`（实测一次几百 MB，还带一份 `vendor/.npm-cache`），dsh 自带
- * 同版本时也会白下一份——正是本仓库 issue #4 报的磁盘问题。本机把插件职责收窄成「用 dsh
- * 自带那份 pi-ai + 计费/界面」：默认不再下载任何 pi-ai，vendor/ 里只留 llm-bridge/
- * （官方适配器 bundle 的副本，约 113 KB，不是 pi-ai）。
+ * 缺省（未设置）= 功能在线：开关可见，拨 ON 才触网。用户 09-22 确认的默认行为；
+ * 此前「默认停用、DSH_PROVIDER_UPDATE=on 才开」的老语义整体作废。
  *
- * 要手动跟上游：`DSH_PROVIDER_UPDATE=on` 启动 dsh，再点设置页的「检查更新」。
+ * **调用期现场求值**（不是模块级常量）：改了环境变量当场生效、不用重启，
+ * 集成测试也能直接注入。
  */
-export const UPDATES_ENABLED = process.env.DSH_PROVIDER_UPDATE === 'on'
+export function piAiFeatureDisabled(): boolean {
+  return process.env.DSH_PROVIDER_UPDATE === 'off'
+}
 
-/** 一次检查 + 更新的结果（/provider/update 的响应体）。 */
+/** 安全区里某个自有版本的目录——下载唯一落点（插件包外，插件重装不丢）。 */
+export function safeVersionDir(version: string): string {
+  return join(safePiAiDir(), version)
+}
+
+/** 一次检查 + 更新的结果（POST /provider/pi-ai 的响应体）。 */
 export interface UpdateResult {
   checkedAt: string
   latest: string | undefined
@@ -50,8 +68,10 @@ export interface UpdateResult {
   applied: boolean
   compatible: boolean | undefined
   error: string | undefined
-  /** 本地版：自动下载被停用（响应里带上，界面据此提示，不是失败）。 */
+  /** kill switch 关着：功能被 DSH_PROVIDER_UPDATE=off 停用（不是失败，界面照实说明）。 */
   disabled?: boolean | undefined
+  /** 跳过下载时的明确结论（「已是最新」「本地已就位」……界面上要能看见，Q2-C/Q5）。 */
+  reason?: string | undefined
 }
 
 /** registry 上最新版：版本号 + tarball 的 sha512（base64，无前缀）。 */
@@ -60,18 +80,32 @@ interface RegistryRelease {
   integrity: string | undefined
 }
 
-/** 上次检查时间等本地状态。 */
-function readState(): AnyRecord {
-  try {
-    return asRecord(JSON.parse(readFileSync(STATE_FILE, 'utf8')))
-  } catch {
-    return {}
-  }
+/** 闸门结论：'install' = 该下载；'skip' = 不用下载（reason 说明为什么）。 */
+export interface UpdateDecision {
+  action: 'install' | 'skip'
+  reason?: string
 }
 
-function writeState(patch: AnyRecord): void {
-  mkdirSync(vendorDir, { recursive: true })
-  writeFileSync(STATE_FILE, JSON.stringify({ ...readState(), ...patch, at: new Date().toISOString() }))
+/**
+ * 要不要下载：纯函数，离线可测。
+ *
+ * 上游 ≤ 当前生效版本 → 不下载（老代码在这里会白下一份一模一样的——dsh 自带 0.85.1、
+ * 上游也是 0.85.1 的经典场景）。本地已就位同一版 → 也不重下。跳过必须给 reason：
+ * 用户点了开关，屏幕上要出现明确结论，而不是一片安静。
+ */
+export function updateDecision(
+  release: { version: string },
+  activeVersion: string | undefined,
+  localVersions: readonly string[],
+): UpdateDecision {
+  if (activeVersion !== undefined && compareVersions(release.version, activeVersion) <= 0) {
+    return { action: 'skip', reason: `当前已在用 ${activeVersion}（上游 ${release.version}），无需下载` }
+  }
+  const newest = [...localVersions].sort(compareVersions).pop()
+  if (newest !== undefined && compareVersions(release.version, newest) <= 0) {
+    return { action: 'skip', reason: `本地已就位 ${newest}（上游 ${release.version}），无需下载` }
+  }
+  return { action: 'install' }
 }
 
 /** registry 上最新版与它的 dist.integrity（下载校验用）。 */
@@ -115,20 +149,20 @@ function npmCommand(args: readonly string[]): { file: string; args: string[]; sh
 }
 
 /**
- * 下载并就位一个版本：tarball 校验后解压到 vendor/pi-ai/<v>/，再补依赖闭包。
- * 已就位则跳过（校验也不重跑——那份内容装的时候验过）。integrity 缺省时不校验，
- * 但会记一行日志：registry 正常都会给，缺了多半是请求/字段出了问题。
+ * 下载并就位一个版本：tarball 校验后解压到**安全区** `llm-provider-bridge/pi-ai/<v>/`，
+ * 再补依赖闭包。已就位则跳过（校验也不重跑——那份内容装的时候验过）。
+ * integrity 缺省时不校验，但会记一行日志：registry 正常都会给，缺了多半是请求/字段出了问题。
  */
 export async function installVersion(release: RegistryRelease, log: (line: string) => void = () => {}): Promise<string> {
   const { version, integrity } = release
-  const target = join(VERSIONS_DIR, version)
+  const target = safeVersionDir(version)
   if (existsSync(join(target, 'node_modules'))) {
     log(`${version} 已就位，跳过下载`)
     return target
   }
-  // 用 removeTree 而不是 rmSync(recursive)：vendor/pi-ai/<v>/ 里理论上不该有链，但
-  // 「理论上」在 Windows junction 上是要付代价的（Node 24.15+ 的递归删除会跟进 junction，
-  // 把目标内容一起清空），递归删除统一走链感知的那条路。
+  // 用 removeTree 而不是 rmSync(recursive)：下载目录里理论上不该有链，但「理论上」在
+  // Windows junction 上是要付代价的（Node 24.15+ 的递归删除会跟进 junction，把目标内容
+  // 一起清空），递归删除统一走链感知的那条路。
   removeTree(target)
   mkdirSync(target, { recursive: true })
 
@@ -155,8 +189,8 @@ export async function installVersion(release: RegistryRelease, log: (line: strin
   rmSync(tgzPath, { force: true })
 
   log('安装依赖（--omit=dev --ignore-scripts）...')
-  // 用插件本地缓存：用户默认缓存可能因权限问题（root 属主残留）不可写，不该让它挡住更新
-  const npmCache = join(vendorDir, '.npm-cache')
+  // 用安全区本地缓存：用户默认缓存可能因权限问题（root 属主残留）不可写，不该让它挡住下载
+  const npmCache = join(safeRootDir(), '.npm-cache')
   mkdirSync(npmCache, { recursive: true })
   const npm = npmCommand([
     'install', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--loglevel=error',
@@ -171,10 +205,10 @@ export async function installVersion(release: RegistryRelease, log: (line: strin
 }
 
 /**
- * 一次性检查 + 更新。返回给 /provider/update 与 /provider/status。
+ * 一次性检查 + 更新。返回给 POST /provider/pi-ai 与 /provider/status。
  * @param log - 进度输出。
- * @param activeVersion - 当前正在用的 pi-ai 版本（可能来自 dsh 自带那份）。已经不比上游旧时
- *   不再下载——否则像 dsh 自带 0.85.1、上游也是 0.85.1 的情况下会白下一份一模一样的。
+ * @param activeVersion - 当前生效的 pi-ai 版本（可能来自 dsh 自带那份）。闸门结论见
+ *   {@link updateDecision}：不比上游旧、本地已就位，都不下载——「已是最新」也是明确结论。
  */
 export async function checkAndUpdate(
   log: (line: string) => void = () => {},
@@ -188,30 +222,26 @@ export async function checkAndUpdate(
     compatible: undefined,
     error: undefined,
   }
-  // 本地版默认不下载：连 registry 都不询问，直接如实回报「已停用」。
-  if (!UPDATES_ENABLED) {
+  // kill switch：整个功能关闭，连 registry 都不询问，如实回报（不是失败）
+  if (piAiFeatureDisabled()) {
     result.disabled = true
-    result.error = '本地版已停用 pi-ai 自动下载（vendor/ 不落地任何 pi-ai 副本）。要跟上游就用 DSH_PROVIDER_UPDATE=on 启动 dsh 后再点这里'
-    log('已停用自动下载（本地版）')
+    result.error = 'pi-ai 更新功能已被 DSH_PROVIDER_UPDATE=off 关闭'
+    log('killed switch：pi-ai 更新功能已关闭（DSH_PROVIDER_UPDATE=off）')
     return result
   }
   try {
     const release = await latestRelease()
     result.latest = release.version
-    if (activeVersion !== undefined && compareVersions(release.version, activeVersion) <= 0) {
-      log(`当前已在 ${activeVersion}（上游 ${release.version}），无需下载`)
-      return result
-    }
-    const have = installedVersions()
-    const newest = have[have.length - 1]
-    if (newest !== undefined && compareVersions(release.version, newest) <= 0) {
-      log(`已是最新（本地 ${newest}，上游 ${release.version}）`)
+    const decision = updateDecision(release, activeVersion, safeInstalledVersions())
+    if (decision.action === 'skip') {
+      result.reason = decision.reason
+      log(decision.reason ?? '无需下载')
       return result
     }
     const target = await installVersion(release, log)
     result.installed = release.version
     // 装完先体检：不兼容的版本不该让用户白重启一趟，也不该在下次启动时才被发现。
-    // 体检用桥接副本自己的 import 需求（见 bridge.js 的 probePiAi）。
+    // 体检用桥接副本自己的 import 需求（见 bridge.ts 的 probePiAi）。
     const probe = probePiAi(bridgeRequirements(), target, `check-${release.version}`)
     result.compatible = probe.ok && probe.unverified !== true
     if (probe.ok && probe.unverified !== true) {
@@ -219,7 +249,7 @@ export async function checkAndUpdate(
       result.applied = true
       log(`已验证 ${release.version}（完整性 + 兼容性体检），重启 dsh 后生效`)
     } else {
-      // 留着不删：下次启动还会体检一遍，结论一致；万一判断有误也能人工指定。
+      // 留着不删：下次启动 loadBridge 还会体检一遍，结论一致；开关保留 OFF，用户看得见原因。
       // unverified（需求解析不出）同样不替换——「验证才能替换」没有例外。
       const reason = probe.unverified === true
         ? '体检未执行（解析不出 bridge 的 import 需求），按「验证才能替换」不切换'
@@ -230,28 +260,6 @@ export async function checkAndUpdate(
   } catch (error) {
     result.error = error instanceof Error ? error.message : String(error)
     log(`更新失败：${result.error}`)
-  } finally {
-    writeState({ lastCheck: result.checkedAt })
   }
   return result
-}
-
-/**
- * 插件启动时调：距上次检查超过间隔才真的发请求，绝不阻塞启动。
- *
- * 装了新版 pi-ai 要重启才生效，所以这里下好的是"下次启动用得上"的那份——目的是让新装的
- * 机器不用手点「检查更新」也能自动跟上上游。
- * @param logger - 宿主日志器。
- * @param activeVersion - 当前生效的 pi-ai 版本（见 {@link checkAndUpdate}）。
- */
-export function startBackgroundCheck(logger: Logger | undefined, activeVersion: string | undefined): void {
-  // 本地版：整个关掉（不是上游那种 opt-out 的 off，而是 opt-in 的 on）。
-  if (!UPDATES_ENABLED) {
-    logger?.info?.('本地版已停用 pi-ai 自动下载，跳过启动检查（vendor/ 不落地 pi-ai）')
-    return
-  }
-  if (process.env.DSH_PROVIDER_UPDATE === 'off') return
-  const last = readString(readState()['lastCheck'])
-  if (last !== undefined && Date.now() - Date.parse(last) < AUTO_CHECK_INTERVAL_MS) return
-  void checkAndUpdate((line) => logger?.info?.(`[pi-ai updater] ${line}`), activeVersion)
 }

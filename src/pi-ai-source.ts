@@ -1,20 +1,20 @@
 /**
- * pi-ai 来源策略：**只用 DSH 自带那一份，绝不额外下载**。
+ * pi-ai 来源策略：**缺省只用 DSH 自带那一份；要上游最新版，拨设置页开关**。
  *
- * 这是用户诉求的直接落地：llm-provider 维护宿主自带的 pi-ai，而不是自己养一份。
- * 旧策略会去 npm 查上游、下载新版本、存进 `vendor/pi-ai/<v>/`、再把桥接链指过去，
- * 结果是：
- *   1. 插件目录里多出约 80 MB 的重复副本（issue #4 实测 260 MB）；
- *   2. 多出一条"下载/替换/清理"的写路径，算错根目录就会伤到宿主；
- *   3. 版本可能跟宿主不一致，桥接跑的是另一份 pi-ai，问题更难定位。
+ * 历史上（06-2x）插件的策略是"绝不下载"：旧策略会去 npm 查上游、下载新版本、存进
+ * `vendor/pi-ai/<v>/`、再把桥接链指过去，结果是插件目录里多出约 80 MB 的重复副本
+ * （issue #4 实测 260 MB）、多出一条算错根目录就伤宿主的写路径、版本还可能跟宿主不一致。
  *
- * 新策略把插件对 pi-ai 的关系收敛成三件只读的事：
- *   - **检测**：宿主那份是否完整（`package.json` + `dist/index.js` + 官方要的子路径）；
- *   - **使用**：桥接直接指向宿主那份（不复制、不下载）；
+ * 2026-09-22 起下载入口重开为**设置页开关**（「启用最新版 pi-ai」）：
+ *   - 拨开关才触网——没有任何后台/启动期检查，见 updater.ts 头部；
+ *   - 下载内容落**安全区** `$DSH_HOME/llm-provider-bridge/pi-ai/<v>/`（插件包会被整棵
+ *     递归删，几百 MB 不放包里），见 bridge.ts 的 safePiAiDir；
+ *   - 用哪份由加载前体检决定（候选链见 bridge.ts 的 piAiCandidates），体检不过自动回退。
+ *
+ * 本模块保持三件只读的事不变：
+ *   - **检测**：某份 pi-ai 是否完整（`package.json` + `dist/index.js` + 官方要的子路径）；
  *   - **报告**：不完整时给出可执行的诊断（缺哪个子路径、怎么恢复）。
- *
- * 下载入口一律关闭：自动检查与手动更新都不再触网。历史遗留的 `vendor/pi-ai/<v>/`
- * 副本在启动时清掉——它们占空间，且留着会让「到底在用哪一份」变得含糊。
+ *   - **不代劳修复宿主目录**：恢复指引只教用户走 npm 官方渠道覆盖回宿主目录。
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -104,8 +104,9 @@ export function describeIntegrity(root: string, integrity: PiAiIntegrity): strin
 /**
  * 恢复指引：宿主 pi-ai 被清空时用户该敲什么。
  *
- * 刻意**不提供**「插件自动重新下载」——那正是要关掉的写路径。恢复走 npm 官方渠道，
- * 且要覆盖回宿主目录（而不是塞进插件目录）。
+ * 刻意**不提供**「插件自动重新下载回宿主目录」——写宿主的路径不开。下载最新版替代宿主
+ * 那份是另一条路（拨开关，落安全区，见 bridge.ts）；这里只管宿主目录残缺时的恢复，
+ * 走 npm 官方渠道覆盖回宿主目录。
  */
 export function restoreHint(version: string | undefined): string {
   const spec = version === undefined ? '@earendil-works/pi-ai' : `@earendil-works/pi-ai@${version}`
@@ -117,12 +118,3 @@ export function restoreHint(version: string | undefined): string {
     '  cp -r package/dist package/package.json "<DSH>/resources/app/node_modules/@earendil-works/pi-ai/"',
   ].join('\n')
 }
-
-/** 下载入口的关闭开关（自动检查 + 手动更新）。 */
-export const PI_AI_DOWNLOAD_DISABLED = true
-
-/**
- * 给 UI 与日志用的策略说明。
- */
-export const PI_AI_POLICY_NOTE
-  = 'pi-ai 只使用 DSH 自带的那一份，已关闭插件的下载/更新入口'

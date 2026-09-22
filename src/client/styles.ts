@@ -98,6 +98,16 @@ var css =
   'background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.05));border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));' +
   'border-radius:6px;padding:4px 12px;cursor:pointer}' +
   '.pv_action:disabled{opacity:.5;cursor:default}' +
+  // 「启用最新版 pi-ai」开关（pill 形态，同系统设置页 toggle）
+  '.pv_toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none}' +
+  '.pv_switch{appearance:none;-webkit-appearance:none;position:relative;flex:none;width:34px;height:20px;' +
+  'margin:0;border-radius:10px;background:var(--dsw-alias-fill-tertiary,rgba(0,0,0,.16));' +
+  'transition:background .15s;cursor:pointer}' +
+  '.pv_switch:checked{background:var(--dsw-alias-label-primary,#1f2329)}' +
+  '.pv_switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;' +
+  'border-radius:50%;background:#fff;transition:left .15s}' +
+  '.pv_switch:checked::after{left:16px}' +
+  '.pv_switch:disabled{opacity:.5;cursor:default}' +
   // ---- Provider 标签：CC Switch 式卡片（字号/间距对齐官方插件页）----
   '.pv_stack{display:flex;flex-direction:column;gap:14px;max-width:600px}' +
   '.pv_pc{list-style:none;border:.5px solid var(--dsw-alias-border-l4,rgba(0,0,0,.15));border-radius:16px;' +

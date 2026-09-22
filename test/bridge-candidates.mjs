@@ -63,23 +63,26 @@ if (dshCandidate !== undefined) {
   )
 }
 
-// ---- 3. 删除与后台网络写路径（合并策略：能力保留但默认关死 + 删除必须链感知）----
+// ---- 3. 删除安全与触网纪律（2026-09-22 新策略：拨开关才触网，落点安全区）----
 // 两次事故的教训不是「不能有下载功能」，而是「绝不能用 rmSync(recursive) 碰任何可能
-// 藏 junction 的目录树」。合并版保留 opt-in 下载（DSH_PROVIDER_UPDATE=on），但：
+// 藏 junction 的目录树」。下载入口从「DSH_PROVIDER_UPDATE=on opt-in + 启动后台检查」
+// 改为设置页开关（「启用最新版 pi-ai」）后：
 //   1. updater 里不允许出现任何递归删除；目录删除一律走链感知 removeTree；
-//   2. 自动下载默认关死，UPDATES_ENABLED 开关是唯一入口。
+//   2. 没有任何后台/启动期网络检查——触网只发生在 POST /provider/pi-ai（用户拨开关那一下）；
+//   3. 下载落点是安全区（$DSH_HOME/llm-provider-bridge/pi-ai/），不再是插件包内 vendor/pi-ai/
+//      （插件包会被整棵递归删，几百 MB 的下载不能放包里）；
+//   4. DSH_PROVIDER_UPDATE=off 是 kill switch：整个功能关闭。
 const updaterSrc = readFileSync(join(root, 'lib', 'updater.js'), 'utf8')
+const indexSrc = readFileSync(join(root, 'lib', 'index.js'), 'utf8')
 check('updater 里没有递归删除（rmSync 一律不带 recursive）', !/rmSync\([^)]*recursive/.test(updaterSrc))
 check('updater 的目录删除走链感知 removeTree', /removeTree/.test(updaterSrc))
-check('updater 有 UPDATES_ENABLED 门控（默认停用）', /UPDATES_ENABLED/.test(updaterSrc))
-
-// 启动时的后台检查默认必须不触网：UPDATES_ENABLED 关闭时开头即返回
-{
-  const body = /function startBackgroundCheck\([^)]*\)\s*\{([\s\S]*?)\n\}/.exec(updaterSrc)
-  const bodyText = body === null ? '' : body[1]
-  check('startBackgroundCheck 函数体存在', body !== null)
-  check('startBackgroundCheck 默认不触网（UPDATES_ENABLED 关闭即返回）', /UPDATES_ENABLED/.test(bodyText), bodyText.slice(0, 100))
-}
+check('updater 不再有 UPDATES_ENABLED（旧 opt-in 开关已废）', !/UPDATES_ENABLED/.test(updaterSrc))
+check('updater 不再有 startBackgroundCheck（启动/后台不触网）', !/startBackgroundCheck/.test(updaterSrc))
+check('updater 的下载落点是安全区（safeVersionDir / safePiAiDir）', /safeVersionDir|safePiAiDir/.test(updaterSrc))
+check('updater 不再写插件包内的 vendor/pi-ai（VERSIONS_DIR 已移除）', !/VERSIONS_DIR/.test(updaterSrc))
+check('kill switch 就位（piAiFeatureDisabled，DSH_PROVIDER_UPDATE=off，调用期求值）', /piAiFeatureDisabled/.test(updaterSrc) && /DSH_PROVIDER_UPDATE\s*===\s*['"]off['"]/.test(updaterSrc))
+check('index 不再调用 startBackgroundCheck', !/startBackgroundCheck/.test(indexSrc))
+check('触网入口只有 /provider/pi-ai（旧的 /provider/update 已废弃）', /provider\/pi-ai/.test(indexSrc) && !/provider\/update/.test(indexSrc))
 
 // ---- 4. 链接的识别与安全移除 ----
 const sandbox = mkdtempSync(join(tmpdir(), 'dsh-link-'))

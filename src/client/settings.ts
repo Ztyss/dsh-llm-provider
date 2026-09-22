@@ -33,25 +33,37 @@ import { PROVIDER_API_OPTIONS, isProviderEditDirty, providerEditForm, providerEd
 import type { ProviderEditForm } from './provider-edit.js'
 import type { AddProviderPanelProps, BridgeRow, CatalogModel, DeclaredModel, FieldEvent, HeadlineChip, ModelDetail, ModelEditRow, PlanAccount, ProviderPreset } from './types.js'
 
-/** 当前用的是哪一档 pi-ai，只分两桶：官方（'dsh' / 'dsh-app'，dsh 自带）vs vendor（'vendor' / 'dependency' / 版本号，插件包自带）。 */
+/** 当前用的是哪一档 pi-ai，分三桶：官方（'dsh' / 'dsh-app'）vs 安全区自有（'safe-<版本>'）vs vendor。 */
 function piAiSourceLabel(source: unknown): string {
   if (source === 'dsh' || source === 'dsh-app') return t('bridge.srcOfficial')
+  if (typeof source === 'string' && source.startsWith('safe-')) return t('bridge.srcSafe')
   return t('bridge.srcVendored')
 }
 
 function piAiSourceHint(source: unknown): string {
   if (source === 'dsh' || source === 'dsh-app') return t('bridge.hintOfficial')
+  if (typeof source === 'string' && source.startsWith('safe-')) return t('bridge.hintSafe')
   return t('bridge.hintVendored')
+}
+
+/** 安全区里最新的已就位版本（数组是旧 → 新）；没有则 undefined。 */
+function newestSafeVersion(piAi: AnyRecord): string | undefined {
+  const versions = Array.isArray(piAi['safeVersions']) ? (piAi['safeVersions'] as unknown[]) : []
+  for (let i = versions.length - 1; i >= 0; i -= 1) {
+    const version = versions[i]
+    if (typeof version === 'string' && version !== '') return version
+  }
+  return undefined
 }
 
 /**
  * 「pi-ai 桥接」标签页的明细行。纯函数，只返回数据，组件照着渲染——这样能离线测，
  * 也免得一堆拼字符串的逻辑埋在组件里。
  * @param bridge - /provider/status 的 bridge 段（当前加载的那份）。
- * @param update - 同上的 update 段（上游最新 / 待生效 / 体检没过的）。
- * @returns `[{ key, text, value?, title?, warn? }]`；value 是右侧的次要文字。
+ * @param piAi - 同上的 piAi 段（开关偏好、安全区版本、待重启、未过检验、上次检查结论）。
+ * @returns `[{ key, text, value?, title?, warn?, bad? }]`；value 是右侧的次要文字。
  */
-export function piAiBridgeRows(bridge: unknown, update: unknown, updatesEnabled?: boolean): BridgeRow[] {
+export function piAiBridgeRows(bridge: unknown, piAi?: unknown): BridgeRow[] {
   var rows: BridgeRow[] = []
   if (bridge === undefined || bridge === null) return rows
   var bridgeRecord = bridge as AnyRecord
@@ -65,8 +77,6 @@ export function piAiBridgeRows(bridge: unknown, update: unknown, updatesEnabled?
     value: tf('bridge.srcParen', { version: bridgeRecord.piAiVersion, source: piAiSourceLabel(bridgeRecord.source) }),
     title: piAiSourceHint(bridgeRecord.source),
   })
-  // 本地版（issue #4）：默认停用自动下载时不再显示说明行——桥接页只留版本一行（官方 / vendor）；
-  // updatesEnabled 只由组件用来决定上游行与按钮是否渲染
   // 体检没执行（bundle 的 import 需求解析不出）：这份 pi-ai 是靠「目录存在」放行的，没验证过
   if (bridgeRecord.probeUnverified === true) {
     rows.push({
@@ -89,36 +99,78 @@ export function piAiBridgeRows(bridge: unknown, update: unknown, updatesEnabled?
       warn: true,
     })
   }
-  // 最近一次检查更新的结论
-  if (update !== undefined && update !== null) {
-    var updateRecord = update as AnyRecord
-    if (updateRecord.pending !== undefined) {
-      rows.push({ key: 'pending', text: tf('bridge.pending', { version: updateRecord.pending }), warn: true })
-    }
-    if (updateRecord.rejected !== undefined && updateRecord.rejected !== null) {
-      var rejectedLatest = updateRecord.rejected as AnyRecord
-      rows.push({
-        key: 'rejected',
-        text: tf('bridge.rejected', { version: rejectedLatest.version }),
-        value: t('bridge.reason'),
-        title: String(rejectedLatest.error),
-        warn: true,
-      })
-    }
+  // 开关态：待重启 / 未过检验 / 上次检查的明确结论（已是最新、无需下载……）
+  var piAiRecord: AnyRecord = piAi === undefined || piAi === null ? {} : (piAi as AnyRecord)
+  var safeNewest = newestSafeVersion(piAiRecord)
+  if (piAiRecord.needsRestart === true && safeNewest !== undefined) {
+    rows.push({ key: 'pending', text: tf('bridge.statePending', { version: safeNewest }), warn: true })
+  }
+  var latestRejected = piAiRecord.latestRejected
+  if (latestRejected !== undefined && latestRejected !== null) {
+    var rej = latestRejected as AnyRecord
+    rows.push({
+      key: 'rejected',
+      text: tf('bridge.stateRejected', { version: rej.version }),
+      value: t('bridge.reason'),
+      title: String(rej.error),
+      warn: true,
+    })
+  }
+  var lastCheck = piAiRecord.lastCheck
+  if (lastCheck !== undefined && lastCheck !== null && (lastCheck as AnyRecord).reason !== undefined) {
+    var checkRecord = lastCheck as AnyRecord
+    rows.push({
+      key: 'lastCheck',
+      text: String(checkRecord.reason),
+      title: checkRecord.at === undefined ? '' : tf('bridge.lastCheckAt', { when: relativeTime(String(checkRecord.at)) }),
+    })
   }
   return rows
 }
 
-/** 上游那一行的文字（右侧按钮由组件补）。updatesEnabled === false 时说明自动下载已停用。 */
-export function piAiUpstreamText(update: unknown, updatesEnabled?: boolean): string {
-  if (updatesEnabled === false) return t('bridge.upstreamPaused')
-  if (update === undefined || update === null) return t('bridge.upstreamUnchecked')
-  var updateRecord = update as AnyRecord
-  if (updateRecord.latest === undefined) return t('bridge.upstreamUnchecked')
-  var when = updateRecord.lastCheck === undefined
-    ? ''
-    : tf('bridge.upstreamCheckedAt', { when: relativeTime(updateRecord.lastCheck) })
-  return tf('bridge.upstreamVersion', { version: updateRecord.latest }) + when
+/**
+ * 开关的勾态与忙碌态（纯函数）。
+ *
+ * enabled = 偏好是 'latest'（拨 ON）；downloading = 有一次下载正在进行
+ * （/provider/status 的 piAi.download）。界面只认这两个事实，不自己推。
+ */
+export function piAiToggleState(piAi: unknown): { enabled: boolean; downloading: boolean } {
+  var rec: AnyRecord = piAi === undefined || piAi === null ? {} : (piAi as AnyRecord)
+  return {
+    enabled: rec.preference === 'latest',
+    downloading: rec.download !== undefined && rec.download !== null,
+  }
+}
+
+/**
+ * 开关右侧的状态文字（纯函数）：四种终态 + 下载中，全部有明确文案（Q2-C/Q5）——
+ * 拨了开关的用户回来要看得到结论，而不是一片安静。
+ * @param piAi - /provider/status 的 piAi 段。
+ * @param bridge - 同上的 bridge 段（判「已启用 x.y.z」用）。
+ */
+export function piAiUpstreamText(piAi: unknown, bridge?: unknown): string {
+  var rec: AnyRecord = piAi === undefined || piAi === null ? {} : (piAi as AnyRecord)
+  if (rec.featureDisabled === true) return t('bridge.featureOff')
+  if (rec.download !== undefined && rec.download !== null) return t('bridge.stateDownloading')
+  var safeNewest = newestSafeVersion(rec)
+  if (rec.preference === 'latest') {
+    if (rec.needsRestart === true && safeNewest !== undefined) return tf('bridge.statePending', { version: safeNewest })
+    if (rec.latestRejected !== undefined && rec.latestRejected !== null) {
+      return tf('bridge.stateRejected', { version: (rec.latestRejected as AnyRecord).version })
+    }
+    // 已启用且当前跑的就是安全区那一版
+    var bridgeRecord: AnyRecord = bridge === undefined || bridge === null ? {} : (bridge as AnyRecord)
+    if (bridgeRecord.active === true && typeof bridgeRecord.source === 'string' && bridgeRecord.source.startsWith('safe-')) {
+      return tf('bridge.stateOn', { version: bridgeRecord.piAiVersion })
+    }
+    var lastCheck = rec.lastCheck
+    if (lastCheck !== undefined && lastCheck !== null && (lastCheck as AnyRecord).reason !== undefined) {
+      return String((lastCheck as AnyRecord).reason)
+    }
+    return t('bridge.stateDownloading')
+  }
+  if (safeNewest !== undefined) return tf('bridge.stateOffKept', { version: safeNewest })
+  return t('bridge.stateOff')
 }
 
 /** 单个摘要 chip：「5h余量:90% 34min后重置」；余额类无标签只显示金额；sep 为组间分割线。 */
@@ -2212,6 +2264,11 @@ export function ProviderSettingsSection() {
   var toast = toastState[0]
   var setToast = toastState[1]
   var toastTimer: ReturnType<typeof setTimeout> | null = null
+  // pi-ai 开关：busy = 已拨动、后台检查/下载还没收尾（轮询 /provider/status 中）。
+  // 下载是异步的（几分钟量级），busy 期间每 2 秒拉一次 status，download 消失即收尾。
+  var piAiBusyState = react.useState(false)
+  var piAiBusy = piAiBusyState[0]
+  var setPiAiBusy = piAiBusyState[1]
   // 相对时间每 30 秒跳一次，让「N 分钟前」自己往前走
   var nowTickState = react.useState(0)
   var setNowTick = nowTickState[1]
@@ -2225,6 +2282,29 @@ export function ProviderSettingsSection() {
       }
     },
     [],
+  )
+  // pi-ai 拨 ON 后的收尾轮询：终态（needsRestart / latestRejected / lastCheck）由
+  // /provider/status 的 piAi 段给出，download 字段消失就是后台跑完了。
+  react.useEffect(
+    function () {
+      if (piAiBusy !== true) return
+      var timer = setInterval(function () {
+        loadProviderStatus()
+          .then(function (payload) {
+            setStatus(payload)
+            var piAi = payload !== null && payload !== undefined ? payload.piAi : undefined
+            var downloading = piAi !== undefined && piAi !== null && piAi.download !== undefined && piAi.download !== null
+            if (downloading !== true) setPiAiBusy(false)
+          })
+          .catch(function () {
+            setPiAiBusy(false)
+          })
+      }, 2000)
+      return function () {
+        clearInterval(timer)
+      }
+    },
+    [piAiBusy],
   )
   var openState = react.useState({})
   var openMap = openState[0]
@@ -2553,24 +2633,37 @@ export function ProviderSettingsSection() {
       })
   }
 
-  // pi-ai 跟随 DSH 自带那份，下载/更新入口已关闭（见 src/updater.ts 头部）。
-  // 按钮保留是为了让用户看到**明确结论**，而不是面对一个消失的入口猜为什么。
-  function checkUpdate() {
-    setBusy(true)
-    setNote('正在检查上游 ...')
-    postJson('/provider/update')
+  // 「启用最新版 pi-ai」开关。ON = 写偏好 + 后台检查/下载（异步，轮询等收尾）；
+  // OFF = 写偏好，重启后回退 DSH 自带（已下载文件保留）。终态文案由 piAiUpstreamText
+  // 给（纯函数），这里只负责发起与轮询；失败/即时结论走 note 区。
+  function togglePiAi(next: boolean) {
+    setPiAiBusy(true)
+    setNote(next ? '正在检查上游 pi-ai ...' : '正在切换到 DSH 自带版本 ...')
+    postJson('/provider/pi-ai', { enabled: next })
       .then(function (result) {
-        if (result.disabled === true) {
-          setNote('本地版已停用 pi-ai 自动下载：vendor/ 不会落地第二份 pi-ai。要跟上游就用 DSH_PROVIDER_UPDATE=on 启动 dsh')
-        } else if (result.error !== undefined) {
-          setNote('更新失败：' + String(result.error))
-        } else if (result.applied === true) {
-          setNote('已下载 ' + String(result.latest) + '，验证通过（完整性 + 兼容性），重启 dsh 后生效')
-        } else if (result.compatible === false) {
-          setNote(String(result.latest) + ' 验证没通过，已跳过（不会切过去）')
-        } else {
-          setNote('已是最新（' + String(result.latest) + '）')
+        if (result !== null && result !== undefined && result.disabled === true) {
+          setNote(String(result.error))
+          setPiAiBusy(false)
+          return
         }
+        if (next !== true) {
+          // 拨 OFF：结论响应里就带了（needsRestart = 当前正跑自有版，重启才回退）
+          setNote(
+            result !== null && result !== undefined && result.needsRestart === true
+              ? '已拨到「DSH 自带」，重启 dsh 后生效（已下载的文件保留）'
+              : '已在使用 DSH 自带的 pi-ai',
+          )
+          setPiAiBusy(false)
+          refresh(false)
+          return
+        }
+        // 拨 ON：下载异步跑（可能几分钟），保持 busy 轮询；「已是最新/无需下载」这类
+        // 即时结论也会在 download 消失后由状态行给出（lastCheck.reason）
+        setNote('正在检查/下载上游 pi-ai ...')
+      })
+      .catch(function (cause) {
+        setNote('开关失败：' + String(cause && cause.message ? cause.message : cause))
+        setPiAiBusy(false)
       })
   }
 
@@ -2675,11 +2768,9 @@ export function ProviderSettingsSection() {
   }
 
   var bridge = status === null || status.bridge === undefined ? undefined : status.bridge
-  var update = status === null || status.update === undefined ? undefined : status.update
-  // 本地版：/provider/status 报 updatesEnabled=false（自动下载是 opt-in），桥接页据此说明并置灰按钮
-  var updatesEnabled = status === null || status.updatesEnabled === undefined ? undefined : status.updatesEnabled === true
+  var piAi = status === null || status.piAi === undefined ? undefined : status.piAi
   // 桥接明细：放在「pi-ai 桥接」二级标签页里展示。行的内容由 piAiBridgeRows 给（纯函数，离线可测）
-  var bridgeRows = piAiBridgeRows(bridge, update, updatesEnabled)
+  var bridgeRows = piAiBridgeRows(bridge, piAi)
   var bridgeLines = []
   for (var bi = 0; bi < bridgeRows.length; bi += 1) {
     var row = bridgeRows[bi]
@@ -2697,25 +2788,43 @@ export function ProviderSettingsSection() {
       children,
     ))
   }
-  // 上游那一行右侧跟按钮：检查更新（宿主先校验下载内容、再做兼容性体检，都过了才等重启生效）。
-  // 只在开启自动下载（DSH_PROVIDER_UPDATE=on）时渲染；默认收起，桥接页只留版本一行（issue #4）。
-  // status 还在加载（null）时也不渲染——否则「上游/检查更新」会先闪一下又被收走。
-  if (status !== null && updatesEnabled !== false) {
+  // 「启用最新版 pi-ai」开关一行：左 label +  toggle，右状态文字（纯函数给文案）。
+  // status 还在加载（null）时不渲染——否则开关会先闪一下又被收走。
+  if (status !== null) {
+    var piAiRecord: AnyRecord = piAi === undefined || piAi === null ? {} : (piAi as AnyRecord)
+    var piToggle = piAiToggleState(piAiRecord)
+    var featureDisabled = piAiRecord.featureDisabled === true
+    var stateText = piAiUpstreamText(piAiRecord, bridge)
+    var badTone = featureDisabled === true
+      || (piAiRecord.latestRejected !== undefined && piAiRecord.latestRejected !== null)
+    var warnTone = badTone !== true && piAiRecord.needsRestart === true
     bridgeLines.push(
       react.createElement(
         'div',
-        { className: 'pv_line', key: 'action' },
-        piAiUpstreamText(update, updatesEnabled),
+        { className: 'pv_line', key: 'toggle' },
         react.createElement(
-          'button',
+          'label',
+          { className: 'pv_toggle', key: 'label', title: t('bridge.toggleTip') },
+          react.createElement('input', {
+            type: 'checkbox',
+            className: 'pv_switch',
+            key: 'input',
+            checked: piToggle.enabled,
+            disabled: featureDisabled || piAiBusy,
+            onChange: function (event: FieldEvent) {
+              togglePiAi(event.target.checked === true)
+            },
+          }),
+          react.createElement('span', { key: 'text' }, t('bridge.toggle')),
+        ),
+        react.createElement(
+          'span',
           {
-            type: 'button',
-            className: 'pv_action pv_push',
-            disabled: busy,
-            title: '',
-            onClick: checkUpdate,
+            className: 'pv_push' + (badTone === true ? ' plan_badText' : warnTone === true ? ' plan_warnText' : ''),
+            key: 'state',
+            title: stateText,
           },
-          busy ? t('bridge.checking') : t('bridge.check'),
+          stateText,
         ),
       ),
     )

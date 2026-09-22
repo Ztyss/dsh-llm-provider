@@ -2,8 +2,9 @@
  * dsh-llm-provider 宿主端。
  *
  * 两件事：
- *   1. LLM 桥接（src/bridge.ts + src/updater.ts）：把官方 llm-pi-ai 适配器跑在
- *      我们自动跟进的新版 pi-ai 上，上游出新模型不用等 dsh 发版。内置的
+ *   1. LLM 桥接（src/bridge.ts + src/updater.ts）：把官方 llm-pi-ai 适配器跑在选中的
+ *      pi-ai 上——拨「启用最新版 pi-ai」开关时是安全区里下载的最新版（上游出新模型
+ *      不用等 dsh 发版），开关关闭（缺省）时是 DSH 自带那份。内置的
  *      llm-pi-ai 行由 cordis.patch.yml 禁用，本插件完全接管（settings 的
  *      llm-pi-ai 段、Web Models 设置页、模型选择器行为都不变）。
  *   2. 计费接口（src/adapters/）：按 provider 查额度/余额，挂在
@@ -14,15 +15,16 @@
  * 自建路由和 GUI 同源，浏览器端直接 fetch。
  *
  * **边界：插件启动不碰宿主的东西。** 对 dsh 安装目录、settings.yaml、credentials 一律
- * 只读；写只发生在两处——插件自己的 vendor/ 目录（下载 pi-ai、拷桥接副本），以及用户
- * 在界面上显式操作时（添加/删除 provider）。
+ * 只读；写只发生在三处——插件自己的 vendor/ 目录（桥接副本）、安全区
+ * `$DSH_HOME/llm-provider-bridge/`（下载的 pi-ai，只在用户拨开关时），以及用户在界面上
+ * 显式操作时（添加/删除 provider、拨 pi-ai 开关）。
  */
 import Schema from '@deepseek-ai/schemastery'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { activePiAiRoot, loadBridge, vendorDir } from './bridge.js'
+import { activePiAiRoot, loadBridge, readPiAiPreference, safeInstalledVersions, setPiAiPreference, vendorDir } from './bridge.js'
 import { enrichModelDetails, loadModelDetails, withAdapterModels, withDeclaredModels, type AdapterModelInfo, type ModelDetail } from './model-details.js'
-import { UPDATES_ENABLED, checkAndUpdate, startBackgroundCheck } from './updater.js'
+import { checkAndUpdate, piAiFeatureDisabled } from './updater.js'
 import { labelOf, providerRoutes, websiteOf, type ProviderRoute } from './routes.js'
 import { presetsWithMeta } from './provider-presets.js'
 import { findAdapter } from './adapters/registry.js'
@@ -218,6 +220,26 @@ export function apply(ctx: PluginContext, config: unknown): void {
    * 自建写路由的公共骨架：只收 POST、读 JSON body、按 providerId 找路由（找不到回 404），
    * handler 里抛出的错误统一回 500。refresh / remove / test 三个路由共用这一份。
    */
+  /**
+   * 读 POST 的 JSON body（空 body 当 `{}`）。解析失败 reject，调用方回 400。
+   * 与 {@link writeRoute} 的区别：那条钉死了 providerId 语义，这是通用的。
+   */
+  function readJsonBody(req: ServerRequest): Promise<AnyRecord> {
+    return new Promise((resolve, reject) => {
+      let body = ''
+      req.on('data', (chunk) => {
+        body += String(chunk)
+      })
+      req.on('end', () => {
+        try {
+          resolve(asRecord(JSON.parse(body === '' ? '{}' : body)))
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error(String(error)))
+        }
+      })
+    })
+  }
+
   function writeRoute(handle: WriteHandler): (req: ServerRequest, res: ServerResponse) => void {
     return (req, res) => {
       if (req.method !== 'POST') {
@@ -267,6 +289,13 @@ export function apply(ctx: PluginContext, config: unknown): void {
     }),
     'dsh-llm-provider: /plan/status route',
   )
+
+  /**
+   * 正在进行的 pi-ai 下载（拨 ON 后异步跑）。进程内存态：重启即消失——而重启时
+   *「 pending」的结论本来就已经落进 status.json（needsRestart / latestRejected）。
+   * /provider/status 的 piAi.download 报它，前端轮询着显示「下载中」。
+   */
+  let piAiDownload: { at: string; version: string | undefined; lines: string[] } | undefined
 
   ctx.effect(
     () => webServer.register({
@@ -326,29 +355,27 @@ export function apply(ctx: PluginContext, config: unknown): void {
           // 插件不写宿主配置：缺了就报出来，由用户用「添加 Provider」补。不能静默——
           // 缺了 DeepSeek 会从模型列表里消失，看不出原因。
           deepseekRouteMissing: bridge.ok && !routes.some((route) => route.id === 'deepseek'),
-          // pi-ai 来源策略（界面「pi-ai 桥接」标签页用）：
-          //   hostOnly  —— 默认 true（只用 DSH 自带那份）；DSH_PROVIDER_UPDATE=on 时为 false，
-          //                此时插件可下载 vendor 副本并优先使用（未来切换「插件管理的更新版」的那条路）
-          //   latest    —— 历史遗留字段：旧版本曾在这里报上游最新版，现在恒为 undefined
-          //   pending   —— 历史遗留：曾表示"已下载等重启"，现在不会再有下载，恒为 undefined
-          //   rejected  —— 历史遗留：曾表示"下载了但体检没过"，同上
-          // 保留这些键是为了让老前端不炸（读 undefined 就不显示那一行）；
-          // 同时**不再读 updater-state.json 的 lastCheck**——那个文件已无人写。
-          update: {
-            hostOnly: !UPDATES_ENABLED,
-            lastCheck: undefined,
-            latest: undefined,
-            pending: undefined,
-            rejected: undefined,
+          // pi-ai 开关状态（界面「pi-ai 桥接」标签页用）：
+          //   preference      —— 'latest'（拨 ON）/ 'dsh'（拨 OFF，缺省）
+          //   featureDisabled —— kill switch（DSH_PROVIDER_UPDATE=off）：整个功能关闭，界面隐藏开关
+          //   safeVersions    —— 安全区里已下载就位的自有版本（旧 → 新）
+          //   needsRestart    —— 已下载新版本或刚拨了开关：重启后桥接才挂到新状态
+          //   latestVersion / latestRejected —— 最近一次检查的结论（未过检验时界面上常驻显示）
+          //   download        —— 正在进行中的下载（拨 ON 后异步跑，完成即消失；结论看上面几个字段）
+          piAi: {
+            preference: readPiAiPreference(bridgeState),
+            featureDisabled: piAiFeatureDisabled(),
+            safeVersions: safeInstalledVersions(),
+            needsRestart: bridgeState['needsRestart'] === true,
+            latestVersion: readString(bridgeState['latestVersion']),
+            latestRejected: bridgeState['latestRejected'],
+            download: piAiDownload,
           },
           // 测试环境标识（scripts/test-profile.sh 启动时带 DSH_PROVIDER_TEST=1）：
           // 浏览器端看到后给标题/favicon 加「测」标，一眼区分测试实例
           testMode: process.env.DSH_PROVIDER_TEST === '1',
-          // 本地版：pi-ai 自动下载是 opt-in（DSH_PROVIDER_UPDATE=on）——默认 false，
-          // 界面据此把「检查更新」按钮置灰并说明 vendor/ 不会落地第二份 pi-ai（issue #4）。
-          updatesEnabled: UPDATES_ENABLED,
           localBuild: true,
-          // 诊断用：vendor/pi-ai 下到底有几份下载来的 pi-ai（本地版应当恒为 0）
+          // 诊断用：vendor/pi-ai 下遗留的下载档（新策略不往里写；老机器上可能有残留）
           vendorPiAiVersions: installedPiAiVersions(),
         })
       },
@@ -356,10 +383,15 @@ export function apply(ctx: PluginContext, config: unknown): void {
     'dsh-llm-provider: /provider/status route',
   )
 
+  // 「启用最新版 pi-ai」开关（设置页 toggle）：拨 ON = 写偏好 + 异步检查/下载；
+  // 拨 OFF = 写偏好，桥接重启后回退 DSH 自带那份（已下载文件保留，再拨 ON 零成本）。
+  // 触网只发生在这一条路由上——拨开关这个动作就是用户对触网的授权；插件启动时
+  // 没有任何后台检查。DSH_PROVIDER_UPDATE=off 时整个功能关闭（kill switch）。
+  // 下载异步进行：响应立即返回，前端轮询 /provider/status 的 piAi.download 看进度。
   ctx.effect(
     () => webServer.register({
       kind: 'exact',
-      path: '/provider/update',
+      path: '/provider/pi-ai',
       handler: (req, res) => {
         if (req.method !== 'POST') {
           res.writeHead(405, { allow: 'POST' })
@@ -367,23 +399,57 @@ export function apply(ctx: PluginContext, config: unknown): void {
           return
         }
         void (async () => {
-          if (!UPDATES_ENABLED) {
-            // 本地版：连 registry 都不问，直接回报「已停用」（不是失败，界面照实说明）
+          let parsed: AnyRecord
+          try {
+            parsed = await readJsonBody(req)
+          } catch (error) {
+            json(res, 400, { ok: false, error: messageOf(error) })
+            return
+          }
+          const enabled = parsed['enabled'] === true
+          if (piAiFeatureDisabled()) {
+            // kill switch：如实回报功能已关闭（不是失败，界面照实说明）
             json(res, 200, {
               ok: true,
               disabled: true,
-              applied: false,
-              error: '本地版已停用 pi-ai 自动下载：vendor/ 不会落地任何 pi-ai 副本（issue #4）。要跟上游就用 DSH_PROVIDER_UPDATE=on 启动 dsh',
+              enabled,
+              error: 'pi-ai 更新功能已被 DSH_PROVIDER_UPDATE=off 关闭',
               checkedAt: new Date().toISOString(),
             })
             return
           }
-          const result = await checkAndUpdate((line) => logger?.info?.(`[pi-ai updater] ${line}`))
-          json(res, 200, result)
+          setPiAiPreference(enabled ? 'latest' : 'dsh')
+          if (!enabled) {
+            // 拨 OFF：不动已下载的文件；当前正跑自有版时才需要重启回退
+            const onSafe = bridge.ok && bridge.piAiSource.startsWith('safe-')
+            json(res, 200, {
+              ok: true,
+              enabled: false,
+              needsRestart: onSafe,
+              reason: onSafe
+                ? '已拨到「DSH 自带」，重启 dsh 后生效（已下载的文件保留，可随时拨回）'
+                : '已在使用 DSH 自带的 pi-ai',
+              checkedAt: new Date().toISOString(),
+            })
+            return
+          }
+          json(res, 200, { ok: true, enabled: true, started: true, checkedAt: new Date().toISOString() })
+          // 下载异步跑：checkAndUpdate 内部已兜住全部错误（result.error / latestRejected），
+          // 这里不需要再 try/catch——真抛了只能是编程错误，交给进程级未捕获处理。
+          piAiDownload = { at: new Date().toISOString(), version: undefined, lines: [] }
+          void checkAndUpdate(
+            (line) => {
+              if (piAiDownload !== undefined) piAiDownload.lines.push(line)
+            },
+            bridge.ok ? bridge.piAiVersion : undefined,
+          ).then((result) => {
+            if (piAiDownload !== undefined) piAiDownload.version = result.latest ?? result.installed
+            piAiDownload = undefined
+          })
         })()
       },
     }),
-    'dsh-llm-provider: /provider/update route',
+    'dsh-llm-provider: /provider/pi-ai route',
   )
 
   // 模型详情（悬浮卡）：pi-ai 数据文件的全量元数据，再由 /provider/models 的异步增强链补能力
@@ -732,12 +798,9 @@ export function apply(ctx: PluginContext, config: unknown): void {
     'dsh-llm-provider: /provider/test route',
   )
 
-  // pi-ai 跟随 DSH 自带那份，下载/更新入口已关闭：这里不再有任何后台网络检查。
-  // （旧行为是 6 小时节流查一次 npm、有新版就下副本——连同那条写路径一起移除了，
-  //   理由见 updater.ts 头部。）
-  startBackgroundCheck(logger, bridge.ok ? bridge.piAiVersion : undefined)
-
-  logger?.info?.('dsh-llm-provider active: GET /plan/status, GET /provider/status, POST /provider/update')
+  // pi-ai 开关就绪：触网只发生在用户拨开关那一下（POST /provider/pi-ai，见上方路由），
+  // 插件启动时没有任何后台网络检查——旧策略（6 小时节流查 registry）已整体移除。
+  logger?.info?.('dsh-llm-provider active: GET /plan/status, GET /provider/status, POST /provider/pi-ai')
 }
 
 /**

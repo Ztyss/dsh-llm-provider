@@ -25,7 +25,7 @@
     "prepublishOnly": "npm run build",
     "watch": "tsdown --watch",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node test/routes.mjs && node test/credential-check.mjs && node test/cordis-patch.mjs && node test/patch-condition.mjs && node test/pi-ai-probe.mjs && node test/provider-presets.mjs && node test/vendor-status.mjs && node test/bridge-candidates.mjs && node test/client-smoke.mjs && node test/local-patches.mjs && node test/model-editor.mjs && node test/provider-edit.mjs && node scripts/sync-patch-condition.mjs --check"
+    "test": "npm run build && node test/routes.mjs && node test/credential-check.mjs && node test/cordis-patch.mjs && node test/patch-condition.mjs && node test/pi-ai-probe.mjs && node test/pi-ai-preference.mjs && node test/pi-ai-safe-install.mjs && node test/provider-presets.mjs && node test/vendor-status.mjs && node test/bridge-candidates.mjs && node test/client-smoke.mjs && node test/local-patches.mjs && node test/model-editor.mjs && node test/provider-edit.mjs && node scripts/sync-patch-condition.mjs --check"
   },
   "main": "lib/index.js",
   "exports": {
