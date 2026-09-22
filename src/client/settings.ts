@@ -1384,6 +1384,7 @@ export function payloadFromRows(
   ctx: { details: Record<string, ModelDetail> | undefined | null; providerId: string },
   fail: (message: string) => void,
 ): DeclaredModel[] | undefined {
+  var failExit = function (message: string): undefined { fail(message); return undefined }
   var out: DeclaredModel[] = []
   for (var i = 0; i < list.length; i += 1) {
     var row = list[i]
@@ -1397,13 +1398,13 @@ export function payloadFromRows(
         var ctxRaw = row.contextWindow.trim()
         if (ctxRaw !== '') {
           var ctxVal = parsePositiveInt(ctxRaw)
-          if (ctxVal === undefined) return fail('「' + row.id + '」的上下文窗口要填正整数')
+          if (ctxVal === undefined) return failExit('「' + row.id + '」的上下文窗口要填正整数')
           declared.contextWindow = ctxVal
         }
         var maxRaw = row.maxTokens.trim()
         if (maxRaw !== '') {
           var maxVal = parsePositiveInt(maxRaw)
-          if (maxVal === undefined) return fail('「' + row.id + '」的最大输出要填正整数')
+          if (maxVal === undefined) return failExit('「' + row.id + '」的最大输出要填正整数')
           declared.maxTokens = maxVal
         }
         var modalities = Array.isArray(declared.input) ? declared.input.filter(function (x) { return x !== 'image' && x !== 'video' }) : ['text']
@@ -1425,7 +1426,7 @@ export function payloadFromRows(
             }
             if (effortDraft !== undefined) {
               var effortOut = effortsToDeclared(effortDraft, row.declared)
-              if (effortOut.error !== undefined) return fail('「' + row.id + '」' + effortOut.error)
+              if (effortOut.error !== undefined) return failExit('「' + row.id + '」' + effortOut.error)
               declared.reasoningEfforts = effortOut.value
             }
           } else {
@@ -1444,7 +1445,7 @@ export function payloadFromRows(
         var repairDraft = row.effortsDraft !== undefined ? row.effortsDraft : effortsDraftOf(row.declared)
         if (repairDraft === undefined) repairDraft = prefillEffortsOf(row.declared, ctx.details, ctx.providerId, row.id)
         var repairOut = effortsToDeclared(repairDraft, row.declared)
-        if (repairOut.error !== undefined) return fail('「' + row.id + '」' + repairOut.error)
+        if (repairOut.error !== undefined) return failExit('「' + row.id + '」' + repairOut.error)
         declared.reasoningEfforts = repairOut.value
       }
       out.push(declared)
@@ -1455,13 +1456,13 @@ export function payloadFromRows(
       continue
     }
     var ctxText = row.contextWindow.trim()
-    if (ctxText === '') return fail('自定义模型「' + row.id + '」要填上下文窗口')
+    if (ctxText === '') return failExit('自定义模型「' + row.id + '」要填上下文窗口')
     var ctxNum = Number(ctxText)
-    if (!isFinite(ctxNum) || Math.floor(ctxNum) !== ctxNum || ctxNum <= 0) return fail('「' + row.id + '」的上下文窗口要填正整数')
+    if (!isFinite(ctxNum) || Math.floor(ctxNum) !== ctxNum || ctxNum <= 0) return failExit('「' + row.id + '」的上下文窗口要填正整数')
     var max = row.maxTokens.trim()
-    if (max === '') return fail('自定义模型「' + row.id + '」要填最大输出')
+    if (max === '') return failExit('自定义模型「' + row.id + '」要填最大输出')
     var maxNum = Number(max)
-    if (!isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) return fail('「' + row.id + '」的最大输出要填正整数')
+    if (!isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) return failExit('「' + row.id + '」的最大输出要填正整数')
     var input = ['text']
     if (row.vision === true) input.push('image')
     // video 不写：官方校验的 input 模态只有 text/image（写 video 整单被拒）
@@ -1480,12 +1481,12 @@ export function payloadFromRows(
         ? row.effortsDraft
         : prefillEffortsOf(undefined, ctx.details, ctx.providerId, row.id)
       var customEffort = effortsToDeclared(customDraft, undefined)
-      if (customEffort.error !== undefined) return fail('「' + row.id + '」' + customEffort.error)
+      if (customEffort.error !== undefined) return failExit('「' + row.id + '」' + customEffort.error)
       entry.reasoningEfforts = customEffort.value
     }
     out.push(entry)
   }
-  if (out.length === 0) return fail('至少要勾选一个模型（全部不勾的清单无法保存）')
+  if (out.length === 0) return failExit('至少要勾选一个模型（全部不勾的清单无法保存）')
   return out
 }
 
