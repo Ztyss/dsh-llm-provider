@@ -2,20 +2,12 @@
 
 A [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) (DeepSeek Harness) plugin that takes over
 the official pi-ai adapter (`llm-pi-ai`), the native DeepSeek adapter (`llm-deepseek`), the model
-selector (`ui-model-selection`) and the Models settings page (`ui-settings-models`), and adds
-quota lookups plus provider management. Base capabilities are inherited from upstream; this README
-covers **this repository's customizations only**.
+selector (`ui-model-selection`) and the Models settings page (`ui-settings-models`), providing a
+self-maintained pi-ai bridge, model selector, quota lookups and provider management UI.
 
 [中文](README.md) · **English**
 
-## Where this comes from
-
-| | |
-|---|---|
-| Upstream | [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider) |
-| This fork | [Ztyss/dsh-llm-provider](https://github.com/Ztyss/dsh-llm-provider) (private) |
-| This fork's version | [v0.2.1](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.1) (installs from main) |
-| Base | upstream `1eb017f` (v0.1.0-rc.2); upstream 0.2.0 has no published source, so its exclusive features (OAuth, github-copilot) are out of scope |
+> This repository is forked from [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider) and maintained independently since. Current version [v0.2.1](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.1) (installs from main).
 
 ## Install
 
@@ -29,55 +21,40 @@ changing source, run `npm run build` and commit `lib/` together with `src/` (the
 no `prepare` script: pnpm runs it in a temp dir on git installs where `tsdown` is missing, which
 fails the whole install).
 
-## This fork's customizations
+## Features
 
-### pi-ai switch: enable the latest version
+### pi-ai bridge: enable the latest version
 
-The structural outcome of two P0 incidents (a recursive delete following a junction wiped the
-host's pi-ai → DSH would not boot), plus the "new upstream models without waiting for a dsh
-release" demand, landed as one settings toggle:
+The **"Enable latest pi-ai" toggle** in the settings page (Provider → pi-ai bridge) runs the
+official pi-ai adapter on the newest `@earendil-works/pi-ai` downloaded from npm, replacing the
+DSH-bundled copy — new pi-ai versions and model support arrive without waiting for a dsh release.
 
-- **"Enable latest pi-ai" toggle** (bridge tab, same switch form as the system settings): ON
-  pulls `dist-tags.latest` of `@earendil-works/pi-ai` from the npm registry — sha512 verification
-  → extract → install the dependency closure → probe against the bridge copy's own import
-  requirements — into the **safe zone** `$DSH_HOME/llm-provider-bridge/pi-ai/<version>/`
-  (the plugin package can be recursively deleted, so hundreds of MB never live inside it).
-  After a restart the bridge link points at the downloaded copy, replacing the DSH-bundled one;
-  a failed probe falls back automatically, so the switch always has a safety net. OFF falls
-  back to the DSH-bundled copy and **keeps the downloaded files** — flipping back ON costs
-  nothing. **Only the newest downloaded version is kept**: `loadBridge` cleans the older ones
-  after the switch has completed (the running process never steps on a directory being deleted).
+- **ON = a standing intent**: pull `dist-tags.latest` of `@earendil-works/pi-ai` from the npm
+  registry — sha512 verification → extract → install the dependency closure → probe against the
+  bridge copy's own import requirements — into the **safe zone**
+  `$DSH_HOME/llm-provider-bridge/pi-ai/<version>/` (the plugin package can be recursively deleted
+  at any time, so hundreds of MB never live inside it). After a restart the bridge link points at
+  the downloaded copy, replacing the DSH-bundled one; a failed probe falls back automatically, so
+  the switch always has a safety net.
+- **OFF = fall back to the DSH-bundled copy**: downloaded files are kept, and flipping back ON
+  costs nothing.
+- **Only the newest downloaded version is kept**: `loadBridge` cleans older ones after the switch
+  has completed (the running process never steps on a directory being deleted).
 - **The network is touched only while the switch is ON, in two places**: the flip itself, and
   **one check on every startup** — no local copy ready, the download starts right away (the UI
-  enters its downloading state, no second flip needed); a copy ready, upstream is still checked
-  and a newer version is downloaded automatically (`updateDecision` skips "upstream ≤ newest
-  local"). The 60-second floor is crash-loop damping, not a throttle on intent. **OFF never
-  touches the network.**
-- **The version row tells the truth**: current x.y.z (DSH-bundled / **latest upstream** / vendor) —
-  which copy is in use at a glance. The toggle row only speaks when there is something in
-  progress or to do: Downloading upstream pi-ai... / x.y.z downloaded (restart to apply) /
-  x.y.z downloaded (restart to fall back to official) / x.y.z downloaded (cannot be enabled) /
-  x.y.z downloaded (not in use). Whether a restart is pending is derived live by
-  `piAiNeedsRestart` (preference + newest ready safe version + the copy currently loaded) — the
-  enable-in-place state (nothing to download) says so too instead of repeating “already local,
-  no download”; verification failures live in the detail rows. While downloading, poll every 2s.
-- **Pre-load integrity check unchanged**: `src/pi-ai-source.ts` verifies the manifest, the entry
-  file and the four subpaths the official bundle actually imports; when broken it prints an
-  executable restore recipe (`npm pack` over the host directory — the plugin never downloads for
-  you). `piAiCandidates()` = safe zone (when ON, newest → oldest) → legacy vendor tiers →
-  bundled dependency → DSH-bundled, probed in order, first pass wins.
-- **The bridge workspace lives outside the package**, in `$DSH_HOME/llm-provider-bridge/`.
-  The plugin package can be recursively deleted at any time (on Node ≥24.15 `rmSync` follows
-  junctions and empties their targets — verified), and in this layout there is no link left to
-  follow. Invariant: **the installed package contains zero links** (enforced by
-  `test/host-safety.mjs`).
-- **The npm cache never sticks around**: during a download the npm cache lives in the OS temp dir and is deleted when the install finishes (success or failure); on startup a sweep removes any legacy `.npm-cache` left in the safe zone (an older build kept it there — 177 MB measured on one machine).
-- **Conditional disable of the official entries (fail-open)**: `cordis.patch.yml` uses `!!js`
-  expressions — the official entries are disabled only while the host's pi-ai is intact; if it is
-  missing or broken they stay enabled and DSH boots normally. Generated by
-  `src/patch-condition.ts`, kept in sync with `scripts/sync-patch-condition.mjs --check`.
+  enters its downloading state, no second flip needed); a copy ready, npm is still checked and a
+  newer version downloads automatically (`updateDecision` skips "latest ≤ newest local"). The
+  60-second floor is crash-loop damping, not a throttle on intent. **OFF never touches the
+  network.**
+- **The version row tells the truth**: current x.y.z (DSH-bundled / npm latest / vendor) — which
+  copy is in use at a glance. The toggle row only speaks when there is something in progress or
+  to do: downloading / x.y.z downloaded (restart to apply) / x.y.z downloaded (restart to fall
+  back to official) / x.y.z downloaded (cannot be enabled) / x.y.z downloaded (not in use).
+  Whether a restart is pending is derived live by `piAiNeedsRestart` (preference + newest ready
+  safe version + the copy currently loaded) — the enable-in-place state (nothing to download)
+  says so too; verification failures live in the detail rows. While downloading, poll every 2s.
 
-### UI customizations
+### Model services settings page
 
 - **Bilingual (zh/en)**: dictionary + `tf` interpolation through dsh's own locale mechanism,
   following language switches live.
@@ -101,11 +78,36 @@ release" demand, landed as one settings toggle:
   separately; models missing from the catalog get capabilities from the route declaration and
   adapter self-report (modlens-style synthetic providers).
 
-### All upstream issues #1–#8 fixed
+### Model selector
 
-Per-model editing, card-level editing, delete confirmation with export, disk footprint, capability
-badges, bridge diagnostics, the `/model` command's `available` contract, window grouping — the
-fix-by-fix details and iteration history live in the git log.
+- **Full takeover**: once the official model selector is disabled, the selection seat (current
+  model state), the `/model` command and the model-catalog state machine are all provided by this
+  plugin.
+- **The `/model` command**: filter by provider, search models, candidates grouped by provider
+  with quota/balance shown per group.
+- **The `available` contract**: implements the officially required `available(session)` for `/`
+  command contributions — sessions addressed as subagents get no model selection; the host calls
+  it unguarded, so one throw would take the whole `/` candidate batch down — the implementation
+  never throws and swallows every exception, preferring to show one extra menu entry.
+
+## Stability & safety design
+
+- **Pre-load integrity check and candidate chain**: `src/pi-ai-source.ts` verifies the manifest,
+  the entry file and the four subpaths the official bundle actually imports; when broken it
+  prints an executable restore recipe (`npm pack` over the host directory — the plugin never
+  downloads for you). `piAiCandidates()` = safe zone (when ON, newest → oldest) → legacy vendor
+  tiers → bundled dependency → DSH-bundled, probed in order, first pass wins.
+- **The bridge workspace lives outside the package**, in `$DSH_HOME/llm-provider-bridge/`: on
+  Node ≥24.15 `rmSync` follows junctions and empties their targets, and in this layout there is
+  no link left to follow. Invariant: **the installed package contains zero links** (enforced by
+  `test/host-safety.mjs`).
+- **The npm cache never sticks around**: during a download the npm cache lives in the OS temp dir
+  and is deleted when the install finishes (success or failure); on startup a sweep removes any
+  legacy `.npm-cache` left in the safe zone.
+- **Conditional disable of the official entries (fail-open)**: `cordis.patch.yml` uses `!!js`
+  expressions — the official entries are disabled only while the host's pi-ai is intact; if it is
+  missing or broken they stay enabled and DSH boots normally. Generated by
+  `src/patch-condition.ts`, kept in sync with `scripts/sync-patch-condition.mjs --check`.
 
 ## Tests
 
