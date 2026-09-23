@@ -1013,9 +1013,10 @@ function AddProviderPanel(props: AddProviderPanelProps) {
           type: 'button',
           className: 'pv_action',
           style: { marginLeft: '0' },
-          // 没选供应商或密钥还空着就置灰：runTest 本来就要求密钥非空（否则只弹「都要填」），
-          // 让它从一开始就点不下去，别等用户点完才告知（用户 09-23 批注）
-          disabled: fieldEditable !== true || String(form.key ?? '').trim() === '' || test.phase === 'run',
+          // 没选供应商、密钥或 API 地址任一还空着就置灰（用户 09-23 批注 1：两个都填了
+          // 发现模型 / 查询配置才可点）：runTest 本来就要求密钥非空（否则只弹「都要填」），
+          // 让它从一开始就点不下去，别等用户点完才告知
+          disabled: fieldEditable !== true || String(form.key ?? '').trim() === '' || String(form.baseURL ?? '').trim() === '' || test.phase === 'run',
           onClick: runTest,
         }, test.phase === 'run' ? t('prov.discovering') : t('prov.discover')),
         form.websiteUrl === undefined
@@ -1026,8 +1027,10 @@ function AddProviderPanel(props: AddProviderPanelProps) {
         'div',
         { className: 'pv_line pv_row' },
         react.createElement('span', null, t('prov.apiBase')),
-        // 可填条件 = 选了供应商 且 该预设的 baseURL 为空（自定义网关）；否则按预设锁死
-        fieldEditable === true && form.baseURL === ''
+        // 可填条件 = 选了供应商 且 **所选预设** 不带 baseURL（自定义网关）；否则按预设锁死。
+        // 不能看 form.baseURL 的当前值——一打字值就非空、下次渲染立刻退回只读，
+        // custom-gateway 的地址首次输入（哪怕不完整）后就再也改不了（用户 09-23 批注 2）
+        fieldEditable === true && pickedPreset !== undefined && String(pickedPreset.baseURL ?? '') === ''
           ? react.createElement('input', {
               className: 'pv_field pv_key',
               value: form.baseURL,
@@ -1039,8 +1042,8 @@ function AddProviderPanel(props: AddProviderPanelProps) {
           type: 'button',
           className: 'pv_action',
           style: { marginLeft: '0' },
-          // 与「发现模型」同款：API 地址为空时置灰不可点（用户 09-23 批注）
-          disabled: String(form.baseURL ?? '').trim() === '',
+          // 与「发现模型」同款：密钥或 API 地址任一为空就置灰（用户 09-23 批注 1：两者都填才可点）
+          disabled: String(form.key ?? '').trim() === '' || String(form.baseURL ?? '').trim() === '',
           title: t('prov.queryConfigTip'),
           onClick: function () {
             var pickedPreset = presets.find(function (p: ProviderPreset) { return p.id === form.presetId })
@@ -1091,7 +1094,16 @@ function AddProviderPanel(props: AddProviderPanelProps) {
           className: 'pv_action',
           style: { marginLeft: 'auto' },
           onClick: function () {
+            // 取消 = 清空本次编辑并收起卡片（用户 09-23 批注 3）：此前只收起不清空，
+            // 旧输入会留到下次打开（只有切换供应商才会被 pickPreset 覆盖）。
+            // 回到与初始 useState 一致的空表单，弹层/草稿一并归零
             setOpen(false)
+            setForm({ presetId: '', routeId: '', key: '', baseURL: '', api: '', apiKeyEnv: '', websiteUrl: undefined })
+            setModelPick({})
+            setQueryCookieOpen(false)
+            setQueryCookieDraft('')
+            setPickOpen(false)
+            setApiOpen(false)
             setTest({ phase: 'idle', message: '' })
             setNote(null)
           },
