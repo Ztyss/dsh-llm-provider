@@ -22,7 +22,7 @@
 import Schema from '@deepseek-ai/schemastery'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { activePiAiRoot, loadBridge, piAiNeedsRestart, readPiAiPreference, removeTree, safeInstalledVersions, safeRootDir, setPiAiPreference, vendorDir } from './bridge.js'
+import { activePiAiRoot, loadBridge, piAiNeedsRestart, readPiAiPreference, readVendorStatus, removeTree, safeInstalledVersions, safeRootDir, setPiAiPreference, vendorDir } from './bridge.js'
 import { enrichModelDetails, loadModelDetails, withAdapterModels, withDeclaredModels, type AdapterModelInfo, type ModelDetail } from './model-details.js'
 import { checkAndUpdate } from './updater.js'
 import { labelOf, providerRoutes, websiteOf, type ProviderRoute } from './routes.js'
@@ -841,14 +841,10 @@ export function apply(ctx: PluginContext, config: unknown): void {
  * 下载/更新入口关闭后那个文件不再被写，读取也就一并去掉了。
  */
 function readVendorState(): { status: AnyRecord } {
-  const read = (name: string): AnyRecord => {
-    try {
-      return asRecord(JSON.parse(readFileSync(join(vendorDir, name), 'utf8')))
-    } catch {
-      return {}
-    }
-  }
-  return { status: read('status.json') }
+  // 安全区 vendor-status.json（经 bridge.readVendorStatus，含包内过渡版文件的自动迁移）——
+  // 状态读写必须同走安全区一条路：此前直读包内 status.json 与安全区写入分裂，
+  // 开关拨 OFF 实际写成功了、状态路由却读包内残留弹回 ON（用户批注 09-24）。
+  return { status: readVendorStatus() }
 }
 
 function messageOf(error: unknown): string {
