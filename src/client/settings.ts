@@ -1036,7 +1036,8 @@ function AddProviderPanel(props: AddProviderPanelProps) {
           className: 'pv_action',
           title: t('prov.queryConfigTip'),
           onClick: function () {
-            if (!/step_plan/i.test(String(form.baseURL ?? ''))) {
+            var pickedPreset = presets.find(function (p: ProviderPreset) { return p.id === form.presetId })
+            if (pickedPreset === undefined || pickedPreset.queryConfigNeeded !== true) {
               setTest({ phase: 'ok', message: t('prov.noQueryConfigNeeded') })
               return
             }
@@ -3059,7 +3060,7 @@ export function ProviderSettingsSection() {
               className: 'pv_action',
               title: t('prov.queryConfigTip'),
               onClick: function () {
-                if (!/step_plan/i.test(String(editForm.baseURL ?? ''))) {
+                if (account.queryConfigNeeded !== true) {
                   showToast(t('prov.noQueryConfigNeeded'), true)
                   return
                 }

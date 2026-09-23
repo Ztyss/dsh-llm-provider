@@ -136,8 +136,9 @@ export function apply(ctx: PluginContext, config: unknown): void {
       if (consoleResolved.configured && consoleResolved.key !== undefined) consoleCookie = consoleResolved.key
     }
     // 路由自身的配置项：卡片展开体和「添加供应商」表单展示同一组信息（缺的字段 JSON 序列化时自然消失）
-    const routeMeta = { api: route.api, apiKeyEnv: route.apiKeyEnv, models: route.models, consoleCookieRef, consoleCookieConfigured: consoleCookie !== undefined }
     const adapter = findAdapter(providerId, baseUrl)
+    const queryConfigNeeded = adapter?.queryConfigNeeded?.(baseUrl) === true
+    const routeMeta = { api: route.api, apiKeyEnv: route.apiKeyEnv, models: route.models, consoleCookieRef, consoleCookieConfigured: consoleCookie !== undefined, queryConfigNeeded }
     const credential = await resolveKey(route.apiKeyEnv)
     // 掩码提示（前3+后4）：让界面能认出是哪一把 key（错配一眼可见），值本身不出宿主
     const keyHint = credential.configured ? maskKey(credential.key) : undefined
