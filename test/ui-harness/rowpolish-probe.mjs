@@ -171,6 +171,16 @@ const PROBE_PAGE_FN = `
         return el.textContent || ''
       })
     })(),
+    // 显示名行：placeholder = 路由 id 的那个输入框。用来钉「API 地址/Cookie 输入框
+    // 与显示名齐宽」——曾用 .pv_rowField 固定宽度把这两个撑得比别的行宽 60px（用户批注）
+    nameField: (function () {
+      var all = Array.from(document.querySelectorAll('.pv_pcBody input.pv_field'))
+      for (var i = 0; i < all.length; i += 1) {
+        if (all[i].type === 'password') continue
+        if ((all[i].getAttribute('placeholder') || '').indexOf('stepfun-test') !== -1) return styleOf(all[i])
+      }
+      return null
+    })(),
     // 「查询配置」展开后的控制台 Cookie 行（标签文案 + 按钮位置）
     cookieRow: (function () {
       var input = null
@@ -367,12 +377,15 @@ if (cookie !== null) {
   check('「保存」紧贴 Cookie 输入框（间距 ≤ 12px）', cookieGap >= -1 && cookieGap <= 12, `gap=${cookieGap.toFixed(1)}px`)
   check('「保存」不再顶到行尾', cookie.btn.rect.right < cookie.rowRight - 40,
     `btn.right=${cookie.btn.rect.right.toFixed(1)} row.right=${Number(cookie.rowRight).toFixed(1)}`)
+  const nameField = cookieState.nameField
+  check('API 地址 / Cookie 输入框与显示名齐宽（不许被单独拉长）',
+    nameField !== null
+    && Math.abs(rest.urlInput.rect.w - nameField.rect.w) <= 2
+    && Math.abs(cookie.input.rect.w - nameField.rect.w) <= 2,
+    `url.w=${rest.urlInput.rect.w.toFixed(1)} cookie.w=${cookie.input.rect.w.toFixed(1)} name.w=${nameField === null ? '?' : nameField.rect.w.toFixed(1)}`)
   check('「保存」与「查询配置」左缘对齐（≤ 12px）',
     Math.abs(cookie.btn.rect.x - rest.urlBtn.rect.x) <= 12,
     `save.x=${cookie.btn.rect.x.toFixed(1)} query.x=${rest.urlBtn.rect.x.toFixed(1)}`)
-  check('Cookie 输入框与 API 地址输入框等宽（按钮才谈得上对齐）',
-    Math.abs(cookie.input.rect.w - rest.urlInput.rect.w) <= 2,
-    `cookie.w=${cookie.input.rect.w.toFixed(1)} url.w=${rest.urlInput.rect.w.toFixed(1)}`)
 }
 
 // 7. StepFun 卡额度标签：套餐点数是月度 plan → 30d（既不显示 Step，也不落兜底 Remain）

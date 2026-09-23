@@ -3065,7 +3065,7 @@ export function ProviderSettingsSection() {
             { className: 'pv_line pv_row', key: 'url' },
             react.createElement('span', null, t('prov.apiBase')),
             react.createElement('input', {
-              className: 'pv_field pv_key pv_rowField',
+              className: 'pv_field pv_key',
               type: 'text',
               value: editForm.baseURL,
               placeholder: t('edit.baseUrlPlaceholder'),
@@ -3093,7 +3093,7 @@ export function ProviderSettingsSection() {
               { className: 'pv_line pv_row', key: 'query-cookie' },
               react.createElement('span', null, t('prov.queryCookieLabel')),
               react.createElement('input', {
-                className: 'pv_field pv_key pv_rowField',
+                className: 'pv_field pv_key',
                 type: 'text',
                 value: queryCookieDrafts[account.id] === undefined ? '' : String(queryCookieDrafts[account.id]),
                 placeholder: t('prov.queryCookiePlaceholder'),
@@ -3101,8 +3101,10 @@ export function ProviderSettingsSection() {
               }),
               react.createElement(
                 'button',
-                // 与「查询配置」同款：压掉 .pv_action 的 margin-left:auto，紧贴输入框右缘；
-                // 两个输入框同为 .pv_rowField 等宽，两个按钮也就落在同一竖线上（用户 09-23 批注）
+                // 与「查询配置」同款：压掉 .pv_action 的 margin-left:auto，紧贴输入框右缘。
+                // 输入框一律保持默认宽度（与显示名/密钥那几行齐宽，用户 09-23 批注：不许被
+                // 单独拉长），两个按钮因此也天然落在同一竖线上——曾用 .pv_rowField 固定宽度
+                // 强行对齐，结果把这两个框撑得比别的行宽 60px，已经撤掉。
                 { type: 'button', className: 'pv_action', style: { marginLeft: '0' }, disabled: savingQueryCookie[account.id] === true, onClick: function () { saveQueryCookie(account) } },
                 savingQueryCookie[account.id] === true ? t('prov.saving') : t('prov.save'),
               ),
