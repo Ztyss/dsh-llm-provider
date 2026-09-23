@@ -196,6 +196,10 @@ export default {
     return typeof baseUrl === 'string' && /stepfun\.(com|ai)/i.test(baseUrl)
   },
 
+  queryConfigNeeded(baseUrl: string | undefined): boolean {
+    return /step_plan/i.test(baseUrl ?? '')
+  },
+
   async query({ id, displayName, key, baseUrl, extras }: AdapterQueryInput): Promise<AccountStatus> {
     const origin = originOf(baseUrl)
     // 查询方式按 API 地址自动分通道：含 step_plan = Step Plan 点数；其余 = 预付费钱包

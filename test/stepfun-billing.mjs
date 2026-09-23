@@ -22,6 +22,12 @@ assert.equal(adapter.match('my-gateway', 'https://api.stepfun.ai/v1'), true, 'st
 assert.equal(adapter.match('my-gateway', 'https://relay.example.com/v1'), false, '无关网关不应命中')
 assert.equal(adapter.match('deepseek', 'https://api.deepseek.com'), false, '其他 provider 不应命中')
 
+// ---- queryConfigNeeded：step_plan 地址需要额外配置，其余不需要 ----
+assert.equal(adapter.queryConfigNeeded?.('https://api.stepfun.com/step_plan/v1'), true, 'step_plan/v1 需要配置')
+assert.equal(adapter.queryConfigNeeded?.('https://api.stepfun.com/step_plan'), true, 'anthropic step_plan 需要配置')
+assert.equal(adapter.queryConfigNeeded?.('https://api.stepfun.com/v1'), false, '钱包地址不需要配置')
+assert.equal(adapter.queryConfigNeeded?.(undefined), false, '无 baseURL 不需要配置')
+
 const originalFetch = globalThis.fetch
 let calledUrl = ''
 let fetchCalls = 0

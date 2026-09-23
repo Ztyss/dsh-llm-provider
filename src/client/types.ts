@@ -114,6 +114,7 @@ export interface PlanAccount {
   websiteUrl?: string
   consoleCookieRef?: string
   consoleCookieConfigured?: boolean
+  queryConfigNeeded?: boolean
   keyHint?: string
   deletable?: boolean
   credentialWarning?: string
@@ -160,6 +161,8 @@ export interface ProviderPreset {
   /** 路由在、凭据没值：仍算已配置，但下拉里不该禁选（选中就是去补密钥）。 */
   missingKey?: boolean
   custom?: boolean
+  /** 该预设的 baseURL 是否需要额外查询配置（step_plan 类，host 按适配器求值）。 */
+  queryConfigNeeded?: boolean
 }
 
 /** 「pi-ai 桥接」明细行：piAiBridgeRows 的产出，组件照着渲染。 */

@@ -27,6 +27,8 @@ export interface ProviderPreset {
   websiteUrl: string | undefined
   models: number
   billing: boolean
+  /** 该预设的 baseURL 是否需要额外查询配置（step_plan 类）。 */
+  queryConfigNeeded: boolean
   custom: boolean
 }
 
@@ -68,6 +70,7 @@ function makePreset(id: string, info: PresetSource): ProviderPreset {
     websiteUrl: websiteOf(id),
     models: typeof info.models === 'number' ? info.models : 0,
     billing: findAdapter(id, baseURL) !== undefined,
+    queryConfigNeeded: (findAdapter(id, baseURL)?.queryConfigNeeded?.(baseURL || undefined)) === true,
     custom: info.custom === true,
   }
 }

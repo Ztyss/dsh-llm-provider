@@ -47,6 +47,8 @@ export interface AccountStatus {
   /** 控制台 cookie 凭据名（约定 <apiKeyEnv 去尾>_CONSOLE_COOKIE）与是否已配置；给「查询配置」入口用。 */
   consoleCookieRef?: string
   consoleCookieConfigured?: boolean
+  /** 是否需要额外查询配置（host 按适配器 queryConfigNeeded(baseUrl) 求值）。 */
+  queryConfigNeeded?: boolean
   deletable?: boolean
 }
 
@@ -66,6 +68,8 @@ export interface BillingAdapter {
   label: string
   match: (providerId: string, baseUrl: string | undefined) => boolean
   query: (input: AdapterQueryInput) => Promise<AccountStatus>
+  /** 该适配器在当前 baseURL 下是否需要额外查询配置（无此方法 = 不需要）。 */
+  queryConfigNeeded?: (baseUrl: string | undefined) => boolean
 }
 
 /** getJson 的返回：HTTP 状态 + 尽量解析过的响应体。 */
