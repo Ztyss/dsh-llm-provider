@@ -1,5 +1,6 @@
 /**
- * 统一 Cookie 存储：`$DSH_HOME/llm-provider-bridge/cookies.yaml`。
+ * 统一 Cookie 存储：`$DSH_HOME/llm-provider-bridge/.cookies.yaml`（点前缀隐藏，对齐
+ * `.credentials.yaml` 习惯；曾用名 cookies.yaml 自动迁移）。
  *
  * 设计（用户批注 09-23：参考 .credentials.yaml，所有 cookie 值存一个文件，方便以后
  * 适配更多 provider / 更多 cookie）：
@@ -14,7 +15,7 @@
  *   - 旧版单槽 JSON 会话文件（stepfun-console-session.json）由调用方经
  *     loadCookieValue 的 legacy 参数迁移：首次读取自动并入新文件，写成功后移除旧文件。
  */
-import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveDshHome } from '../dsh-home.js'
 
@@ -24,6 +25,11 @@ export interface CookieEntry {
 }
 
 export function cookieStoreFile(): string {
+  return join(resolveDshHome(), 'llm-provider-bridge', '.cookies.yaml')
+}
+
+/** 本模块曾用名（无点前缀，用户批注 09-24 改点前缀隐藏）：装过过渡版的机器上可能留有数据，读取时整文件并入后移除。 */
+function legacyStoreFile(): string {
   return join(resolveDshHome(), 'llm-provider-bridge', 'cookies.yaml')
 }
 
@@ -44,7 +50,7 @@ function parseScalar(text: string): string | undefined {
 }
 
 /**
- * 解析 cookies.yaml 文本 → ref → 条目（纯函数，可离线测试）。
+ * 解析存储文本 → ref → 条目（纯函数，可离线测试）。
  * 只认顶层 `cookies:` 段；缺 value 的键视为残缺、丢弃；坏行跳过不抛。
  */
 export function parseCookieStore(text: string): Record<string, CookieEntry> {
@@ -81,7 +87,7 @@ export function parseCookieStore(text: string): Record<string, CookieEntry> {
   return out
 }
 
-/** 序列化 → cookies.yaml 文本（键按字母序，输出确定性强、便于 diff）。纯函数。 */
+/** 序列化 → 存储文本（键按字母序，输出确定性强、便于 diff）。纯函数。 */
 export function serializeCookieStore(entries: Record<string, CookieEntry>): string {
   const lines = ['version: 1', 'cookies:']
   for (const key of Object.keys(entries).sort()) {
@@ -92,21 +98,45 @@ export function serializeCookieStore(entries: Record<string, CookieEntry>): stri
   return lines.join('\n') + '\n'
 }
 
-/** 读现存存储（文件不存在/坏行容忍）；解析失败当空表。 */
-function readStore(): Record<string, CookieEntry> {
+function readStoreAt(path: string): Record<string, CookieEntry> {
   try {
-    return parseCookieStore(readFileSync(cookieStoreFile(), 'utf8'))
+    return parseCookieStore(readFileSync(path, 'utf8'))
   } catch {
     return {}
   }
 }
 
+/** 曾用名 cookies.yaml → 整文件并入 .cookies.yaml（同名键新名赢），写成功才移除；不存在即跳过。 */
+function migrateLegacyStoreFile(): void {
+  if (!existsSync(legacyStoreFile())) return
+  const legacyEntries = readStoreAt(legacyStoreFile())
+  if (Object.keys(legacyEntries).length === 0) return
+  try {
+    writeFileSync(cookieStoreFile(), serializeCookieStore({ ...legacyEntries, ...readStoreAt(cookieStoreFile()) }))
+  } catch {
+    return /* 写失败保留旧文件，下次再迁 */
+  }
+  try {
+    rmSync(legacyStoreFile(), { force: true })
+  } catch {
+    /* 删不掉就算了：新存储已生效，下次迁移幂等 */
+  }
+}
+
+/** 读现存存储（曾用名兜底合并——同名键新名赢；急切迁移后通常只剩新名；坏行容忍）。 */
+function readStore(): Record<string, CookieEntry> {
+  return { ...readStoreAt(legacyStoreFile()), ...readStoreAt(cookieStoreFile()) }
+}
+
 /**
- * 取某 ref 的 cookie 值。新存储没有时，若给了 legacy 迁移源（旧文件路径 + 读取函数），
- * 读旧值 → 并入新文件 → **写成功才**移除旧文件（写失败保留旧文件，下次再迁，幂等）。
+ * 取某 ref 的 cookie 值。新存储没有时按两级回落迁移：
+ *   1. 曾用名 cookies.yaml（本模块过渡版产物）→ 入口处整文件并入 `.cookies.yaml`；
+ *   2. 调用方给的 legacy 源（stepfun 旧版单槽 JSON）→ 并入后移除；
+ * 写失败一律保留旧文件，下次再迁（幂等）。
  */
 export function loadCookieValue(ref: string, legacy?: { path: string; read: () => string | undefined }): string | undefined {
-  const existing = readStore()[ref]?.value
+  migrateLegacyStoreFile()
+  const existing = readStoreAt(cookieStoreFile())[ref]?.value
   if (existing !== undefined && existing !== '') return existing
   if (legacy === undefined) return undefined
   const value = legacy.read()
