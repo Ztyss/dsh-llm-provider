@@ -393,7 +393,7 @@ const stepChipLabels = cookieState.stepChips.map((text) => String(text).split(':
 check('StepFun 卡有 30d 档额度 chip', stepChipLabels.indexOf('30d') !== -1,
   `chips=${JSON.stringify(cookieState.stepChips)}`)
 check('StepFun 卡不再出现 Step / Remain 这类标签',
-  stepChipLabels.every((label) => label !== 'Step' && label !== 'Remain'),
+  stepChipLabels.every((label) => label !== 'Step' && label !== 'Remaining' && label !== 'Remain'),
   `labels=${JSON.stringify(stepChipLabels)}`)
 
 ws.close()

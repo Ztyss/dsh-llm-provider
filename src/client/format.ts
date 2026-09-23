@@ -201,10 +201,12 @@ export function quotaTipOf(account: PlanAccount | undefined | null): string | un
   for (var i = 0; i < windows.length; i += 1) {
     if (typeof windows[i].percentLeft !== 'number') continue
     var label = shortWindowLabel(windows[i].window)
-    // 兜底档（Remain）在悬停里还原成窗口原名：否则 {label}余量 会拼出「Remain余量 40%」，
-    // 而且用户也看不出这档到底是哪个窗口——原名正是悬停该给的信息
-    var shown = label === t('win.remain') ? String(windows[i].window ?? '') : label
-    var text = tf('quota.headlineRemaining', { label: shown, percent: windows[i].percentLeft })
+    // 兜底档（Remaining）的悬停只给「余量 40%」，前面不挂任何东西：挂档位模板会拼出
+    // 「Remaining余量 40%」，挂窗口原名又会把 bucket 类型后缀那串噪声带回来
+    // （用户 09-23 批注：悬停显示「余量...」即可，不要前面那一句）。已知档仍带档位前缀。
+    var text = label === t('win.remain')
+      ? tf('quota.headlineNoLabel', { percent: windows[i].percentLeft })
+      : tf('quota.headlineRemaining', { label: label, percent: windows[i].percentLeft })
     if (windows[i].resetAt !== undefined && windows[i].resetAt !== '') {
       text += ' ◷ ' + resetCountdownText(windows[i].resetAt)
     }

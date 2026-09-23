@@ -197,7 +197,9 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'quota.noData': '无数据',
     'quota.headlineRemaining': '{label}余量 {percent}%',
     // 兜底档位标签：认不出的窗口名统一显示它（曾经是截原名四个字，产出 'Step'/'Openc' 这类乱码）
-    'win.remain': 'Remain',
+    'win.remain': 'Remaining',
+    // 兜底档的悬停文案：不带档位前缀（用户 09-23 批注：悬停显示「余量...」即可）
+    'quota.headlineNoLabel': '余量 {percent}%',
     'win.resettingSoon': '即将重置',
     'win.justNow': '刚刚',
 
@@ -404,7 +406,8 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'quota.noAdapter': 'no adapter',
     'quota.noData': 'No data',
     'quota.headlineRemaining': '{label} {percent}% left',
-    'win.remain': 'Remain',
+    'win.remain': 'Remaining',
+    'quota.headlineNoLabel': '{percent}% left',
     'win.resettingSoon': 'Resetting soon',
     'win.justNow': 'just now',
 
