@@ -1,12 +1,14 @@
 /**
- * StepFun 计费适配器离线测试：match 规则 + 响应解析 + 错误路径（fetch 打桩，不触网）。
- * 覆盖三个真实约束：
+ * StepFun 计费适配器离线测试：match 规则 + 响应解析 + 错误路径 + 套餐点数窗口
+ * （fetch 打桩，不触网）。
+ * 覆盖四个真实约束：
  *   1. 自定义路由 id 大小写不敏感（本机实际配置的 id 就是「StepFun」）；
  *   2. 计费端点从 baseURL 的 origin 推导——/step_plan 这类子路径不进 URL；
  *   3. id 命中但 baseURL 是第三方中转时回落官方端点。
+ *   4. QueryStepPlanRateLimit 的 credit_buckets/left_rate/reset（秒级 epoch）→ 窗口。
  */
 import assert from 'node:assert/strict'
-import adapter from '../lib/adapters/stepfun.js'
+import adapter, { planWindowsFrom } from '../lib/adapters/stepfun.js'
 
 // ---- match ----
 assert.equal(adapter.match('StepFun', undefined), true, 'id=StepFun 应命中')
@@ -62,4 +64,28 @@ try {
   globalThis.fetch = originalFetch
 }
 
-console.log('stepfun-billing: match/解析/401/回落 断言全过')
+// ---- planWindowsFrom：真实 QueryStepPlanRateLimit 响应结构（本机实测抓包）----
+const planBody = {
+  status: 1, desc: '',
+  plan_credit_rate_limit: {
+    five_hour_usage_left_rate: 0, five_hour_usage_reset_time: '0',
+    weekly_usage_left_rate: 0, weekly_usage_reset_time: '0',
+    plan_family: 2,
+    subscription_credit_left_rate: 0.96495014,
+    subscription_credit_reset_time: '1792658831',
+    topup_credit_left_rate: 0,
+    credit_buckets: [{ type: 1, credit_total: '1600000000', credit_residual: '1543920314', expire_at: '1793776874' }],
+  },
+}
+const wins = planWindowsFrom(planBody)
+assert.equal(wins.length, 1, '五小时/周窗口全 0 时不应出现')
+assert.equal(wins[0].window.includes('Step Plan 套餐点数'), true)
+assert.equal(wins[0].limit, 1600000000)
+assert.equal(wins[0].remaining, 1543920314)
+assert.equal(wins[0].percentLeft, 96.5)
+assert.equal(wins[0].resetAt, '2026-10-22T08:47:11.000Z', '秒级 epoch 要换算成 ISO')
+
+// 空响应 → 无窗口（降级由调用方处理）
+assert.equal(planWindowsFrom({}).length, 0)
+
+console.log('stepfun-billing: match/解析/401/回落/套餐窗口 断言全过')
