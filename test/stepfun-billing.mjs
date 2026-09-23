@@ -9,7 +9,7 @@
  *   5. QueryStepPlanRateLimit 的 credit_buckets/left_rate/reset（秒级 epoch）→ 窗口。
  */
 import assert from 'node:assert/strict'
-import adapter, { planWindowsFrom } from '../lib/adapters/stepfun.js'
+import adapter, { planFailureNote, planWindowsFrom } from '../lib/adapters/stepfun.js'
 
 // ---- match ----
 assert.equal(adapter.match('StepFun', undefined), true, 'id=StepFun 应命中')
@@ -102,6 +102,15 @@ assert.equal(wins[0].limit, 1600000000)
 assert.equal(wins[0].remaining, 1543920314)
 assert.equal(wins[0].percentLeft, 96.5)
 assert.equal(wins[0].resetAt, '2026-10-22T08:47:11.000Z', '秒级 epoch 要换算成 ISO')
+
+// ---- planFailureNote：网关错误体三种形态 → 人能读的原因 ----
+const expiredBody = JSON.stringify({code:'unauthenticated',message:'auth failed: token is expired',details:[]})
+const illegalBody = JSON.stringify({code:'unauthenticated',message:'auth failed: token is illegal'})
+const embezzledBody = JSON.stringify({code:'unauthenticated',message:'auth failed: oasis-token is embezzled'})
+assert.match(planFailureNote(expiredBody), /Cookie 已过期/, 'expired 要明说已过期')
+assert.match(planFailureNote(illegalBody), /无效或校验失败/, 'illegal 要明说无效')
+assert.match(planFailureNote(embezzledBody), /无效或校验失败/, 'embezzled 归入无效/校验失败')
+assert.match(planFailureNote('not-json'), /Step Plan 点数查询失败/, '非 JSON 走通用失败')
 
 // 空响应 → 无窗口（降级由调用方处理）
 assert.equal(planWindowsFrom({}).length, 0)

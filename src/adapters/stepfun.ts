@@ -7,19 +7,21 @@
  *   - 其余（https://api.stepfun.com/v1、anthropic 裸域 https://api.stepfun.com）
  *     → **钱包通道**：GET /v1/accounts —— 预付费钱包余额（剩余/现金/赠金，人民币元）。
  *
- * Step Plan 通道有两道坎：
+ * Step Plan 通道有三道坎：
  *   1. Bearer API key 会被网关拒（403 api key not permitted），必须 Oasis 会话 cookie；
  *   2. node fetch 直接调会被客户端指纹判 "oasis-token is embezzled"，curl（System32
  *      自带，Schannel TLS）可以通过——所以走 spawnSync curl + `-o` 文件输出，不碰管道
- *      （electron 沙禁禁止管道捕获，stdio:'ignore' + 落盘，同 updater 的 tar 先例）。
+ *      （electron 沙禁禁止管道捕获，stdio:'ignore' + 落盘，同 updater 的 tar 先例）；
+ *   3. 会话段只有 30 分钟寿命，过期时网关回 "auth failed: token is expired"——
+ *      这里**显式 fail**（与 opencode-go 的 401/403 语义一致），卡片按失败展示
+ *      「Cookie 已过期」，不再静默降级（用户批注）。
  *
  *   cookie 来源：凭据 <apiKeyEnv 去掉 _API_KEY>_CONSOLE_COOKIE（如 STEPFUN_CONSOLE_COOKIE），
  *   值 = 控制台任意请求的整串 Cookie 头；index.ts 解析后经 extras.consoleCookie 传入，
  *   客户端「查询配置」入口（编辑卡 API 地址旁 + 添加页发现模型旁）负责写入。
- *   缺失或失效自动降级：卡片出 note 指路，不报错挡板。
  */
 import { spawnSync } from 'node:child_process'
-import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { account, asIso, authFailed, clampPercent, describeHttpError, fail, formatAmount, getJson, num, originOf, percentLeftOf, TIMEOUT_MS } from './shared.js'
@@ -78,10 +80,32 @@ export function planWindowsFrom(body: unknown): QuotaWindow[] {
 }
 
 /**
- * 带控制台 cookie 走 curl 查套餐点数。
- * @returns 窗口列表；任何一步失败返回 undefined（调用方降级，不报错挡板）。
+ * 失败响应 → 人能读的原因（纯函数，可离线测试）。
+ * 网关的错误体形如 {"code":"unauthenticated","message":"auth failed: token is expired"}：
+ *   - expired  → Cookie 已过期（最常见：会话段 30 分钟寿命）
+ *   - illegal / embezzled → Cookie 无效或被设备绑定校验拦下
+ *   - 其余 → 原样透出 message / 原文片段
  */
-function planQuotaViaCurl(cookie: string): { windows: QuotaWindow[] } | undefined {
+export function planFailureNote(bodyText: string): string {
+  let message = ''
+  try {
+    const record = asRecord(JSON.parse(bodyText))
+    const inner = asRecord(record['error'])
+    message = String(inner['message'] ?? record['message'] ?? record['desc'] ?? '')
+  } catch {
+    message = ''
+  }
+  if (message.includes('expired')) return 'Cookie 已过期：请点「查询配置」重新保存控制台 Cookie'
+  if (message.includes('illegal') || message.includes('embezzled')) return 'Cookie 无效或校验失败：请点「查询配置」重新保存控制台 Cookie'
+  const short = bodyText.slice(0, 120)
+  return 'Step Plan 点数查询失败：' + (message !== '' ? message : short !== '' ? short : '空响应')
+}
+
+/**
+ * 带控制台 cookie 走 curl 查套餐点数。
+ * @returns 成功 = { windows }；失败 = { note }（调用方 fail() 显式报错，用户批注：不静默降级）。
+ */
+function planQuotaViaCurl(cookie: string): { windows: QuotaWindow[]; note?: string } {
   const outPath = join(tmpdir(), 'stepfun-plan-out.json')
   try {
     const r = spawnSync(curlBin(), [
@@ -98,12 +122,12 @@ function planQuotaViaCurl(cookie: string): { windows: QuotaWindow[] } | undefine
       '-H', 'user-agent: ' + CONSOLE_UA,
       '--data-raw', '{}',
     ], { stdio: 'ignore', timeout: TIMEOUT_MS + 5000 })
-    if (r.status !== 0) return undefined
-    const body = JSON.parse(readFileSync(outPath, 'utf8'))
-    const windows = planWindowsFrom(body)
-    return windows.length > 0 ? { windows } : undefined
-  } catch {
-    return undefined
+    if (r.status !== 0) return { windows: [], note: 'Step Plan 点数查询失败：curl 未执行成功（status ' + String(r.status) + '）' }
+    const text = readFileSync(outPath, 'utf8')
+    if (text.includes('"plan_credit_rate_limit"')) return { windows: planWindowsFrom(text) }
+    return { windows: [], note: planFailureNote(text) }
+  } catch (error) {
+    return { windows: [], note: 'Step Plan 点数查询失败：' + (error instanceof Error ? error.message : String(error)) }
   } finally {
     try { rmSync(outPath, { force: true }) } catch { /* 临时文件，删不掉就算了 */ }
   }
@@ -136,12 +160,13 @@ export default {
         })
       }
       const plan = planQuotaViaCurl(consoleCookie)
+      // cookie 失效/过期 → 显式 fail（与 opencode-go 的 401/403 语义一致），卡片按失败展示
+      if (plan.note !== undefined) fail(plan.note)
       return account(id, displayName, 'quota', {
         baseUrl: CONSOLE_ORIGIN,
         balances: [],
-        windows: plan !== undefined ? plan.windows : [],
+        windows: plan.windows,
         websiteUrl: 'https://platform.stepfun.com',
-        note: plan !== undefined ? undefined : 'Step Plan 点数查询失败：控制台 cookie 可能已失效，请更新 CONSOLE_COOKIE 凭据',
       })
     }
 
