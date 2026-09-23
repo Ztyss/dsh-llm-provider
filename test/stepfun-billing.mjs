@@ -9,7 +9,10 @@
  *   5. QueryStepPlanRateLimit 的 credit_buckets/left_rate/reset（秒级 epoch）→ 窗口。
  */
 import assert from 'node:assert/strict'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import adapter, { planFailureNote, planWindowsFrom, withRotatedToken } from '../lib/adapters/stepfun.js'
+import { resolveDshHome } from '../lib/dsh-home.js'
 
 // ---- match ----
 assert.equal(adapter.match('StepFun', undefined), true, 'id=StepFun 应命中')
@@ -58,6 +61,11 @@ try {
 }
 
 // ---- plan 通道：baseURL 含 step_plan → 查套餐点数，未配 cookie 时不触任何网络 ----
+// 会话文件隔离：环境里可能留着上一轮实测的有效会话（stepfun-console-session.json），
+// 会让「未配 cookie」分支真的查到数据——测试前挪走，测完恢复。
+const sessionPath = join(resolveDshHome(), 'llm-provider-bridge', 'stepfun-console-session.json')
+const savedSession = existsSync(sessionPath) ? readFileSync(sessionPath, 'utf8') : null
+rmSync(sessionPath, { force: true })
 stubFetch(() => {
   throw new Error('plan 模式不应调用钱包接口')
 })
@@ -82,6 +90,8 @@ try {
   globalThis.fetch = originalFetch
 }
 
+if (savedSession !== null) writeFileSync(sessionPath, savedSession)
+else rmSync(sessionPath, { force: true })
 // ---- planWindowsFrom：真实 QueryStepPlanRateLimit 响应结构（本机实测抓包）----
 const planBody = {
   status: 1, desc: '',
