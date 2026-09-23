@@ -127,16 +127,6 @@ export function apply(ctx: PluginContext, config: unknown): void {
     // 官网/控制台链接：卡片名称下的跳转链接（适配器带了自己的就优先用适配器的）
     const websiteUrl = websiteOf(providerId)
     const baseUrl = typeof route.baseURL === 'string' && route.baseURL !== '' ? route.baseURL : undefined
-    // 路由自身的配置项：卡片展开体和「添加供应商」表单展示同一组信息（缺的字段 JSON 序列化时自然消失）
-    const routeMeta = { api: route.api, apiKeyEnv: route.apiKeyEnv, models: route.models }
-    const adapter = findAdapter(providerId, baseUrl)
-    const credential = await resolveKey(route.apiKeyEnv)
-    // 掩码提示（前3+后4）：让界面能认出是哪一把 key（错配一眼可见），值本身不出宿主
-    const keyHint = credential.configured ? maskKey(credential.key) : undefined
-    const fetchedAt = new Date().toISOString()
-    if (credential.configured && credential.key !== undefined) {
-      credentials.push({ provider: providerId, ref: route.apiKeyEnv, value: credential.key })
-    }
     // 控制台 cookie（可选附带凭据）：约定 <apiKeyEnv 去掉 _API_KEY>_CONSOLE_COOKIE，
     // 给需要控制台会话的适配器用（stepfun 的 Step Plan 点数）；没配置就 undefined。
     const consoleCookieRef = (route.apiKeyEnv ?? '').replace(/_API_KEY$/i, '_CONSOLE_COOKIE')
@@ -145,7 +135,16 @@ export function apply(ctx: PluginContext, config: unknown): void {
       const consoleResolved = await resolveKey(consoleCookieRef)
       if (consoleResolved.configured && consoleResolved.key !== undefined) consoleCookie = consoleResolved.key
     }
-
+    // 路由自身的配置项：卡片展开体和「添加供应商」表单展示同一组信息（缺的字段 JSON 序列化时自然消失）
+    const routeMeta = { api: route.api, apiKeyEnv: route.apiKeyEnv, models: route.models, consoleCookieRef, consoleCookieConfigured: consoleCookie !== undefined }
+    const adapter = findAdapter(providerId, baseUrl)
+    const credential = await resolveKey(route.apiKeyEnv)
+    // 掩码提示（前3+后4）：让界面能认出是哪一把 key（错配一眼可见），值本身不出宿主
+    const keyHint = credential.configured ? maskKey(credential.key) : undefined
+    const fetchedAt = new Date().toISOString()
+    if (credential.configured && credential.key !== undefined) {
+      credentials.push({ provider: providerId, ref: route.apiKeyEnv, value: credential.key })
+    }
     if (adapter === undefined) {
       return {
         ...routeMeta,
