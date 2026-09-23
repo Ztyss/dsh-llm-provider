@@ -48,11 +48,14 @@ DSH-bundled copy — new pi-ai versions and model support arrive without waiting
   network.**
 - **The version row tells the truth**: current x.y.z (DSH-bundled / npm latest / vendor) — which
   copy is in use at a glance. The toggle row only speaks when there is something in progress or
-  to do: downloading / x.y.z downloaded (restart to apply) / x.y.z downloaded (restart to fall
-  back to official) / x.y.z downloaded (cannot be enabled) / x.y.z downloaded (not in use).
-  Whether a restart is pending is derived live by `piAiNeedsRestart` (preference + newest ready
-  safe version + the copy currently loaded) — the enable-in-place state (nothing to download)
-  says so too; verification failures live in the detail rows. While downloading, poll every 2s.
+  to do: downloading / x.y.z downloaded (restart to apply) / x.y.z updated (restart to apply) /
+  x.y.z downloaded (restart to fall back to official) / x.y.z downloaded (cannot be enabled) /
+  x.y.z downloaded (not in use). Whether a restart is pending is derived live by
+  `piAiNeedsRestart` (preference + newest ready safe version + the copy currently loaded) — the
+  enable-in-place state (nothing to download) says so too; a pending version that this very check
+  actually downloaded (`lastCheck.installed` is it — typically the startup auto-update after a
+  restart) says "updated", while a copy that was already on disk says "downloaded"; verification
+  failures live in the detail rows. While downloading, poll every 2s.
 
 ### Model services settings page
 

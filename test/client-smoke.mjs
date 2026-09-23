@@ -321,6 +321,29 @@ rowsCheck('拨 OFF 且已在跑官方：文件留着没在用 → 已下载（�
 rowsCheck('下载中态有进行中文案', piAiUpstreamText({ preference: 'latest', download: { at: 'x', version: '0.86.0', lines: [] } }) === '正在下载上游pi-ai...')
 rowsCheck('待重启态带版本与重启提示',
   piAiUpstreamText({ preference: 'latest', safeVersions: ['0.86.0'], needsRestart: true }) === '已下载 0.86.0（重启生效）')
+// 本次检查真下载了新版本（lastCheck.installed 正是它）→ 说「已更新」：重启后启动检查
+// 自动装上新版时，用户没手动下载过任何东西，「已下载」不是他看到的那件事（用户 09-22 批注）
+rowsCheck('重启后启动检查自动更新：说「已更新」',
+  piAiUpstreamText({
+    preference: 'latest',
+    safeVersions: ['0.87.0', '0.87.1'],
+    needsRestart: true,
+    lastCheck: { at: 'x', latest: '0.87.1', installed: '0.87.1', reason: '已验证 0.87.1（完整性 + 兼容性体检）' },
+  }) === '已更新 0.87.1（重启生效）')
+rowsCheck('原地启用（文件早有、本次没下载）：仍说「已下载」',
+  piAiUpstreamText({
+    preference: 'latest',
+    safeVersions: ['0.87.0'],
+    needsRestart: true,
+    lastCheck: { at: 'x', latest: '0.87.0', reason: '本地已就位 0.87.0（上游 0.87.0），无需下载' },
+  }) === '已下载 0.87.0（重启生效）')
+rowsCheck('装上的不是当前最新那一版（installed 非 newest）：说「已下载」',
+  piAiUpstreamText({
+    preference: 'latest',
+    safeVersions: ['0.87.0', '0.87.1'],
+    needsRestart: true,
+    lastCheck: { at: 'x', latest: '0.87.1', installed: '0.87.0' },
+  }) === '已下载 0.87.1（重启生效）')
 rowsCheck('未过检验态带版本', piAiUpstreamText({ preference: 'latest', latestRejected: { version: '0.87.0', error: 'x' } }) === '已下载 0.87.0（无法启用）')
 rowsCheck('已启用态右侧不显示（版本行已标上游最新，用户批注不重复）',
   piAiUpstreamText({ preference: 'latest' }, { active: true, piAiVersion: '0.86.0', source: 'safe-0.86.0' }) === undefined)
@@ -701,6 +724,12 @@ const zhRelUnder = relativeTime(new Date(Date.now() - 30000).toISOString())
 const zhRow = piAiBridgeRows({ active: true, piAiVersion: '0.85.1', source: 'dependency' }, undefined)[0]
 const zhUpstream = piAiUpstreamText({ preference: 'dsh' })
 const zhUpstreamChecked = piAiUpstreamText({ preference: 'latest', safeVersions: ['0.86.0'], needsRestart: true })
+const zhUpdated = piAiUpstreamText({
+  preference: 'latest',
+  safeVersions: ['0.87.0', '0.87.1'],
+  needsRestart: true,
+  lastCheck: { at: 'x', latest: '0.87.1', installed: '0.87.1' },
+})
 const zhOffPending = piAiUpstreamText({ preference: 'dsh', safeVersions: ['0.87.0'], needsRestart: true })
 const zhYaml = exported
 const zhCaps = capabilityBadges({ id: 'm', vision: true, reasoning: true, video: true })
@@ -714,6 +743,12 @@ const enRelUnder = relativeTime(new Date(Date.now() - 30000).toISOString())
 const enRow = piAiBridgeRows({ active: true, piAiVersion: '0.85.1', source: 'dependency' }, undefined)[0]
 const enUpstream = piAiUpstreamText({ preference: 'dsh' })
 const enUpstreamChecked = piAiUpstreamText({ preference: 'latest', safeVersions: ['0.86.0'], needsRestart: true })
+const enUpdated = piAiUpstreamText({
+  preference: 'latest',
+  safeVersions: ['0.87.0', '0.87.1'],
+  needsRestart: true,
+  lastCheck: { at: 'x', latest: '0.87.1', installed: '0.87.1' },
+})
 const enOffPending = piAiUpstreamText({ preference: 'dsh', safeVersions: ['0.87.0'], needsRestart: true })
 // 现取而不是复用 exported：exported 是模块顶层（默认语言）那次的结果，复用就测不出切语言
 const enYaml = routeYamlOf({ id: 'opencode-go', apiKeyEnv: 'OPENCODE_GO_API_KEY' })
@@ -734,6 +769,8 @@ i18nCheck('待重启 zh = 已下载 0.86.0（重启生效）', zhUpstreamChecked
 i18nCheck('待重启 en = 0.86.0 downloaded (restart to apply)', enUpstreamChecked === '0.86.0 downloaded (restart to apply)')
 i18nCheck('拨 OFF 待回退 zh = 已下载 0.87.0（重启后回退官方）', zhOffPending === '已下载 0.87.0（重启后回退官方）')
 i18nCheck('拨 OFF 待回退 en = 0.87.0 downloaded (restart to fall back to official)', enOffPending === '0.87.0 downloaded (restart to fall back to official)')
+i18nCheck('自动更新 zh = 已更新 0.87.1（重启生效）', zhUpdated === '已更新 0.87.1（重启生效）')
+i18nCheck('自动更新 en = 0.87.1 updated (restart to apply)', enUpdated === '0.87.1 updated (restart to apply)')
 i18nCheck('跳过行 zh 带版本号与原因短语', zhSkip.text === '跳过 0.86.0：兼容性检查没通过')
 i18nCheck('跳过行 en 带版本号与原因短语',
   enSkip.text === 'Skipped 0.86.0: compatibility check failed' && !hasHan(enSkip.text))

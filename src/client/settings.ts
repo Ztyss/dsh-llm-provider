@@ -153,7 +153,15 @@ export function piAiUpstreamText(piAi: unknown, bridge?: unknown): string | unde
   if (rec.download !== undefined && rec.download !== null) return t('bridge.stateDownloading')
   var safeNewest = newestSafeVersion(rec)
   if (rec.preference === 'latest') {
-    if (rec.needsRestart === true && safeNewest !== undefined) return tf('bridge.statePending', { version: safeNewest })
+    if (rec.needsRestart === true && safeNewest !== undefined) {
+      // 这一版是**本次检查真下载来的**（lastCheck.installed 正是它）→ 说「已更新」：
+      // 重启后启动检查自动装上新版时，用户没手动下载过任何东西，「已下载」不是他看到的
+      // 那件事（用户 09-22 批注）。文件早有、只是没在跑（原地启用）→ 仍是「已下载」。
+      var checkRecord: AnyRecord = rec.lastCheck === undefined || rec.lastCheck === null ? {} : (rec.lastCheck as AnyRecord)
+      return checkRecord.installed === safeNewest
+        ? tf('bridge.stateUpdated', { version: safeNewest })
+        : tf('bridge.statePending', { version: safeNewest })
+    }
     if (rec.latestRejected !== undefined && rec.latestRejected !== null) {
       return tf('bridge.stateRejected', { version: (rec.latestRejected as AnyRecord).version })
     }

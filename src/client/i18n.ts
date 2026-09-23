@@ -37,6 +37,7 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'bridge.stateDownloading': '正在下载上游pi-ai...',
     'bridge.stateMissing': '未下载（拨 OFF 再拨 ON 重试）',
     'bridge.statePending': '已下载 {version}（重启生效）',
+    'bridge.stateUpdated': '已更新 {version}（重启生效）',
     'bridge.stateRejected': '已下载 {version}（无法启用）',
 
     // ---- 模型能力 / 详情卡 ----
@@ -243,6 +244,7 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'bridge.stateDownloading': 'Downloading upstream pi-ai...',
     'bridge.stateMissing': 'Not downloaded (flip OFF then ON to retry)',
     'bridge.statePending': '{version} downloaded (restart to apply)',
+    'bridge.stateUpdated': '{version} updated (restart to apply)',
     'bridge.stateRejected': '{version} downloaded (cannot be enabled)',
 
     // ---- model capabilities / detail card ----
