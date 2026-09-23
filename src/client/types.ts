@@ -112,6 +112,8 @@ export interface PlanAccount {
   authConfigured?: boolean
   baseUrl?: string
   websiteUrl?: string
+  consoleCookieRef?: string
+  consoleCookieConfigured?: boolean
   keyHint?: string
   deletable?: boolean
   credentialWarning?: string

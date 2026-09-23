@@ -44,6 +44,9 @@ export interface AccountStatus {
   fetchedAt: string
   websiteUrl?: string
   keyHint?: string
+  /** 控制台 cookie 凭据名（约定 <apiKeyEnv 去尾>_CONSOLE_COOKIE）与是否已配置；给「查询配置」入口用。 */
+  consoleCookieRef?: string
+  consoleCookieConfigured?: boolean
   deletable?: boolean
 }
 

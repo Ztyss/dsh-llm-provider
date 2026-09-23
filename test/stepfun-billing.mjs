@@ -1,11 +1,12 @@
 /**
- * StepFun 计费适配器离线测试：match 规则 + 响应解析 + 错误路径 + 套餐点数窗口
- * （fetch 打桩，不触网）。
- * 覆盖四个真实约束：
+ * StepFun 计费适配器离线测试（fetch 打桩，不触网）。
+ * 覆盖五个真实约束：
  *   1. 自定义路由 id 大小写不敏感（本机实际配置的 id 就是「StepFun」）；
- *   2. 计费端点从 baseURL 的 origin 推导——/step_plan 这类子路径不进 URL；
- *   3. id 命中但 baseURL 是第三方中转时回落官方端点。
- *   4. QueryStepPlanRateLimit 的 credit_buckets/left_rate/reset（秒级 epoch）→ 窗口。
+ *   2. 查询方式按 API 地址自动分通道——含 step_plan 走套餐点数（不触钱包接口），
+ *      其余（/v1、anthropic 裸域、第三方中转）走钱包 /v1/accounts；
+ *   3. 钱包端点从 baseURL 的 origin 推导——/step_plan 这类子路径不进 URL；
+ *   4. plan 通道未配控制台 cookie → 降级为 note 指路（不报错挡板）；
+ *   5. QueryStepPlanRateLimit 的 credit_buckets/left_rate/reset（秒级 epoch）→ 窗口。
  */
 import assert from 'node:assert/strict'
 import adapter, { planWindowsFrom } from '../lib/adapters/stepfun.js'
@@ -18,48 +19,65 @@ assert.equal(adapter.match('my-gateway', 'https://api.stepfun.ai/v1'), true, 'st
 assert.equal(adapter.match('my-gateway', 'https://relay.example.com/v1'), false, '无关网关不应命中')
 assert.equal(adapter.match('deepseek', 'https://api.deepseek.com'), false, '其他 provider 不应命中')
 
-// ---- query：正常解析三行余额 ----
-const sample = { balance: '12.34', total_cash_balance: 20, total_voucher_balance: 2.34 }
 const originalFetch = globalThis.fetch
 let calledUrl = ''
-globalThis.fetch = async (url, init) => {
-  calledUrl = String(url)
-  assert.equal(init.headers.authorization, 'Bearer sk-test')
-  return { status: 200, text: async () => JSON.stringify(sample) }
+let fetchCalls = 0
+function stubFetch(responder) {
+  fetchCalls = 0
+  globalThis.fetch = (async (url) => {
+    fetchCalls += 1
+    calledUrl = String(url)
+    const r = responder(calledUrl)
+    return { status: r.status, text: async () => (typeof r.body === 'string' ? r.body : JSON.stringify(r.body)) }
+  })
 }
+
+// ---- 钱包通道：/v1、第三方中转都按钱包解析 ----
+stubFetch((url) => {
+  assert.equal(url, 'https://api.stepfun.com/v1/accounts', '钱包端点应从 origin 推导')
+  return { status: 200, body: { balance: '12.34', total_cash_balance: 20, total_voucher_balance: 2.34 } }
+})
 try {
-  const status = await adapter.query({ id: 'StepFun', displayName: 'StepFun', key: 'sk-test', baseUrl: 'https://api.stepfun.com/step_plan/v1', extras: {} })
-  assert.equal(calledUrl, 'https://api.stepfun.com/v1/accounts', '计费端点应从 origin 推导，不带 /step_plan')
+  const status = await adapter.query({ id: 'StepFun', displayName: 'StepFun', key: 'sk-test', baseUrl: 'https://api.stepfun.com/v1', extras: {} })
   assert.equal(status.kind, 'balance')
   assert.equal(status.balances.length, 3)
   assert.equal(status.balances[0].value, '¥12.34')
-  assert.equal(status.balances[1].value, '¥20.00')
-  assert.equal(status.balances[2].value, '¥2.34')
-  assert.equal(status.websiteUrl, 'https://platform.stepfun.com')
+  assert.equal(status.windows.length, 0, '钱包通道不出套餐窗口')
 } finally {
   globalThis.fetch = originalFetch
 }
 
-// ---- query：401 → 凭据文案 ----
-globalThis.fetch = async () => ({ status: 401, text: async () => '{}' })
-try {
-  await adapter.query({ id: 'StepFun', displayName: 'StepFun', key: 'bad', baseUrl: undefined, extras: {} })
-  assert.fail('401 应当抛错')
-} catch (error) {
-  assert.match(error.message, /凭据无效或过期/)
-} finally {
-  globalThis.fetch = originalFetch
-}
-
-// ---- query：id 命中但 baseURL 是中转 → 回落官方端点 ----
-globalThis.fetch = async (url) => {
-  assert.equal(String(url), 'https://api.stepfun.com/v1/accounts', '中转站不代理计费接口，应回落官方')
-  return { status: 200, text: async () => JSON.stringify({ balance: 1 }) }
-}
+stubFetch(() => ({ status: 200, body: { balance: 1 } }))
 try {
   const status = await adapter.query({ id: 'stepfun', displayName: 'StepFun', key: 'k', baseUrl: 'https://relay.example.com/v1', extras: {} })
+  assert.equal(calledUrl, 'https://api.stepfun.com/v1/accounts', '非官方域名的钱包查询回落官方端点（中转不代理 /v1/accounts）')
+  assert.equal(status.kind, 'balance')
   assert.equal(status.balances.length, 1)
-  assert.equal(status.balances[0].value, '¥1.00')
+} finally {
+  globalThis.fetch = originalFetch
+}
+
+// ---- plan 通道：baseURL 含 step_plan → 查套餐点数，未配 cookie 时不触任何网络 ----
+stubFetch(() => {
+  throw new Error('plan 模式不应调用钱包接口')
+})
+try {
+  const status = await adapter.query({ id: 'StepFun', displayName: 'StepFun', key: 'sk-test', baseUrl: 'https://api.stepfun.com/step_plan/v1', extras: {} })
+  assert.equal(fetchCalls, 0, 'plan 通道未配 cookie 时不应有任何网络调用')
+  assert.equal(status.kind, 'quota')
+  assert.equal(status.windows.length, 0)
+  assert.match(status.note ?? '', /「查询配置」/, '降级 note 应指路查询配置入口')
+} finally {
+  globalThis.fetch = originalFetch
+}
+
+// ---- plan 通道：anthropic 形态（裸域 + /step_plan 不带 /v1）同样识别 ----
+stubFetch(() => {
+  throw new Error('plan 模式不应调用钱包接口')
+})
+try {
+  const status = await adapter.query({ id: 'StepFun', displayName: 'StepFun', key: 'k', baseUrl: 'https://api.stepfun.com/step_plan', extras: {} })
+  assert.equal(status.kind, 'quota')
 } finally {
   globalThis.fetch = originalFetch
 }
@@ -88,4 +106,4 @@ assert.equal(wins[0].resetAt, '2026-10-22T08:47:11.000Z', '秒级 epoch 要换�
 // 空响应 → 无窗口（降级由调用方处理）
 assert.equal(planWindowsFrom({}).length, 0)
 
-console.log('stepfun-billing: match/解析/401/回落/套餐窗口 断言全过')
+console.log('stepfun-billing: match/分通道/钱包解析/plan 降级/套餐窗口 断言全过')

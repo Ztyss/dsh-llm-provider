@@ -628,6 +628,12 @@ function AddProviderPanel(props: AddProviderPanelProps) {
   var test = testState[0]
   var setTest = testState[1]
   // 发现的模型的勾选态（id → 是否加入）；用户要求：发现模型后弹出清单供选择，不自动全加
+  var queryCookieOpenState = react.useState(false)
+  var queryCookieOpen = queryCookieOpenState[0]
+  var setQueryCookieOpen = queryCookieOpenState[1]
+  var queryCookieDraftState = react.useState('')
+  var queryCookieDraft = queryCookieDraftState[0]
+  var setQueryCookieDraft = queryCookieDraftState[1]
   var modelPickState = react.useState({} as AnyRecord)
   var modelPick = modelPickState[0]
   var setModelPick = modelPickState[1]
@@ -764,6 +770,28 @@ function AddProviderPanel(props: AddProviderPanelProps) {
    * 负责的那三个字段，其余原样保留。新建 route 时逐字段写同样成立（中间对象按需创建），
    * 所以这里不需要分「新建 / 已存在」两条路径。
    */
+  /** 查询配置（Step Plan 控制台 cookie）：写 CONSOLE_COOKIE 凭据，成功后日志确认。 */
+  function saveQueryCookieForm() {
+    var ref = String(form.apiKeyEnv ?? '').replace(/_API_KEY$/i, '_CONSOLE_COOKIE')
+    var value = String(queryCookieDraft ?? '').trim()
+    if (ref === '' || ref.indexOf('_CONSOLE_COOKIE') === -1) {
+      setTest({ phase: 'fail', message: '✗ 未找到 CONSOLE_COOKIE 凭据名（先选协议与 API 地址）' })
+      return
+    }
+    if (value === '') {
+      setTest({ phase: 'fail', message: t('prov.queryCookieEmpty') })
+      return
+    }
+    apiCall('credentials/set', { ref: ref, value: value })
+      .then(function () {
+        setQueryCookieDraft('')
+        setTest({ phase: 'ok', message: t('prov.queryCookieSaved') })
+      })
+      .catch(function (cause) {
+        setTest({ phase: 'fail', message: tf('prov.queryCookieFailed', { reason: cause && cause.message ? cause.message : cause }) })
+      })
+  }
+
   function add() {
     var routeId = form.routeId.trim()
     if (routeId === '') {
@@ -1006,6 +1034,18 @@ function AddProviderPanel(props: AddProviderPanelProps) {
         react.createElement('button', {
           type: 'button',
           className: 'pv_action',
+          title: t('prov.queryConfigTip'),
+          onClick: function () {
+            if (!/step_plan/i.test(String(form.baseURL ?? ''))) {
+              setTest({ phase: 'ok', message: t('prov.noQueryConfigNeeded') })
+              return
+            }
+            setQueryCookieOpen(true)
+          },
+        }, t('prov.queryConfig')),
+        react.createElement('button', {
+          type: 'button',
+          className: 'pv_action',
           disabled: busy || test.phase !== 'ok',
           title: test.phase === 'ok' ? '' : t('prov.needTestFirst'),
           onClick: add,
@@ -1021,6 +1061,21 @@ function AddProviderPanel(props: AddProviderPanelProps) {
           },
         }, t('prov.cancel')),
       ),
+      queryCookieOpen
+        ? react.createElement(
+            'div',
+            { className: 'pv_line pv_row' },
+            react.createElement('span', null, t('prov.queryCookieLabel')),
+            react.createElement('input', {
+              className: 'pv_field pv_key',
+              type: 'text',
+              value: queryCookieDraft,
+              placeholder: t('prov.queryCookiePlaceholder'),
+              onChange: function (event: FieldEvent) { setQueryCookieDraft(event.target.value) },
+            }),
+            react.createElement('button', { type: 'button', className: 'pv_action', onClick: saveQueryCookieForm }, t('prov.save')),
+          )
+        : null,
       test.message === ''
         ? null
         : react.createElement('div', { className: 'plan_note' + (test.phase === 'fail' ? ' plan_badText' : '') }, test.message),
@@ -2256,6 +2311,15 @@ export function ProviderSettingsSection() {
   var keyDrafts = keyDraftState[0]
   var setKeyDrafts = keyDraftState[1]
   var savingKeyState = react.useState({})
+  var queryCookieDraftState = react.useState({})
+  var queryCookieDrafts = queryCookieDraftState[0]
+  var setQueryCookieDrafts = queryCookieDraftState[1]
+  var savingQueryCookieState = react.useState({})
+  var savingQueryCookie = savingQueryCookieState[0]
+  var setSavingQueryCookie = savingQueryCookieState[1]
+  var queryCookieOpenIdState = react.useState(null as string | null)
+  var queryCookieOpenId = queryCookieOpenIdState[0]
+  var setQueryCookieOpenId = queryCookieOpenIdState[1]
   var savingKey = savingKeyState[0]
   var setSavingKey = savingKeyState[1]
   // 卡片级编辑（就地编辑，按 provider id 存）：
@@ -2596,6 +2660,40 @@ export function ProviderSettingsSection() {
   }
 
 
+  /** 查询配置（Step Plan 控制台 cookie）：写 CONSOLE_COOKIE 凭据 + 立刻实测一次余量。 */
+  function saveQueryCookie(account: PlanAccount) {
+    var ref = account.consoleCookieRef === undefined ? '' : String(account.consoleCookieRef)
+    var value = queryCookieDrafts[account.id] === undefined ? '' : String(queryCookieDrafts[account.id]).trim()
+    if (ref === '') {
+      showToast('✗ 找不到 CONSOLE_COOKIE 凭据名', false)
+      return
+    }
+    if (value === '') {
+      showToast('✗ 请先粘贴 Cookie 再保存', false)
+      return
+    }
+    setSavingQueryCookie(function (prev: AnyRecord) { return withKey(prev, account.id, true) })
+    apiCall('credentials/set', { ref: ref, value: value })
+      .then(function () {
+        setQueryCookieDrafts(function (prev: AnyRecord) { return withKey(prev, account.id, '') })
+        return postJson('/provider/refresh', { providerId: account.id })
+      })
+      .then(function (res) {
+        if (res !== null && res !== undefined && res.account !== undefined) mergePlanAccount(res.account)
+        var failure = refreshFailure(res)
+        if (failure === undefined) {
+          showToast('✓ 查询配置已保存（Step Plan 点数已可查）', true)
+        } else {
+          showToast('✓ 查询配置已保存，但余额刷新失败：' + failure, false)
+        }
+      })
+      .catch(function (cause) {
+        showToast('✗ 保存失败：' + String(cause && cause.message ? cause.message : cause), false)
+      })
+      .then(function () {
+        setSavingQueryCookie(function (prev: AnyRecord) { return withKey(prev, account.id, false) })
+      })
+  }
   /**
    * 删除前把这条 route 的配置导出成 YAML 文本（issue #3 期望 4）。
    *
@@ -2956,8 +3054,42 @@ export function ProviderSettingsSection() {
               placeholder: t('edit.baseUrlPlaceholder'),
               onChange: function (event: FieldEvent) { setEditField(account.id, 'baseURL', event.target.value) },
             }),
+            react.createElement('button', {
+              type: 'button',
+              className: 'pv_action',
+              title: t('prov.queryConfigTip'),
+              onClick: function () {
+                if (!/step_plan/i.test(String(editForm.baseURL ?? ''))) {
+                  showToast(t('prov.noQueryConfigNeeded'), true)
+                  return
+                }
+                setQueryCookieOpenId(queryCookieOpenId === account.id ? null : account.id)
+              },
+            }, t('prov.queryConfig')),
           ),
         )
+        if (queryCookieOpenId === account.id) {
+          bodyRows.push(
+            react.createElement(
+              'div',
+              { className: 'pv_line pv_row', key: 'query-cookie' },
+              react.createElement('span', null, t('prov.queryCookieLabel')),
+              react.createElement('input', {
+                className: 'pv_field pv_key',
+                type: 'text',
+                value: queryCookieDrafts[account.id] === undefined ? '' : String(queryCookieDrafts[account.id]),
+                placeholder: t('prov.queryCookiePlaceholder'),
+                onChange: function (event: FieldEvent) { setQueryCookieDrafts(function (prev: AnyRecord) { return withKey(prev, account.id, event.target.value) }) },
+              }),
+              react.createElement(
+                'button',
+                { type: 'button', className: 'pv_action', disabled: savingQueryCookie[account.id] === true, onClick: function () { saveQueryCookie(account) } },
+                savingQueryCookie[account.id] === true ? t('prov.saving') : t('prov.save'),
+              ),
+            ),
+            react.createElement('div', { className: 'plan_note pv_editHint', key: 'query-cookie-tip' }, t('prov.queryCookieTip')),
+          )
+        }
         // 协议：就地选择（自绘下拉，用户批注：原生弹层与页面视觉不协调）。
         // （默认）= 不写 api 键，由 pi-ai 按端点自行判定。
         bodyRows.push(
