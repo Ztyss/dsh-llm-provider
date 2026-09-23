@@ -18,18 +18,20 @@
  *   4. 报错要精确：expired → 「Cookie 已过期」；illegal/embezzled → 「Cookie 无效或
  *      校验失败」（用户批注：不要静默降级，也不要笼统的「无适配器」）。
  *
- * 会话持久化：`$DSH_HOME/llm-provider-bridge/stepfun-console-session.json`
- *   {"cookie":"<整串 Cookie 头>"}。种子来自「查询配置」写入的 CONSOLE_COOKIE 凭据
- *   （extras.consoleCookie 优先），续期轮换后的新 pair 写回该文件，长效段 27 天内
- *   无需人工干预。
+ * 会话持久化：`$DSH_HOME/llm-provider-bridge/cookies.yaml`（统一 Cookie 存储，
+ * 键 = 凭据 ref 名，见 adapters/cookie-store.ts）。种子来自「查询配置」写入的
+ * CONSOLE_COOKIE 凭据（extras.consoleCookie 优先），续期轮换后的新 pair 写回该文件，
+ * 长效段 27 天内无需人工干预。旧版单槽 stepfun-console-session.json 首次读取自动
+ * 迁移进新文件后移除。
  */
 import { spawnSync } from 'node:child_process'
-import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { account, asIso, authFailed, clampPercent, describeHttpError, fail, formatAmount, getJson, num, originOf, percentLeftOf, TIMEOUT_MS } from './shared.js'
 import { asRecord, readString } from '../types.js'
 import { resolveDshHome } from '../dsh-home.js'
+import { loadCookieValue, saveCookieValue } from './cookie-store.js'
 import type { AccountStatus, AdapterQueryInput, BalanceRow, BillingAdapter, QuotaWindow } from './shared.js'
 
 const CONSOLE_ORIGIN = 'https://platform.stepfun.com'
@@ -44,24 +46,16 @@ function curlBin(): string {
   return 'curl'
 }
 
-/** 控制台会话文件：{"cookie":"<整串 Cookie 头>"}（安全区内，updater status.json 同目录习惯）。 */
-function sessionFile(): string {
+/** 旧版单槽会话文件（cookies.yaml 出现前的形态）：{"cookie":"<整串 Cookie 头>"}。 */
+function legacySessionFile(): string {
   return join(resolveDshHome(), 'llm-provider-bridge', 'stepfun-console-session.json')
 }
 
-function loadSessionCookie(): string | undefined {
+function readLegacySession(): string | undefined {
   try {
-    return readString(asRecord(JSON.parse(readFileSync(sessionFile(), 'utf8')))['cookie'])
+    return readString(asRecord(JSON.parse(readFileSync(legacySessionFile(), 'utf8')))['cookie'])
   } catch {
     return undefined
-  }
-}
-
-function saveSessionCookie(cookie: string): void {
-  try {
-    writeFileSync(sessionFile(), JSON.stringify({ cookie }, null, 2) + '\n')
-  } catch {
-    /* 安全区只读等极端情况：本轮先用内存里的，下轮再试 */
   }
 }
 
@@ -209,8 +203,13 @@ export default {
     // ---------- Step Plan 通道：套餐点数（控制台 cookie + 自动续期） ----------
     if (isPlanChannel) {
       const consoleCookie = readString(extras['consoleCookie'])
-      // 手动粘贴（查询配置）优先且作为新种子；否则用上次会话文件里的（含轮换后的 pair）
-      let cookie = consoleCookie !== undefined && consoleCookie !== '' ? consoleCookie : loadSessionCookie()
+      // 存储键 = 凭据 ref 名（index.ts 随 extras 下发；裸调用按同一规则派生兜底）
+      const ref = readString(extras['consoleCookieRef']) ?? id.toUpperCase().replace(/[^A-Z0-9]/g, '_') + '_CONSOLE_COOKIE'
+      // 手动粘贴（查询配置）优先且作为新种子——但必须含 Oasis-Token 段才算可用 jar：
+      // 凭据里残留的碎片（如只贴了 Oasis-Webid 一枚）不能覆盖统一存储里已轮换的好 jar
+      const seed = consoleCookie !== undefined && consoleCookie.includes('Oasis-Token=') ? consoleCookie : undefined
+      // 否则读统一 Cookie 存储（含轮换后的 pair；旧版单槽会话文件在这次读取里自动迁移进新文件）
+      let cookie = seed ?? loadCookieValue(ref, { path: legacySessionFile(), read: readLegacySession })
       if (cookie === undefined || cookie === '') {
         return account(id, displayName, 'quota', {
           baseUrl: CONSOLE_ORIGIN,
@@ -220,14 +219,14 @@ export default {
           note: '查询方式为 Step Plan：请点「查询配置」保存控制台 Cookie 后刷新',
         })
       }
-      if (consoleCookie !== undefined && consoleCookie !== '') saveSessionCookie(consoleCookie)
+      if (seed !== undefined) saveCookieValue(ref, seed)
 
       let plan = planQuotaViaCurl(cookie)
       if (plan.note !== undefined) {
         // 会话段过期等鉴权失败 → 自动续期一次（长效段 27 天内有效），成功就重试
         const rotated = refreshSession(cookie)
         if (rotated !== undefined) {
-          saveSessionCookie(rotated)
+          saveCookieValue(ref, rotated)
           cookie = rotated
           plan = planQuotaViaCurl(cookie)
         }

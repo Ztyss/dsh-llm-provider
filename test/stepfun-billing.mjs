@@ -12,6 +12,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import adapter, { planFailureNote, planWindowsFrom, withRotatedToken } from '../lib/adapters/stepfun.js'
+import { loadCookieValue, parseCookieStore, saveCookieValue, serializeCookieStore } from '../lib/adapters/cookie-store.js'
 import { resolveDshHome } from '../lib/dsh-home.js'
 
 // ---- match：只认 baseURL 官方双域名（provider id 可改名，不作判据）----
@@ -66,10 +67,15 @@ try {
 }
 
 // ---- plan 通道：baseURL 含 step_plan → 查套餐点数，未配 cookie 时不触任何网络 ----
-// 会话文件隔离：环境里可能留着上一轮实测的有效会话（stepfun-console-session.json），
-// 会让「未配 cookie」分支真的查到数据——测试前挪走，测完恢复。
-const sessionPath = join(resolveDshHome(), 'llm-provider-bridge', 'stepfun-console-session.json')
+// 存储隔离：环境里可能留着上一轮实测的有效会话（统一存储 cookies.yaml / 旧版
+// stepfun-console-session.json），会让「未配 cookie」分支真的查到数据——测试前挪走，
+// 全部断言结束后（文件末尾）再恢复。
+const bridgeDir = join(resolveDshHome(), 'llm-provider-bridge')
+const storePath = join(bridgeDir, 'cookies.yaml')
+const sessionPath = join(bridgeDir, 'stepfun-console-session.json')
+const savedStore = existsSync(storePath) ? readFileSync(storePath, 'utf8') : null
 const savedSession = existsSync(sessionPath) ? readFileSync(sessionPath, 'utf8') : null
+rmSync(storePath, { force: true })
 rmSync(sessionPath, { force: true })
 stubFetch(() => {
   throw new Error('plan 模式不应调用钱包接口')
@@ -95,8 +101,6 @@ try {
   globalThis.fetch = originalFetch
 }
 
-if (savedSession !== null) writeFileSync(sessionPath, savedSession)
-else rmSync(sessionPath, { force: true })
 // ---- planWindowsFrom：真实 QueryStepPlanRateLimit 响应结构（本机实测抓包）----
 const planBody = {
   status: 1, desc: '',
@@ -139,4 +143,48 @@ assert.equal(withRotatedToken('no-token-jar', 'X'), 'no-token-jar', '无 Oasis-T
 // 空响应 → 无窗口（降级由调用方处理）
 assert.equal(planWindowsFrom({}).length, 0)
 
-console.log('stepfun-billing: match/分通道/钱包解析/plan 降级/套餐窗口 断言全过')
+// ---- cookie-store：统一 Cookie 存储解析/序列化/合并/迁移（隔离窗口内，末尾统一恢复） ----
+// 解析：多键 + 注释 + 单引号/裸标量；残缺条目（无 value）与坏行跳过
+const storeText = [
+  '# 手改注释也要容忍',
+  'version: 1',
+  'cookies:',
+  '  STEPFUN_CONSOLE_COOKIE:',
+  '    value: "Oasis-Webid=w1; Oasis-Token=\\"AAA...BBB\\"; _wafdytokenv1=w2"',
+  '    updatedAt: "2026-09-23T22:15:00.000Z"',
+  '  OTHERPROVIDER_PANEL_COOKIE:',
+  "    value: 'single ''quoted'' jar'",
+  '  BROKEN_PROVIDER_COOKIE:',
+  '    updatedAt: "只有时间没有值，丢弃"',
+  '  GOOD_PROVIDER_COOKIE:',
+  '    value: bare-jar',
+].join('\n')
+const parsed = parseCookieStore(storeText)
+assert.equal(Object.keys(parsed).length, 3, '残缺条目（无 value）丢弃，剩 3 键')
+assert.equal(parsed['STEPFUN_CONSOLE_COOKIE'].value.includes('Oasis-Token="AAA...BBB"'), true, 'JSON 双引号值转义还原')
+assert.equal(parsed['STEPFUN_CONSOLE_COOKIE'].updatedAt, '2026-09-23T22:15:00.000Z')
+assert.equal(parsed['OTHERPROVIDER_PANEL_COOKIE'].value, "single 'quoted' jar", '单引号转义还原')
+assert.equal(parsed['GOOD_PROVIDER_COOKIE'].value, 'bare-jar', '裸标量原样')
+// 序列化 → 解析 round trip（含引号/反斜杠/分号等难缠字符）
+const tricky = { A_COOKIE: { value: 'he said "hi"; a\\b; tail;', updatedAt: '2026-01-01T00:00:00.000Z' }, B_COOKIE: { value: 'x' } }
+assert.deepEqual(parseCookieStore(serializeCookieStore(tricky)), tricky, 'round trip 无损')
+// 落盘合并：先写 A 再写 B，A 保留；updatedAt 自动生成
+assert.equal(saveCookieValue('TESTPROVIDER_CONSOLE_COOKIE', 'jar-a'), true, '落盘成功')
+assert.equal(saveCookieValue('OTHERPROVIDER_OTHER_COOKIE', 'jar-b'), true)
+const onDisk = parseCookieStore(readFileSync(storePath, 'utf8'))
+assert.equal(onDisk['TESTPROVIDER_CONSOLE_COOKIE'].value, 'jar-a', '第二次写不覆盖第一次的键')
+assert.equal(onDisk['OTHERPROVIDER_OTHER_COOKIE'].value, 'jar-b')
+assert.match(onDisk['TESTPROVIDER_CONSOLE_COOKIE'].updatedAt ?? '', /^\d{4}-\d{2}-\d{2}T/, 'updatedAt 自动记录')
+// 迁移：旧版单槽 JSON → 并入新存储，写成功后旧文件移除
+writeFileSync(sessionPath, JSON.stringify({ cookie: 'legacy-jar' }))
+assert.equal(loadCookieValue('LEGACYPROVIDER_CONSOLE_COOKIE', { path: sessionPath, read: () => JSON.parse(readFileSync(sessionPath, 'utf8')).cookie }), 'legacy-jar', '迁移读出旧值')
+assert.equal(parseCookieStore(readFileSync(storePath, 'utf8'))['LEGACYPROVIDER_CONSOLE_COOKIE'].value, 'legacy-jar', '旧值并入新存储')
+assert.equal(existsSync(sessionPath), false, '迁移成功后旧文件移除')
+
+console.log('stepfun-billing: match/分通道/钱包解析/plan 降级/套餐窗口/统一 Cookie 存储 断言全过')
+
+// ---- 恢复被隔离的真实存储（cookies.yaml / 旧会话文件） ----
+if (savedStore !== null) writeFileSync(storePath, savedStore)
+else rmSync(storePath, { force: true })
+if (savedSession !== null) writeFileSync(sessionPath, savedSession)
+else rmSync(sessionPath, { force: true })

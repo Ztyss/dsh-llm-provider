@@ -172,7 +172,7 @@ export function apply(ctx: PluginContext, config: unknown): void {
       }
     }
     try {
-      const result = await adapter.query({ id: providerId, displayName, key: credential.key, baseUrl, extras: { consoleCookie } })
+      const result = await adapter.query({ id: providerId, displayName, key: credential.key, baseUrl, extras: { consoleCookie, consoleCookieRef } })
       if (result.websiteUrl === undefined) result.websiteUrl = websiteUrl
       if (result.keyHint === undefined) result.keyHint = keyHint
       if (result.deletable === undefined) result.deletable = route.source === 'llm-pi-ai'
