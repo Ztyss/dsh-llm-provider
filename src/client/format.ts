@@ -154,24 +154,24 @@ export function quotaTextOf(account: PlanAccount | undefined | null): string | u
 
 /**
  * 窗口短名（卡片头部摘要与悬停详情共用）：5 小时窗口→5h，每周/订阅周期→7d，每月→30d，
- * Step Plan 套餐点数→Step。
+ * 认不出的窗口名→Remain。
  *
- * 判序要紧，两条都不能倒：
+ * 判序与兜底两条都不能倒：
  *   - 「月」必须排在「每」之前——裸 `每` 会把「每月窗口」也吞进 7d（issue #2 的现象）；
- *   - Step Plan 必须排在最前——适配器给套餐点数窗口起名带 bucket 类型后缀
- *     （`Step Plan 套餐点数（bucket monthly）`），线上 type 形如 monthly/subscription/weekly，
- *     后缀里的 month/week 会抢在窗口名前把标签劫成 30d/7d（用户 09-23 报的就是这个）。
- *     认不出的窗口名返回截断的原名，不再冒充 7d。
+ *   - StepFun 的套餐点数窗口名带 bucket 类型后缀（`Step Plan 套餐点数（bucket monthly）`），
+ *     后缀里的 month 命中 30d 是**对的**——那个套餐本身就是月度 plan（用户 09-23 批注：
+ *     就是要显示 30d，之前显示成 Step 是错的）。所以这里刻意没有 Step Plan 特例。
+ *   - 兜底统一给 Remain：曾经是 `text.slice(0, 4)` 截原名四个字，只会产出
+ *     'Step'/'Openc'/'GLM ' 这种既非档位也非来源的乱码（用户 09-23 批注改 Remain）。
  */
 export function shortWindowLabel(name: unknown): string {
   var text = String(name ?? '')
   var lower = text.toLowerCase()
-  if (text.indexOf('Step Plan') !== -1 || lower.indexOf('step plan') !== -1) return 'Step'
   if (text.indexOf('5 小时') !== -1 || text.indexOf('5小时') !== -1 || lower.indexOf('5 hour') !== -1) return '5h'
   if (text.indexOf('月') !== -1 || lower.indexOf('month') !== -1) return '30d'
   if (text.indexOf('每') !== -1 || text.indexOf('订阅') !== -1 || text.indexOf('周') !== -1
     || lower.indexOf('week') !== -1 || lower.indexOf('subscription') !== -1) return '7d'
-  return text === '' ? t('win.fallback') : text.slice(0, 4)
+  return t('win.remain')
 }
 
 /** 重置倒计时压缩格式（最多两个单位，零尾不显示）：34m / 5h / 5h33m / 3d5h / 4d。 */
@@ -200,7 +200,11 @@ export function quotaTipOf(account: PlanAccount | undefined | null): string | un
   var windows = Array.isArray(account.windows) ? account.windows : []
   for (var i = 0; i < windows.length; i += 1) {
     if (typeof windows[i].percentLeft !== 'number') continue
-    var text = tf('quota.headlineRemaining', { label: shortWindowLabel(windows[i].window), percent: windows[i].percentLeft })
+    var label = shortWindowLabel(windows[i].window)
+    // 兜底档（Remain）在悬停里还原成窗口原名：否则 {label}余量 会拼出「Remain余量 40%」，
+    // 而且用户也看不出这档到底是哪个窗口——原名正是悬停该给的信息
+    var shown = label === t('win.remain') ? String(windows[i].window ?? '') : label
+    var text = tf('quota.headlineRemaining', { label: shown, percent: windows[i].percentLeft })
     if (windows[i].resetAt !== undefined && windows[i].resetAt !== '') {
       text += ' ◷ ' + resetCountdownText(windows[i].resetAt)
     }

@@ -196,7 +196,8 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'quota.noAdapter': '无适配器',
     'quota.noData': '无数据',
     'quota.headlineRemaining': '{label}余量 {percent}%',
-    'win.fallback': '窗口',
+    // 兜底档位标签：认不出的窗口名统一显示它（曾经是截原名四个字，产出 'Step'/'Openc' 这类乱码）
+    'win.remain': 'Remain',
     'win.resettingSoon': '即将重置',
     'win.justNow': '刚刚',
 
@@ -403,7 +404,7 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'quota.noAdapter': 'no adapter',
     'quota.noData': 'No data',
     'quota.headlineRemaining': '{label} {percent}% left',
-    'win.fallback': 'Window',
+    'win.remain': 'Remain',
     'win.resettingSoon': 'Resetting soon',
     'win.justNow': 'just now',
 

@@ -240,6 +240,8 @@ const unknownWindow = headlineChips({
 })
 contractCheck('认不出的窗口名不丢，仍按出现顺序出现', unknownWindow.filter((c) => c.sep !== true).length === 3)
 contractCheck('认不出的窗口与已知档之间也有分割线', sepCount(unknownWindow) === 2)
+// 兜底档标签统一 Remain：曾经是截原名四个字（'随便'/'Step'/'Openc'），既非档位也非来源
+contractCheck('认不出的窗口统一标 Remain', textsOf(unknownWindow).indexOf('Remain:40%') !== -1)
 
 const monthlyOnly = headlineChips({ id: 'x', windows: [win('每月窗口', 8, '2030-01-01T00:00:00Z')] })
 contractCheck('只有一档时不画分割线', sepCount(monthlyOnly) === 0)

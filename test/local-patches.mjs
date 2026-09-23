@@ -51,14 +51,16 @@ check('#2 5 小时滚动窗口 → 5h', client.shortWindowLabel('5 小时滚动�
 check('#2 订阅周期 → 7d', client.shortWindowLabel('订阅周期'), '7d')
 check('#2 monthly → 30d', client.shortWindowLabel('monthly window'), '30d')
 
-// 1c. StepFun 套餐点数窗口：标签固定 Step，bucket 后缀里的词不许抢
-// （线上 credit_buckets[].type 形如 monthly/subscription/weekly；后缀一进窗口名，
-//  monthly 就把标签劫成 30d、subscription/weekly 劫成 7d——用户 09-23 报的就是这个）
-check('Step Plan 套餐点数 → Step', client.shortWindowLabel('Step Plan 套餐点数'), 'Step')
-check('Step Plan + bucket 1 → Step', client.shortWindowLabel('Step Plan 套餐点数（bucket 1）'), 'Step')
-check('Step Plan + bucket monthly → Step（后缀不得劫持）', client.shortWindowLabel('Step Plan 套餐点数（bucket monthly）'), 'Step')
-check('Step Plan + bucket subscription → Step（后缀不得劫持）', client.shortWindowLabel('Step Plan 套餐点数（bucket subscription）'), 'Step')
-check('Step Plan + bucket weekly → Step（后缀不得劫持）', client.shortWindowLabel('Step Plan 套餐点数（bucket weekly）'), 'Step')
+// 1c. 兜底档统一 Remain（曾经是 text.slice(0,4) 截原名四个字，产出 'Step'/'Openc' 这类乱码）
+check('认不出的窗口名 → Remain', client.shortWindowLabel('随便什么窗口'), 'Remain')
+check('空窗口名 → Remain', client.shortWindowLabel(''), 'Remain')
+check('英文说不出的话也 → Remain', client.shortWindowLabel('Opencode Go Usage'), 'Remain')
+// StepFun 套餐点数窗口名带 bucket 类型后缀：type=monthly 命中 30d 是**对的**——那个套餐
+// 本身就是月度 plan（用户 09-23 批注：就是要显示 30d，之前显示成 Step 是错的）。
+// 没有月度字样的（type=1 / 无后缀）才落兜底 Remain。
+check('Step Plan + bucket monthly → 30d（套餐是月度 plan）', client.shortWindowLabel('Step Plan 套餐点数（bucket monthly）'), '30d')
+check('Step Plan + bucket 1 → Remain（无月度字样，走兜底）', client.shortWindowLabel('Step Plan 套餐点数（bucket 1）'), 'Remain')
+check('Step Plan 无后缀 → Remain', client.shortWindowLabel('Step Plan 套餐点数'), 'Remain')
 
 // 1b. 窗口组之间的分隔线：5h ｜ 7d ｜ 30d（三档 = 两条分割线）
 const chips = client.headlineChips({

@@ -375,11 +375,12 @@ if (cookie !== null) {
     `cookie.w=${cookie.input.rect.w.toFixed(1)} url.w=${rest.urlInput.rect.w.toFixed(1)}`)
 }
 
-// 7. StepFun 卡额度标签 = Step（bucket 后缀里的 month 曾把标签劫成 30d）
+// 7. StepFun 卡额度标签：套餐点数是月度 plan → 30d（既不显示 Step，也不落兜底 Remain）
 const stepChipLabels = cookieState.stepChips.map((text) => String(text).split(':')[0])
-check('StepFun 卡有 Step 档额度 chip', stepChipLabels.indexOf('Step') !== -1,
+check('StepFun 卡有 30d 档额度 chip', stepChipLabels.indexOf('30d') !== -1,
   `chips=${JSON.stringify(cookieState.stepChips)}`)
-check('StepFun 卡不再出现 30d/7d 这种被劫的标签', stepChipLabels.every((label) => label !== '30d' && label !== '7d'),
+check('StepFun 卡不再出现 Step / Remain 这类标签',
+  stepChipLabels.every((label) => label !== 'Step' && label !== 'Remain'),
   `labels=${JSON.stringify(stepChipLabels)}`)
 
 ws.close()
