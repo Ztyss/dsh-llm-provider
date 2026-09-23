@@ -15,7 +15,7 @@
  *   - 旧版单槽 JSON 会话文件（stepfun-console-session.json）由调用方经
  *     loadCookieValue 的 legacy 参数迁移：首次读取自动并入新文件，写成功后移除旧文件。
  */
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveDshHome } from '../dsh-home.js'
 
@@ -158,6 +158,8 @@ export function saveCookieValue(ref: string, value: string): boolean {
   try {
     const entries = readStore()
     entries[ref] = { value, updatedAt: new Date().toISOString() }
+    // bridge 目录可能尚不存在（全新机器首次保存、测试临时 DSH_HOME）：先建再写
+    mkdirSync(join(resolveDshHome(), 'llm-provider-bridge'), { recursive: true })
     writeFileSync(cookieStoreFile(), serializeCookieStore(entries))
     return true
   } catch {
