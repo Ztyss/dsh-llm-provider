@@ -29,7 +29,7 @@ import { caretSvg, checkSvg } from './icons.js'
 import { t, tf } from './i18n.js'
 import { addModelRow, buildModelEditor, modelListPayload, patchModelRow, validateModelRows } from './model-editor.js'
 import type { ModelEditorRow, ModelEditorState } from './model-editor.js'
-import { PROVIDER_API_OPTIONS, isProviderEditDirty, providerEditForm, providerEditSaveOps, validateProviderEdit } from './provider-edit.js'
+import { PROVIDER_API_OPTIONS, isProviderEditDirty, providerApiLabel, providerEditForm, providerEditSaveOps, validateProviderEdit } from './provider-edit.js'
 import type { ProviderEditForm } from './provider-edit.js'
 import type { AddProviderPanelProps, BridgeRow, CatalogModel, DeclaredModel, FieldEvent, HeadlineChip, ModelDetail, ModelEditRow, PlanAccount, ProviderPreset } from './types.js'
 
@@ -886,6 +886,14 @@ function AddProviderPanel(props: AddProviderPanelProps) {
   // 自定义网关的建议值：路由 ID 用预设 id（custom-gateway），清空路由后凭据名回落到预设建议值
   var suggestedId = pickedPreset !== undefined && customPicked ? pickedPreset.id : ''
   var suggestedEnv = pickedPreset !== undefined && customPicked ? pickedPreset.apiKeyEnv : ''
+  // 没选供应商时，下面四项一概不可填（用户 09-23 批注：现状是密钥和 API 地址还能打字）
+  var fieldEditable = pickedPreset !== undefined
+  // 不可填的字段渲染成 span 而不是 input(readOnly)：宿主那圈黄色 focus 环只在可聚焦元素上
+  // 出现，span 压根聚焦不了，点击就是「无法编辑」（用户 09-23 批注）——比压 outline 根治，
+  // 宿主规则特异性更高，outline:0 未必压得住。
+  function roField(text: string) {
+    return react.createElement('span', { className: 'pv_field pv_ro' }, text)
+  }
   var pickItems = []
   for (var pk = 0; pk < presets.length; pk += 1) {
     ;(function (preset) {
@@ -931,14 +939,16 @@ function AddProviderPanel(props: AddProviderPanelProps) {
             'button',
             {
               type: 'button',
-              className: 'pv_field pv_pickBtn',
+              className: 'pv_field pv_pickBtn' + (pickOpen ? ' pv_pickOpen' : ''),
               onClick: function () {
                 setPickOpen(!pickOpen)
                 setPickFilter('')
               },
             },
             react.createElement('span', null, pickedLabel === '' ? t('prov.selectPlaceholder') : pickedLabel),
-            react.createElement('span', { className: 'pv_pcCaret' }, pickOpen ? '▾' : '▸'),
+            // 箭头与协议下拉同一只官方 caretSvg（用户 09-23 批注：供应商下拉框的箭头应与
+            // 协议下拉框一致）。此前是 ▸/▾ 文本字形，两个下拉长得不一样。
+            react.createElement('span', { className: 'pv_selChev' }, caretSvg(pickOpen)),
           ),
           pickOpen === false
             ? null
@@ -962,37 +972,48 @@ function AddProviderPanel(props: AddProviderPanelProps) {
         'div',
         { className: 'pv_line pv_row' },
         react.createElement('span', null, t('prov.routeId')),
-        react.createElement('input', {
-          className: customPicked ? 'pv_field pv_key' : 'pv_field pv_ro',
-          value: form.routeId,
-          readOnly: customPicked !== true,
-          // 自定义网关：路由 ID 是建议值（placeholder 展示），一旦输入即覆盖；
-          // 清空则凭据名回落到预设建议值（CUSTOM_GATEWAY_API_KEY），不产生 _API_KEY 这种残缺名
-          placeholder: suggestedId,
-          title: customPicked ? t('prov.routeIdHintCustom') : t('prov.routeIdHintFixed'),
-          onChange: function (event: FieldEvent) {
-            if (customPicked !== true) return
-            var next = event.target.value
-            if (next.trim() === '') {
-              // 清空 = 回到建议状态：凭据名也回落到预设自带的建议值
-              patchForm({ routeId: '', apiKeyEnv: suggestedEnv })
-              return
-            }
-            patchForm({ routeId: next, apiKeyEnv: next.toUpperCase().replace(/[^A-Z0-9]/g, '_') + '_API_KEY' })
-          },
-        }),
+        customPicked !== true
+          ? roField(form.routeId)
+          : react.createElement('input', {
+              className: 'pv_field pv_key',
+              value: form.routeId,
+              // 自定义网关：路由 ID 是建议值（placeholder 展示），一旦输入即覆盖；
+              // 清空则凭据名回落到预设建议值（CUSTOM_GATEWAY_API_KEY），不产生 _API_KEY 这种残缺名
+              placeholder: suggestedId,
+              title: t('prov.routeIdHintCustom'),
+              onChange: function (event: FieldEvent) {
+                var next = event.target.value
+                if (next.trim() === '') {
+                  // 清空 = 回到建议状态：凭据名也回落到预设建议值
+                  patchForm({ routeId: '', apiKeyEnv: suggestedEnv })
+                  return
+                }
+                patchForm({ routeId: next, apiKeyEnv: next.toUpperCase().replace(/[^A-Z0-9]/g, '_') + '_API_KEY' })
+              },
+            }),
       ),
       react.createElement(
         'div',
         { className: 'pv_line pv_row' },
         react.createElement('span', null, t('prov.apiKey')),
-        react.createElement('input', {
-          className: 'pv_field pv_key',
-          type: 'password',
-          // 不放 sk-… 占位：自定义网关的密钥格式不一定是 sk 开头，别误导（用户要求）
-          value: form.key,
-          onChange: function (event: FieldEvent) { patchForm({ key: event.target.value }) },
-        }),
+        fieldEditable !== true
+          ? roField('')
+          : react.createElement('input', {
+              className: 'pv_field pv_key',
+              type: 'password',
+              // 不放 sk-… 占位：自定义网关的密钥格式不一定是 sk 开头，别误导（用户要求）
+              value: form.key,
+              onChange: function (event: FieldEvent) { patchForm({ key: event.target.value }) },
+            }),
+        // 「发现模型」从底部按钮行挪到 API 密钥旁（用户 09-23 批注）：marginLeft:0 贴输入框，
+        // 与 provider 编辑页「保存」同款；没选供应商时一并置灰（那时密钥框都不可填）
+        react.createElement('button', {
+          type: 'button',
+          className: 'pv_action',
+          style: { marginLeft: '0' },
+          disabled: fieldEditable !== true || test.phase === 'run',
+          onClick: runTest,
+        }, test.phase === 'run' ? t('prov.discovering') : t('prov.discover')),
         form.websiteUrl === undefined
           ? null
           : react.createElement('a', { className: 'pv_pcLink', href: form.websiteUrl, target: '_blank', rel: 'noreferrer', style: { marginLeft: '8px' } }, t('prov.keyLink')),
@@ -1001,52 +1022,19 @@ function AddProviderPanel(props: AddProviderPanelProps) {
         'div',
         { className: 'pv_line pv_row' },
         react.createElement('span', null, t('prov.apiBase')),
-        react.createElement('input', {
-          className: form.baseURL === '' ? 'pv_field pv_key' : 'pv_field pv_ro',
-          value: form.baseURL,
-          readOnly: form.baseURL !== '',
-          onChange: function (event: FieldEvent) { patchForm({ baseURL: event.target.value }) },
-        }),
-      ),
-      react.createElement(
-        'div',
-        { className: 'pv_line pv_row' },
-        react.createElement('span', null, t('prov.protocol')),
-        customPicked
-          ? pvSelectView({
-              open: apiOpen,
-              value: form.api,
-              options: [
-                { value: 'openai-completions', label: 'OpenAI' },
-                { value: 'anthropic-messages', label: 'Anthropic' },
-              ],
-              onToggle: function () { setApiOpen(!apiOpen) },
-              onPick: function (value: string) {
-                setApiOpen(false)
-                patchForm({ api: value })
-              },
+        // 可填条件 = 选了供应商 且 该预设的 baseURL 为空（自定义网关）；否则按预设锁死
+        fieldEditable === true && form.baseURL === ''
+          ? react.createElement('input', {
+              className: 'pv_field pv_key',
+              value: form.baseURL,
+              onChange: function (event: FieldEvent) { patchForm({ baseURL: event.target.value }) },
             })
-          : react.createElement('input', {
-              className: 'pv_field pv_ro',
-              value: form.api,
-              readOnly: true,
-            }),
-      ),
-      // 凭据名：单独一行小字，不挤在协议行右侧
-      react.createElement(
-        'div',
-        { className: 'pv_line pv_row' },
-        react.createElement('span', null, ''),
-        react.createElement('span', { className: 'pv_hint' }, tf('prov.credStoredAs', { ref: form.apiKeyEnv })),
-      ),
-      react.createElement(
-        'div',
-        { className: 'pv_actRow' },
-        react.createElement('button', { type: 'button', className: 'pv_action', style: { marginLeft: '0' }, disabled: test.phase === 'run', onClick: runTest },
-          test.phase === 'run' ? t('prov.discovering') : t('prov.discover')),
+          : roField(form.baseURL),
+        // 「查询配置」同样从底部按钮行挪到 API 地址旁（用户 09-23 批注）
         react.createElement('button', {
           type: 'button',
           className: 'pv_action',
+          style: { marginLeft: '0' },
           title: t('prov.queryConfigTip'),
           onClick: function () {
             var pickedPreset = presets.find(function (p: ProviderPreset) { return p.id === form.presetId })
@@ -1057,9 +1045,37 @@ function AddProviderPanel(props: AddProviderPanelProps) {
             setQueryCookieOpen(true)
           },
         }, t('prov.queryConfig')),
+      ),
+      react.createElement(
+        'div',
+        { className: 'pv_line pv_row' },
+        react.createElement('span', null, t('prov.protocol')),
+        customPicked
+          ? pvSelectView({
+              open: apiOpen,
+              value: form.api,
+              // 文案走 providerApiLabel：OpenAI Completions / Anthropic Messages
+              // （用户 09-23 批注；provider 编辑页的协议下拉也照此对齐）
+              options: PROVIDER_API_OPTIONS.map(function (option: string) {
+                return { value: option, label: providerApiLabel(option) }
+              }),
+              onToggle: function () { setApiOpen(!apiOpen) },
+              onPick: function (value: string) {
+                setApiOpen(false)
+                patchForm({ api: value })
+              },
+            })
+          : roField(providerApiLabel(form.api)),
+      ),
+      react.createElement(
+        'div',
+        // 发现模型 / 查询配置 已各自挪到 API 密钥 / API 地址行旁（用户 09-23 批注），
+        // 底部只剩「添加到列表」（左对齐）与「取消」（靠右）
+        { className: 'pv_actRow' },
         react.createElement('button', {
           type: 'button',
           className: 'pv_action',
+          style: { marginLeft: '0' },
           disabled: busy || test.phase !== 'ok',
           title: test.phase === 'ok' ? '' : t('prov.needTestFirst'),
           onClick: add,
@@ -3122,9 +3138,11 @@ export function ProviderSettingsSection() {
             pvSelectView({
               open: apiSelOpenId === account.id,
               value: editForm.api,
+              // 文案走 providerApiLabel（用户 09-23 批注：provider 编辑页的协议文案与
+              // 添加面板对齐）——不再显示 openai-completions 这种原始串
               options: [{ value: '', label: t('edit.apiDefault') }].concat(
                 PROVIDER_API_OPTIONS.map(function (option: string) {
-                  return { value: option, label: option }
+                  return { value: option, label: providerApiLabel(option) }
                 }),
               ),
               onToggle: function () { setApiSelOpenId(apiSelOpenId === account.id ? null : account.id) },

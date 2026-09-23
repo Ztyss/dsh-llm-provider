@@ -260,6 +260,8 @@ var css =
   'color:var(--dsw-alias-label-secondary)}' +
   '.pv_selChev{display:inline-flex;color:var(--dsw-alias-label-tertiary)}' +
   '.pv_selOpen .pv_selChev{color:var(--dsw-alias-label-primary)}' +
+  // 供应商筛选下拉展开时箭头同款加深（它复用了 .pv_selChev，用户 09-23 批注：两个下拉一致）
+  '.pv_pickOpen .pv_selChev{color:var(--dsw-alias-label-primary)}' +
   // 弹层左右锚定容器（left:0;right:0）= 外沿与触发器严格等宽。不用 min-width:100%：
   // 页面没有全局 border-box，content-box 下弹层外沿会多出自身 padding+border（右侧冒出
   // 10px，用户批注：下拉框和协议填写框长度未对齐）。选项超宽时靠 overflow:auto 兜底。

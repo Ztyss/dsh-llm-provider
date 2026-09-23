@@ -709,8 +709,9 @@ i18nCheck('tf 显式传 undefined/null 当空串',
 i18nCheck('tf 不传 params 也不炸（无占位模板）', typeof tf === 'function' && tf('nav') === '模型服务')
 i18nCheck('tf 传 null 也不炸', typeof tf === 'function' && tf('nav', null) === '模型服务')
 // 正则元字符与 $& 这类替换串特殊 token：必须当字面量，不能被 replace 语义吞掉
+// 用 toast.refreshed（{name} 占位）验：删掉 prov.credStoredAs 后这里不能再引用它
 i18nCheck('tf 参数里的正则元字符按字面处理',
-  typeof tf === 'function' && tf('prov.credStoredAs', { ref: 'A$&(B)[C]\D+*?' }) === '密钥存为 A$&(B)[C]\D+*?')
+  typeof tf === 'function' && tf('toast.refreshed', { name: 'A$&(B)[C]\D+*?' }) === 'A$&(B)[C]\D+*? 余量已刷新')
 i18nCheck('tf 参数里的 $& 不被当成替换模式展开',
   typeof tf === 'function' && tf('toast.refreshed', { name: '$&' }) === '$& 余量已刷新')
 i18nCheck('tf 参数里的花括号原样带出',

@@ -36,6 +36,16 @@ export interface ProviderEditForm {
 /** 可编辑的协议种类（与官方 pi-ai 的 adapter 名一致）。 */
 export const PROVIDER_API_OPTIONS: readonly string[] = ['openai-completions', 'anthropic-messages']
 
+/**
+ * 协议的人类可读文案：界面上不裸露 api 串（用户 09-23 批注）。
+ * 认不出的值原样返回——自定义/中转路由可能写了别的 adapter 名。
+ */
+export function providerApiLabel(api: string): string {
+  if (api === 'anthropic-messages') return 'Anthropic Messages'
+  if (api === 'openai-completions') return 'OpenAI Completions'
+  return api
+}
+
 function str(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }

@@ -160,6 +160,52 @@ const PROBE_PAGE_FN = `
     selMenu: styleOf(document.querySelector('.pv_selMenu')),
     selOptionOn: styleOf(document.querySelector('.pv_selOptionOn')),
     selOptionPlain: styleOf(document.querySelector('.pv_selOption:not(.pv_selOptionOn)')),
+    // provider 编辑页协议下拉的选项文案（item 7）——只在菜单打开的那次量测里非空
+    protoOptionLabels: Array.from(document.querySelectorAll('.pv_selOption')).map(function (el) {
+      return (el.textContent || '').trim()
+    }),
+    // 供应商下拉的箭头：item 1 要求与协议下拉同一只官方 caretSvg
+    pickCaretSvg: (function () {
+      var btn = document.querySelector('.pv_pickBtn')
+      return btn === null ? null : btn.querySelector('svg') !== null
+    })(),
+    // 添加供应商面板（按钮行那两个已各就各位，靠「发现模型」「查询配置」认出它）
+    addPanel: (function () {
+      var panels = Array.from(document.querySelectorAll('.pv_pc'))
+      var panel = panels.find(function (el) { return (el.textContent || '').indexOf('发现模型') !== -1 }) || null
+      if (panel === null) return null
+      function row(labelText) {
+        var rows = Array.from(panel.querySelectorAll('.pv_line'))
+        return rows.find(function (r) {
+          var first = r.firstElementChild
+          return first !== null && (first.textContent || '').trim() === labelText
+        }) || null
+      }
+      function rowInfo(labelText) {
+        var r = row(labelText)
+        if (r === null) return null
+        var input = r.querySelector('input')
+        var buttons = Array.from(r.querySelectorAll('button.pv_action')).map(function (b) {
+          var box = b.getBoundingClientRect()
+          return { text: (b.textContent || '').trim(), disabled: b.disabled === true, x: box.x, right: box.right }
+        })
+        return { hasInput: input !== null, buttons: buttons, text: (r.textContent || '').slice(0, 40) }
+      }
+      var acts = panel.querySelector('.pv_actRow')
+      var actButtons = acts === null ? [] : Array.from(acts.querySelectorAll('button.pv_action')).map(function (b) {
+        var box = b.getBoundingClientRect()
+        return { text: (b.textContent || '').trim(), x: box.x, right: box.right }
+      })
+      return {
+        text: panel.textContent || '',
+        routeId: rowInfo('路由 ID'),
+        apiKey: rowInfo('API 密钥'),
+        apiBase: rowInfo('API 地址'),
+        protocol: rowInfo('协议'),
+        actRowLeft: acts === null ? null : acts.getBoundingClientRect().x,
+        actButtons: actButtons,
+      }
+    })(),
     pickBtn: styleOf(document.querySelector('.pv_pickBtn')),
     pickMenu: styleOf(document.querySelector('.pv_pickMenu')),
     // StepFun 卡标题行的额度 chip：夹具必须复刻 stepfun 适配器真实形状（harness.html 注释）
@@ -318,6 +364,14 @@ const pickState = await evalJs(`(function () { ${PROBE_PAGE_FN} })()`)
 console.log('供应商筛选展开态:', JSON.stringify({ pickBtn: pickState.pickBtn, pickMenu: pickState.pickMenu }, null, 1))
 
 await shotPage('page-03-pick-menu')
+// 收起供应商下拉再拍添加面板：菜单是绝对定位浮层，会把下面几行的按钮整个盖住
+await evalJs(`(function () { var btn = document.querySelector('.pv_pickBtn'); if (btn !== null) btn.click(); return true })()`)
+await sleep(150)
+
+// ---- 添加供应商面板：未选供应商时的四行闸门 + 按钮就位（item 2/3/4/5/6）----
+const addState = await evalJs(`(function () { ${PROBE_PAGE_FN} })()`)
+console.log('添加面板（未选供应商）:', JSON.stringify(addState.addPanel, null, 1))
+await shotPage('page-05-add-panel')
 
 console.log('\n=== rowpolish 断言 ===')
 // 1. 聚焦描边 = 协议展开态那条 1px 深色 border，不再叠 inset 阴影
@@ -395,6 +449,41 @@ check('StepFun 卡有 30d 档额度 chip', stepChipLabels.indexOf('30d') !== -1,
 check('StepFun 卡不再出现 Step / Remain 这类标签',
   stepChipLabels.every((label) => label !== 'Step' && label !== 'Remaining' && label !== 'Remain'),
   `labels=${JSON.stringify(stepChipLabels)}`)
+
+// 8. 添加供应商面板（用户 09-23 批注 item 1-6）
+const panel = addState.addPanel
+check('添加面板渲染出来了', panel !== null)
+if (panel !== null) {
+  // item 2：没选供应商时四项都不可填——不可填 = 那个字段压根不是 input（是 span）
+  check('未选供应商：路由 ID 不可填', panel.routeId !== null && panel.routeId.hasInput === false, JSON.stringify(panel.routeId))
+  check('未选供应商：API 密钥不可填（原来能打字）', panel.apiKey !== null && panel.apiKey.hasInput === false, JSON.stringify(panel.apiKey))
+  check('未选供应商：API 地址不可填（原来能打字）', panel.apiBase !== null && panel.apiBase.hasInput === false, JSON.stringify(panel.apiBase))
+  check('未选供应商：协议不可填', panel.protocol !== null && panel.protocol.hasInput === false, JSON.stringify(panel.protocol))
+  // item 4：不显示「密钥存为」
+  check('面板里没有「密钥存为」那行', String(panel.text).indexOf('密钥存为') === -1)
+  // item 5：按钮就位
+  const keyBtns = panel.apiKey === null ? [] : panel.apiKey.buttons
+  const baseBtns = panel.apiBase === null ? [] : panel.apiBase.buttons
+  check('「发现模型」贴在 API 密钥行', keyBtns.some(function (b) { return b.text === '发现模型' }), JSON.stringify(keyBtns))
+  check('「查询配置」贴在 API 地址行', baseBtns.some(function (b) { return b.text === '查询配置' }), JSON.stringify(baseBtns))
+  check('没选供应商时「发现模型」置灰', keyBtns.every(function (b) { return b.text !== '发现模型' || b.disabled === true }))
+  // item 6：添加到列表左对齐（贴动作行左缘），取消仍靠右
+  const acts = panel.actButtons
+  const addBtn = acts.find(function (b) { return b.text === '添加到列表' })
+  const cancelBtn = acts.find(function (b) { return b.text === '取消' })
+  check('底部只剩「添加到列表」与「取消」两个按钮', acts.length === 2, JSON.stringify(acts))
+  check('「添加到列表」左对齐', addBtn !== undefined && panel.actRowLeft !== null && addBtn.x - panel.actRowLeft <= 12,
+    `x=${addBtn === undefined ? '?' : addBtn.x.toFixed(1)} rowLeft=${panel.actRowLeft}`)
+  check('「取消」仍在右侧', cancelBtn !== undefined && addBtn !== undefined && cancelBtn.x > addBtn.x)
+}
+// item 1：供应商下拉箭头是官方 caretSvg（与协议下拉同一只）
+check('供应商下拉箭头用官方 caretSvg', addState.pickCaretSvg === true, `svg=${addState.pickCaretSvg}`)
+// item 7：provider 编辑页协议下拉的选项文案（菜单只在打开时有 .pv_selOption，
+// 用第 4 步菜单还开着时那次量测 openState，不能用收尾的 addState）
+const protoLabels = openState.protoOptionLabels
+check('编辑页协议选项含 OpenAI Completions / Anthropic Messages',
+  protoLabels.indexOf('OpenAI Completions') !== -1 && protoLabels.indexOf('Anthropic Messages') !== -1,
+  JSON.stringify(protoLabels))
 
 ws.close()
 if (failures.length > 0) {
