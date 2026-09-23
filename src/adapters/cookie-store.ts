@@ -7,14 +7,16 @@
  *   - 范式对齐 .credentials.yaml：顶层 `version` + 扁平键值表；
  *   - 键 = 凭据 ref 名（如 `STEPFUN_CONSOLE_COOKIE`，由路由 ID 派生）——与「查询配置」
  *     写入的凭据一一对应，新 provider / 新 cookie 直接加键；
- *   - 每条 `{ value, updatedAt }`：value 是整串 Cookie 头；updatedAt 记最近一次
- *     写入（种子保存或续期轮换），排查会话问题时知道值的新旧；
- *   - 解析只支持本文件手写子集（两空格键 + value/updatedAt 行），值一律 JSON 双引号
+ *   - 每条 `{ value, updatedAt, seedSha? }`：value 是整串 Cookie 头；updatedAt 记最近一次
+ *     写入（种子保存或续期轮换）；seedSha 记最近一次「种子凭据」的指纹——同一凭据的
+ *     后续刷新不再重复落种（否则轮换 pair 被静态凭据反复覆盖，文件每次刷新都变）；
+ *   - 解析只支持本文件手写子集（两空格键 + value/updatedAt/seedSha 行），值一律 JSON 双引号
  *     标量（合法 YAML，转义由 JSON.stringify 保证）；手改文件时容忍注释、单引号、
  *     裸标量，解析不出的行跳过——坏行不炸查询；
  *   - 旧版单槽 JSON 会话文件（stepfun-console-session.json）由调用方经
- *     loadCookieValue 的 legacy 参数迁移：首次读取自动并入新文件，写成功后移除旧文件。
+ *     readCookieEntry 的 legacy 参数迁移：首次读取自动并入新文件，写成功后移除旧文件。
  */
+import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveDshHome } from '../dsh-home.js'
@@ -22,6 +24,8 @@ import { resolveDshHome } from '../dsh-home.js'
 export interface CookieEntry {
   value: string
   updatedAt?: string
+  /** 最近一次「种子凭据」的指纹（hashCookieValue）：同凭据刷新去重的依据。 */
+  seedSha?: string
 }
 
 export function cookieStoreFile(): string {
@@ -68,13 +72,16 @@ export function parseCookieStore(text: string): Record<string, CookieEntry> {
       continue
     }
     if (current === null) continue
-    const fieldMatch = line.match(/^(value|updatedAt):\s*(.*)$/)
+    const fieldMatch = line.match(/^(value|updatedAt|seedSha):\s*(.*)$/)
     if (fieldMatch === null) continue
     const parsed = parseScalar(fieldMatch[2])
     if (parsed === undefined) continue
     const entry = out[current] ?? (out[current] = { value: '' })
     if (fieldMatch[1] === 'value') entry.value = parsed
-    else if (parsed !== '') entry.updatedAt = parsed
+    else if (parsed !== '') {
+      if (fieldMatch[1] === 'updatedAt') entry.updatedAt = parsed
+      else entry.seedSha = parsed
+    }
   }
   for (const key of Object.keys(out)) {
     if (out[key].value === '') delete out[key]
@@ -89,6 +96,7 @@ export function serializeCookieStore(entries: Record<string, CookieEntry>): stri
     lines.push('  ' + key + ':')
     lines.push('    value: ' + JSON.stringify(entries[key].value))
     lines.push('    updatedAt: ' + JSON.stringify(entries[key].updatedAt ?? ''))
+    if (entries[key].seedSha !== undefined) lines.push('    seedSha: ' + JSON.stringify(entries[key].seedSha))
   }
   return lines.join('\n') + '\n'
 }
@@ -106,33 +114,42 @@ function readStore(): Record<string, CookieEntry> {
   return readStoreAt(cookieStoreFile())
 }
 
+/** 种子凭据指纹：sha256 前 16 位（同一凭据去重判断用）。 */
+export function hashCookieValue(value: string): string {
+  return createHash('sha256').update(value).digest('hex').slice(0, 16)
+}
+
 /**
- * 取某 ref 的 cookie 值。新存储没有时按调用方给的 legacy 源迁移
+ * 读某 ref 的完整条目（含 seedSha）。新存储没有时按调用方给的 legacy 源迁移
  * （stepfun 旧版单槽 JSON）：并入后移除；写失败保留旧文件，下次再迁（幂等）。
  */
-export function loadCookieValue(ref: string, legacy?: { path: string; read: () => string | undefined }): string | undefined {
-  const existing = readStoreAt(cookieStoreFile())[ref]?.value
-  if (existing !== undefined && existing !== '') return existing
+export function readCookieEntry(ref: string, legacy?: { path: string; read: () => string | undefined }): CookieEntry | undefined {
+  const existing = readStore()[ref]
+  if (existing !== undefined && existing.value !== '') return existing
   if (legacy === undefined) return undefined
   const value = legacy.read()
   if (value === undefined || value === '') return undefined
-  if (saveCookieValue(ref, value) !== true) return value
+  if (writeCookieValue(ref, value) !== true) return { value }
   try {
     rmSync(legacy.path, { force: true })
   } catch {
     /* 删不掉就算了：新存储已生效，旧文件下次迁移是幂等的 */
   }
-  return value
+  return { value, updatedAt: new Date().toISOString() }
 }
 
 /**
  * 写某 ref 的 cookie 值（读-改-写合并，不动其它 provider 的键）。
+ * @param seedSha 种子凭据指纹：续期轮换写带上它（轮换值是同一种子的派生 lineage），
+ *        纯值写省略即丢弃。
  * @returns 是否落盘成功（false = 安全区只读等；调用方本轮用内存值即可）。
  */
-export function saveCookieValue(ref: string, value: string): boolean {
+export function writeCookieValue(ref: string, value: string, seedSha?: string): boolean {
   try {
     const entries = readStore()
-    entries[ref] = { value, updatedAt: new Date().toISOString() }
+    const entry: CookieEntry = { value, updatedAt: new Date().toISOString() }
+    if (seedSha !== undefined && seedSha !== '') entry.seedSha = seedSha
+    entries[ref] = entry
     // bridge 目录可能尚不存在（全新机器首次保存、测试临时 DSH_HOME）：先建再写
     mkdirSync(join(resolveDshHome(), 'llm-provider-bridge'), { recursive: true })
     writeFileSync(cookieStoreFile(), serializeCookieStore(entries))

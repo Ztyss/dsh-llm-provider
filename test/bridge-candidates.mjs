@@ -29,12 +29,14 @@ function check(name, cond, extra) {
 // ---- 1. 候选清单：合并版四档（vendor 下载档 → 兜底依赖 → dsh-app → dsh）----
 // vendor 档默认不落地（下载 opt-in，DSH_PROVIDER_UPDATE=on 才启用），但档位保留；
 // 宿主档（dsh-app / dsh）永远优先级最低的那两档之前是 vendor，这是既定的候选顺序。
-const report = piAiCandidates()
+// 显式传 'dsh'：无参调用会读线上偏好（设置页开关 ON 时多出 safe-* 档），那是环境态，
+// 不该影响这里的 key 命名契约断言（09-24 修复：曾随真机开关状态时红时绿）。
+const report = piAiCandidates('dsh')
 check('候选报告是数组', Array.isArray(report) && report.length > 0)
 check('每条候选都带路径', report.every((c) => typeof c.root === 'string' && c.root !== ''))
 check('每条候选都带 key 与版本/来源文字', report.every((c) => typeof c.key === 'string' && typeof c.version === 'string'))
 check('含兜底依赖档（opt-in 路径的档位保留）', report.some((c) => c.key === 'dependency'))
-check('宿主档的 key 为 dsh-app / dsh', report.filter((c) => c.key !== 'dependency').every((c) => c.key === 'dsh-app' || c.key === 'dsh'))
+check('宿主档的 key 为 dsh-app / dsh', report.filter((c) => c.key !== 'dependency').every((c) => c.key === 'dsh-app' || c.key === 'dsh'), JSON.stringify(report.map((c) => c.key)))
 
 // 本插件的 vendor 根：用它区分「插件自己的目录」与「宿主的目录」
 const vendorRoot = join(root, 'vendor')

@@ -95,7 +95,9 @@ check('探针目录用完即拆，不在真实 bridge 目录里堆积', probeLef
 // 合并版候选策略：四档（vendor 下载档新→旧 → vendor 兜底依赖 → dsh-app 安装树 → dsh bundle 链）。
 // vendor 档默认不落地（下载由设置页开关控制，不再有 env opt-in），但档位本身保留——
 // 那是「未来切换插件管理的更新版 pi-ai」的既定路径。
-const candidates = piAiCandidates()
+// 显式传 'dsh'：无参调用读线上偏好（开关 ON 时多出 safe-* 档），那是环境态，不该
+// 影响 key 命名契约断言（09-24 修复：曾随真机开关状态时红时绿）。
+const candidates = piAiCandidates('dsh')
 check('候选里没有内容残缺的下载档（在册的都有 package.json）', candidates.filter((c) => /^\d+\.\d+\.\d+/.test(c.key)).every((c) => existsSync(join(c.root, 'package.json'))))
 check('候选含兜底依赖档（opt-in 路径的档位保留）', candidates.some((c) => c.key === 'dependency'))
 check('宿主档的 key 为 dsh-app / dsh', candidates.filter((c) => c.key !== 'dependency').every((c) => c.key === 'dsh-app' || c.key === 'dsh'))

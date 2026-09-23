@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import adapter, { planFailureNote, planWindowsFrom, withRotatedToken } from '../lib/adapters/stepfun.js'
-import { loadCookieValue, parseCookieStore, saveCookieValue, serializeCookieStore } from '../lib/adapters/cookie-store.js'
+import { parseCookieStore, readCookieEntry, serializeCookieStore, writeCookieValue } from '../lib/adapters/cookie-store.js'
 import { resolveDshHome } from '../lib/dsh-home.js'
 
 // ---- 存储隔离（根治）：DSH_HOME 指向一次性临时目录。此前测试在真实 bridge 目录上
@@ -170,16 +170,28 @@ assert.equal(parsed['GOOD_PROVIDER_COOKIE'].value, 'bare-jar', '裸标量原样'
 const tricky = { A_COOKIE: { value: 'he said "hi"; a\\b; tail;', updatedAt: '2026-01-01T00:00:00.000Z' }, B_COOKIE: { value: 'x' } }
 assert.deepEqual(parseCookieStore(serializeCookieStore(tricky)), tricky, 'round trip 无损')
 // 落盘合并：先写 A 再写 B，A 保留；updatedAt 自动生成
-assert.equal(saveCookieValue('TESTPROVIDER_CONSOLE_COOKIE', 'jar-a'), true, '落盘成功')
-assert.equal(saveCookieValue('OTHERPROVIDER_OTHER_COOKIE', 'jar-b'), true)
+assert.equal(writeCookieValue('TESTPROVIDER_CONSOLE_COOKIE', 'jar-a'), true, '落盘成功')
+assert.equal(writeCookieValue('OTHERPROVIDER_OTHER_COOKIE', 'jar-b'), true)
 const onDisk = parseCookieStore(readFileSync(storePath, 'utf8'))
 assert.equal(onDisk['TESTPROVIDER_CONSOLE_COOKIE'].value, 'jar-a', '第二次写不覆盖第一次的键')
 assert.equal(onDisk['OTHERPROVIDER_OTHER_COOKIE'].value, 'jar-b')
 assert.match(onDisk['TESTPROVIDER_CONSOLE_COOKIE'].updatedAt ?? '', /^\d{4}-\d{2}-\d{2}T/, 'updatedAt 自动记录')
 // 迁移：旧版单槽 JSON → 并入新存储，写成功后旧文件移除
 writeFileSync(sessionPath, JSON.stringify({ cookie: 'legacy-jar' }))
-assert.equal(loadCookieValue('LEGACYPROVIDER_CONSOLE_COOKIE', { path: sessionPath, read: () => JSON.parse(readFileSync(sessionPath, 'utf8')).cookie }), 'legacy-jar', '迁移读出旧值')
+assert.equal(readCookieEntry('LEGACYPROVIDER_CONSOLE_COOKIE', { path: sessionPath, read: () => JSON.parse(readFileSync(sessionPath, 'utf8')).cookie })?.value, 'legacy-jar', '迁移读出旧值')
 assert.equal(parseCookieStore(readFileSync(storePath, 'utf8'))['LEGACYPROVIDER_CONSOLE_COOKIE'].value, 'legacy-jar', '旧值并入新存储')
 assert.equal(existsSync(sessionPath), false, '迁移成功后旧文件移除')
+// seedSha：同一凭据去重的依据——轮换写保留指纹（轮换值是种子的派生），纯值写丢弃
+writeCookieValue('SEEDSHA_TEST_COOKIE', 'seed-jar', 'abc123')
+const seeded = readCookieEntry('SEEDSHA_TEST_COOKIE')
+assert.equal(seeded.value, 'seed-jar')
+assert.equal(seeded.seedSha, 'abc123')
+writeCookieValue('SEEDSHA_TEST_COOKIE', 'rotated-jar', 'abc123')
+assert.equal(readCookieEntry('SEEDSHA_TEST_COOKIE').value, 'rotated-jar')
+assert.equal(readCookieEntry('SEEDSHA_TEST_COOKIE').seedSha, 'abc123', '轮换写保留 seedSha')
+writeCookieValue('SEEDSHA_TEST_COOKIE', 'plain-jar')
+const plain = readCookieEntry('SEEDSHA_TEST_COOKIE')
+assert.equal(plain.value, 'plain-jar')
+assert.equal(plain.seedSha, undefined, '纯值写不带 seedSha')
 
 console.log('stepfun-billing: match/分通道/钱包解析/plan 降级/套餐窗口/统一 Cookie 存储 断言全过')

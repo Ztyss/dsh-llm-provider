@@ -31,7 +31,7 @@ import { join } from 'node:path'
 import { account, asIso, authFailed, clampPercent, describeHttpError, fail, formatAmount, getJson, num, originOf, percentLeftOf, TIMEOUT_MS } from './shared.js'
 import { asRecord, readString } from '../types.js'
 import { resolveDshHome } from '../dsh-home.js'
-import { loadCookieValue, saveCookieValue } from './cookie-store.js'
+import { hashCookieValue, readCookieEntry, writeCookieValue } from './cookie-store.js'
 import type { AccountStatus, AdapterQueryInput, BalanceRow, BillingAdapter, QuotaWindow } from './shared.js'
 
 const CONSOLE_ORIGIN = 'https://platform.stepfun.com'
@@ -206,10 +206,20 @@ export default {
       // 存储键 = 凭据 ref 名（index.ts 随 extras 下发；裸调用按同一规则派生兜底）
       const ref = readString(extras['consoleCookieRef']) ?? id.toUpperCase().replace(/[^A-Z0-9]/g, '_') + '_CONSOLE_COOKIE'
       // 手动粘贴（查询配置）优先且作为新种子——但必须含 Oasis-Token 段才算可用 jar：
-      // 凭据里残留的碎片（如只贴了 Oasis-Webid 一枚）不能覆盖统一存储里已轮换的好 jar
+      // 凭据里残留的碎片（如只贴了 Oasis-Webid 一枚）不能覆盖统一存储里已轮换的好 jar。
       const seed = consoleCookie !== undefined && consoleCookie.includes('Oasis-Token=') ? consoleCookie : undefined
-      // 否则读统一 Cookie 存储（含轮换后的 pair；旧版单槽会话文件在这次读取里自动迁移进新文件）
-      let cookie = seed ?? loadCookieValue(ref, { path: legacySessionFile(), read: readLegacySession })
+      const seedSha = seed !== undefined ? hashCookieValue(seed) : undefined
+      const stored = readCookieEntry(ref, { path: legacySessionFile(), read: readLegacySession })
+      // 同一凭据只落种一次（记 seedSha）：此后刷新直接用存储值（可能已被续期轮换更新）。
+      // 此前每次刷新都把静态凭据原样写回——续期轮换的新 pair 被覆盖，一次刷新 = 两次
+      // 写盘 + 一次白做的续期 RPC，.cookies.yaml 也跟着每次刷新都变（用户批注 09-24 问题 2）
+      let cookie: string | undefined
+      if (seed !== undefined && stored?.seedSha !== seedSha) {
+        writeCookieValue(ref, seed, seedSha)
+        cookie = seed
+      } else {
+        cookie = stored?.value ?? seed
+      }
       if (cookie === undefined || cookie === '') {
         return account(id, displayName, 'quota', {
           baseUrl: CONSOLE_ORIGIN,
@@ -219,14 +229,14 @@ export default {
           note: '查询方式为 Step Plan：请点「查询配置」保存控制台 Cookie 后刷新',
         })
       }
-      if (seed !== undefined) saveCookieValue(ref, seed)
 
       let plan = planQuotaViaCurl(cookie)
       if (plan.note !== undefined) {
         // 会话段过期等鉴权失败 → 自动续期一次（长效段 27 天内有效），成功就重试
         const rotated = refreshSession(cookie)
         if (rotated !== undefined) {
-          saveCookieValue(ref, rotated)
+          // 轮换写带同一种子指纹：轮换值是同一种子的派生，后续刷新继续命中存储值
+          writeCookieValue(ref, rotated, stored?.seedSha ?? seedSha)
           cookie = rotated
           plan = planQuotaViaCurl(cookie)
         }
