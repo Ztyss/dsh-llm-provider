@@ -2,7 +2,7 @@
  * StepFun 开放平台（阶跃星辰）：双通道额度查询，按 API 地址自动选择。
  *
  * 通道判定（用户需求：根据实际 API 地址选择查询方式）：
- *   - baseURL 含 step_plan（openai 的 /step_plan/v1、anthropic 的 /step_plan 都算）
+ *   - baseURL 含 step_plan（openai 的 /step_plan/v1、anthropic 的 /step_plan 都算，域名限 api.stepfun.com）
  *     → **Step Plan 通道**：查套餐点数，不走钱包；
  *   - 其余（https://api.stepfun.com/v1、anthropic 裸域 https://api.stepfun.com）
  *     → **钱包通道**：GET /v1/accounts —— 预付费钱包余额（剩余/现金/赠金，人民币元）。
@@ -192,19 +192,19 @@ export default {
   id: 'stepfun',
   label: 'StepFun 开放平台',
   match(providerId: string, baseUrl: string | undefined): boolean {
-    // provider id 可改名，不作判据；baseURL 官方双域名才是稳定依据（api.stepfun.com / api.stepfun.ai）。
-    return typeof baseUrl === 'string' && /stepfun\.(com|ai)/i.test(baseUrl)
+    // provider id 可改名，不作判据；baseURL 只认 api.stepfun.com。
+    return typeof baseUrl === 'string' && /stepfun\.com/i.test(baseUrl)
   },
 
   queryConfigNeeded(baseUrl: string | undefined): boolean {
-    return /step_plan/i.test(baseUrl ?? '')
+    return typeof baseUrl === 'string' && baseUrl.includes('api.stepfun.com') && /step_plan/i.test(baseUrl)
   },
 
   async query({ id, displayName, key, baseUrl, extras }: AdapterQueryInput): Promise<AccountStatus> {
     const origin = originOf(baseUrl)
     // 查询方式按 API 地址自动分通道：含 step_plan = Step Plan 点数；其余 = 预付费钱包
     const isPlanChannel = /step_plan/i.test(baseUrl ?? '')
-    const base = origin !== undefined && /stepfun\.(com|ai)/i.test(origin) ? origin : 'https://api.stepfun.com'
+    const base = origin !== undefined && /stepfun\.com/i.test(origin) ? origin : 'https://api.stepfun.com'
 
     // ---------- Step Plan 通道：套餐点数（控制台 cookie + 自动续期） ----------
     if (isPlanChannel) {
