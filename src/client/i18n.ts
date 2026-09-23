@@ -111,7 +111,7 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'edit.badKeyEnv': '凭据名只能包含大写字母、数字与下划线',
     'prov.save': '保存',
   'prov.queryConfig': '查询配置',
-  'prov.queryConfigTip': '根据 API 地址选择额度查询方式（含 step_plan 的走 Step Plan 点数）',
+  'prov.queryConfigTip': '根据 API 地址选择额度查询方式',
   // 标签列只有 72px 宽：写「控制台 Cookie」会折成两行、把行高顶翻（用户 09-23 批注改 Cookie）
   'prov.queryCookieLabel': 'Cookie',
   'prov.queryCookiePlaceholder': '粘贴控制台请求的整串 Cookie 头',
@@ -321,7 +321,7 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'edit.badKeyEnv': 'Credential name may only contain uppercase letters, digits and underscores',
     'prov.save': 'Save',
   'prov.queryConfig': 'Query Config',
-  'prov.queryConfigTip': 'Picks the quota query by API base URL (step_plan uses Step Plan points)',
+  'prov.queryConfigTip': 'Picks the quota query by API base URL',
   'prov.queryCookieLabel': 'Cookie',
   'prov.queryCookiePlaceholder': 'Paste the full Cookie header of a console request',
   'prov.queryCookieTip': 'Step Plan query: paste the full Cookie header of a console request (F12 → Network → Cookie request header); saving writes the CONSOLE_COOKIE credential',
