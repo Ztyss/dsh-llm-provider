@@ -19,7 +19,6 @@ import {
 } from '../lib/bridge.js'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const statusFile = join(root, 'vendor', 'status.json')
 
 let failures = 0
 function check(name, cond, extra) {
@@ -32,16 +31,21 @@ check('空状态读作 dsh（缺省只用 DSH 自带）', readPiAiPreference({})
 check('piAiPreference=latest 读作 latest', readPiAiPreference({ piAiPreference: 'latest' }) === 'latest')
 check('脏值回落到 dsh', readPiAiPreference({ piAiPreference: 'yes' }) === 'dsh')
 
-// ---- 2. 偏好的持久化：拨 ON/OFF 落盘 vendor/status.json（gitignore 的运行时状态）----
-const before = existsSync(statusFile) ? readFileSync(statusFile, 'utf8') : undefined
+// ---- 2. 偏好的持久化：拨 ON/OFF 落盘安全区 vendor-status.json（DSH_HOME 沙箱内，
+// 与真实 bridge 目录零接触；此前摸真包 vendor/status.json 的挪走-恢复模式已废弃——
+// 会与运行中的宿主竞争，09-24 在 cookie 存储上实际踩过）----
+const prefSandbox = mkdtempSync(join(tmpdir(), 'dsh-pref-store-'))
+process.env.DSH_HOME = prefSandbox
+// statusFile() 每次调用现场 resolve：注入即时生效
+const safeStatusFile = join(prefSandbox, 'llm-provider-bridge', 'vendor-status.json')
 try {
   setPiAiPreference('latest')
-  check('拨 ON 后 status.json 落盘 latest', readPiAiPreference(JSON.parse(readFileSync(statusFile, 'utf8'))) === 'latest')
+  check('拨 ON 后安全区状态文件落盘 latest', readPiAiPreference(JSON.parse(readFileSync(safeStatusFile, 'utf8'))) === 'latest')
   setPiAiPreference('dsh')
-  check('拨 OFF 后 status.json 回落 dsh', readPiAiPreference(JSON.parse(readFileSync(statusFile, 'utf8'))) === 'dsh')
+  check('拨 OFF 后安全区状态文件回落 dsh', readPiAiPreference(JSON.parse(readFileSync(safeStatusFile, 'utf8'))) === 'dsh')
+  check('包内 vendor/status.json 不再被写', existsSync(join(root, 'vendor', 'status.json')) === false || JSON.parse(readFileSync(join(root, 'vendor', 'status.json'), 'utf8'))['piAiPreference'] === undefined)
 } finally {
-  if (before === undefined) rmSync(statusFile, { force: true })
-  else writeFileSync(statusFile, before)
+  delete process.env.DSH_HOME
 }
 
 // ---- 3. 安全区候选档：纯函数（版本清单 → 候选），新 → 旧 ----

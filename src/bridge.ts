@@ -9,7 +9,8 @@
  *   指向选中的那份 pi-ai，Node 的解析就会把拷贝副本接到它上面。
  *   结果：模型目录 + wire 协议实现来自上游最新，dsh 的转换胶水层保持稳定。
  *
- * 选哪份 pi-ai 由**设置页开关**（`piAiPreference`，落盘 vendor/status.json）决定：
+ * 选哪份 pi-ai 由**设置页开关**（`piAiPreference`，落盘安全区 vendor-status.json，见
+ * statusFile()）决定：
  *   - 'dsh'（缺省）：只用 DSH 自带那份，安全区里的自有版本一概不入候选链；
  *   - 'latest'：开关拨 ON 时由 updater 下载进安全区
  *     （`$DSH_HOME/llm-provider-bridge/pi-ai/<版本>/`，见 safePiAiDir），候选链最前面
@@ -32,7 +33,23 @@ import { asRecord, readString, type AnyRecord } from './types.js'
 const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 export const vendorDir = join(pluginRoot, 'vendor')
 const piAiVersionsDir = join(vendorDir, 'pi-ai')
-const statusFile = join(vendorDir, 'status.json')
+
+/**
+ * vendor 状态文件：`$DSH_HOME/llm-provider-bridge/vendor-status.json`（安全区）。
+ *
+ * 曾放插件包 vendor/status.json——插件包重装/整棵删时，里面的「启用最新版 pi-ai」
+ * 开关偏好跟着被清掉（用户批注 09-24：状态不该跟随包走）。安全区与下载副本同域，
+ * 重装插件后偏好与已下载版本双双无感保留。
+ * 每次调用现场 resolve（不缓存模块级常量）：测试注入 DSH_HOME 即时生效。
+ */
+function statusFile(): string {
+  return join(resolveDshHome(), 'llm-provider-bridge', 'vendor-status.json')
+}
+
+/** 过渡版包内状态文件（vendor/status.json，gitignore 的运行时状态）：读取时一次性并入安全区。 */
+function legacyStatusFile(): string {
+  return join(vendorDir, 'status.json')
+}
 
 /**
  * 插件私有安全区（`$DSH_HOME/llm-provider-bridge`，默认 `~/.dsh/llm-provider-bridge`）。
@@ -844,7 +861,22 @@ export function piAiCandidates(preference?: PiAiPreference): PiAiCandidate[] {
 
 function readStatus(): AnyRecord {
   try {
-    return asRecord(JSON.parse(readFileSync(statusFile, 'utf8')))
+    return asRecord(JSON.parse(readFileSync(statusFile(), 'utf8')))
+  } catch {
+    /* 安全区文件不存在/坏 → 尝试从包内过渡版文件迁移 */
+  }
+  try {
+    const legacy = asRecord(JSON.parse(readFileSync(legacyStatusFile(), 'utf8')))
+    if (Object.keys(legacy).length > 0) {
+      try {
+        mkdirSync(dirname(statusFile()), { recursive: true })
+        writeFileSync(statusFile(), JSON.stringify(legacy, null, 2) + '\n')
+        rmSync(legacyStatusFile(), { force: true })
+      } catch {
+        /* 迁移写失败：本轮先用内存值，下轮再迁（幂等） */
+      }
+    }
+    return legacy
   } catch {
     return {}
   }
@@ -867,8 +899,8 @@ export function mergeStatus(previous: AnyRecord, patch: AnyRecord): AnyRecord {
 }
 
 function writeStatus(patch: AnyRecord): void {
-  mkdirSync(vendorDir, { recursive: true })
-  writeFileSync(statusFile, JSON.stringify({ ...mergeStatus(readStatus(), patch), updatedAt: new Date().toISOString() }))
+  mkdirSync(dirname(statusFile()), { recursive: true })
+  writeFileSync(statusFile(), JSON.stringify({ ...mergeStatus(readStatus(), patch), updatedAt: new Date().toISOString() }))
 }
 
 export function updateStatus(patch: AnyRecord): void {
