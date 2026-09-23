@@ -1,6 +1,6 @@
 /**
  * StepFun 计费适配器离线测试（fetch 打桩，不触网）。
- * 覆盖五个真实约束：
+ * 覆盖六个真实约束：
  *   1. 自定义路由 id 大小写不敏感（本机实际配置的 id 就是「StepFun」）；
  *   2. 查询方式按 API 地址自动分通道——含 step_plan 走套餐点数（不触钱包接口），
  *      其余（/v1、anthropic 裸域、第三方中转）走钱包 /v1/accounts；
@@ -9,7 +9,7 @@
  *   5. QueryStepPlanRateLimit 的 credit_buckets/left_rate/reset（秒级 epoch）→ 窗口。
  */
 import assert from 'node:assert/strict'
-import adapter, { planFailureNote, planWindowsFrom } from '../lib/adapters/stepfun.js'
+import adapter, { planFailureNote, planWindowsFrom, withRotatedToken } from '../lib/adapters/stepfun.js'
 
 // ---- match ----
 assert.equal(adapter.match('StepFun', undefined), true, 'id=StepFun 应命中')
@@ -111,6 +111,15 @@ assert.match(planFailureNote(expiredBody), /Cookie 已过期/, 'expired 要明�
 assert.match(planFailureNote(illegalBody), /无效或校验失败/, 'illegal 要明说无效')
 assert.match(planFailureNote(embezzledBody), /无效或校验失败/, 'embezzled 归入无效/校验失败')
 assert.match(planFailureNote('not-json'), /Step Plan 点数查询失败/, '非 JSON 走通用失败')
+
+// ---- withRotatedToken：刷新轮换后的 pair 要替换 jar 里的 Oasis-Token 段，其余 cookie 保留 ----
+const oldJar = 'Oasis-Webid=w1; INGRESSCOOKIE=i1; Oasis-Token=AAA...BBB; _wafdytokenv1=w2'
+const newJar = withRotatedToken(oldJar, 'CCC...DDD')
+assert.equal(newJar.includes('Oasis-Token=CCC...DDD'), true, 'Oasis-Token 段要换成新 pair')
+assert.equal(newJar.includes('Oasis-Webid=w1'), true, '其余 cookie 保留')
+assert.equal(newJar.includes('INGRESSCOOKIE=i1'), true, 'INGRESSCOOKIE 保留')
+assert.equal(newJar.includes('AAA'), false, '旧会话段要被替换掉')
+assert.equal(withRotatedToken('no-token-jar', 'X'), 'no-token-jar', '无 Oasis-Token 段时原样返回')
 
 // 空响应 → 无窗口（降级由调用方处理）
 assert.equal(planWindowsFrom({}).length, 0)
