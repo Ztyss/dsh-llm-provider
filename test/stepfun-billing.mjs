@@ -16,7 +16,7 @@ import { resolveDshHome } from '../lib/dsh-home.js'
 
 // ---- match：只认 baseURL 官方双域名（provider id 可改名，不作判据）----
 assert.equal(adapter.match('任意名字', 'https://api.stepfun.com/step_plan/v1'), true, '官方域名命中（与 id 无关）')
-assert.equal(adapter.match('随便什么', 'https://api.stepfun.ai/v1'), true, 'stepfun.ai 域名命中')
+assert.equal(adapter.match('随便什么', 'https://api.stepfun.ai/v1'), false, 'stepfun.ai 不在判据内（只认 api.stepfun.com）')
 assert.equal(adapter.match('StepFun', undefined), false, 'id 不作判据：无 baseURL 不命中')
 assert.equal(adapter.match('my-gateway', 'https://relay.example.com/v1'), false, '无关网关不命中')
 assert.equal(adapter.match('deepseek', 'https://api.deepseek.com'), false, '其他 provider 不命中')

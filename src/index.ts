@@ -129,7 +129,8 @@ export function apply(ctx: PluginContext, config: unknown): void {
     const baseUrl = typeof route.baseURL === 'string' && route.baseURL !== '' ? route.baseURL : undefined
     // 控制台 cookie（可选附带凭据）：约定 <apiKeyEnv 去掉 _API_KEY>_CONSOLE_COOKIE，
     // 给需要控制台会话的适配器用（stepfun 的 Step Plan 点数）；没配置就 undefined。
-    const consoleCookieRef = (route.apiKeyEnv ?? '').replace(/_API_KEY$/i, '_CONSOLE_COOKIE')
+    // 凭据名只跟随路由 ID（配置键不可改）；apiKeyEnv 用户可改，跟它会漂移。
+    const consoleCookieRef = providerId.toUpperCase().replace(/[^A-Z0-9]/g, '_') + '_CONSOLE_COOKIE'
     let consoleCookie: string | undefined
     if (consoleCookieRef !== '' && consoleCookieRef !== route.apiKeyEnv) {
       const consoleResolved = await resolveKey(consoleCookieRef)

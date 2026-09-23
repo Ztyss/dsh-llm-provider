@@ -772,7 +772,7 @@ function AddProviderPanel(props: AddProviderPanelProps) {
    */
   /** 查询配置（Step Plan 控制台 cookie）：写 CONSOLE_COOKIE 凭据，成功后日志确认。 */
   function saveQueryCookieForm() {
-    var ref = String(form.apiKeyEnv ?? '').replace(/_API_KEY$/i, '_CONSOLE_COOKIE')
+    var ref = String(form.routeId ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '_') + '_CONSOLE_COOKIE'
     var value = String(queryCookieDraft ?? '').trim()
     if (ref === '' || ref.indexOf('_CONSOLE_COOKIE') === -1) {
       setTest({ phase: 'fail', message: '✗ 未找到 CONSOLE_COOKIE 凭据名（先选协议与 API 地址）' })
