@@ -188,9 +188,20 @@ export function readPiAiPreference(status: AnyRecord): PiAiPreference {
   return status['piAiPreference'] === 'latest' ? 'latest' : 'dsh'
 }
 
-/** 拨开关：把偏好写进 status.json（随桥接状态一起落盘；该文件是 gitignore 的运行时状态）。 */
+/** 拨开关：把偏好写进安全区状态文件（vendor-status.json，随桥接状态一起落盘）。 */
 export function setPiAiPreference(preference: PiAiPreference): void {
   updateStatus({ piAiPreference: preference })
+}
+
+/**
+ * vendor 状态读取（安全区，含包内过渡版文件的自动迁移）：**状态读写必须同走这一条**。
+ *
+ * index.ts 的 /provider/status 与启动检查曾各自直读包内 vendor/status.json——写入迁到
+ * 安全区后没跟着改，读写分裂：开关拨 OFF 实际写成功了，状态路由却读包内残留，
+ * 界面永远弹回 ON、看起来「开关失效」（用户批注 09-24）。
+ */
+export function readVendorStatus(): AnyRecord {
+  return readStatus()
 }
 
 /**

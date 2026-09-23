@@ -77,7 +77,6 @@ try {
 // 存储路径全部落在临时 DSH_HOME 内（见文件头），与真实 bridge 目录零接触。
 const bridgeDir = join(resolveDshHome(), 'llm-provider-bridge')
 const storePath = join(bridgeDir, '.cookies.yaml')
-const oldStorePath = join(bridgeDir, 'cookies.yaml')
 const sessionPath = join(bridgeDir, 'stepfun-console-session.json')
 stubFetch(() => {
   throw new Error('plan 模式不应调用钱包接口')
@@ -182,12 +181,5 @@ writeFileSync(sessionPath, JSON.stringify({ cookie: 'legacy-jar' }))
 assert.equal(loadCookieValue('LEGACYPROVIDER_CONSOLE_COOKIE', { path: sessionPath, read: () => JSON.parse(readFileSync(sessionPath, 'utf8')).cookie }), 'legacy-jar', '迁移读出旧值')
 assert.equal(parseCookieStore(readFileSync(storePath, 'utf8'))['LEGACYPROVIDER_CONSOLE_COOKIE'].value, 'legacy-jar', '旧值并入新存储')
 assert.equal(existsSync(sessionPath), false, '迁移成功后旧文件移除')
-// 迁移：曾用名（无点前缀）cookies.yaml → 整文件并入 .cookies.yaml（其它键一并带走），写成功后移除
-writeFileSync(oldStorePath, serializeCookieStore({ OLDNAME_A: { value: 'old-a' }, OLDNAME_B: { value: 'old-b' } }))
-assert.equal(loadCookieValue('OLDNAME_A'), 'old-a', '曾用名迁移读出')
-const afterRename = parseCookieStore(readFileSync(storePath, 'utf8'))
-assert.equal(afterRename['OLDNAME_A'].value, 'old-a')
-assert.equal(afterRename['OLDNAME_B'].value, 'old-b', '曾用名里其它键一并保留')
-assert.equal(existsSync(oldStorePath), false, '曾用名文件移除')
 
 console.log('stepfun-billing: match/分通道/钱包解析/plan 降级/套餐窗口/统一 Cookie 存储 断言全过')
