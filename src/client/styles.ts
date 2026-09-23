@@ -151,11 +151,13 @@ var css =
   '.pv_pickItem:focus-visible,.pv_addBtn:focus-visible,a.pv_pcLink:focus-visible,' +
   '.pv_selTrigger:focus-visible{' +
   'outline:2px solid var(--dsw-alias-brand-primary,#3b5bdb);outline-offset:1px}' +
-  // 输入框/下拉聚焦不加外圈（用户批注：默认 outline 会在灰框外再套一层黑框）——
-  // 直接把自身边框加黑加粗：border 变深 + inset 1px 同色阴影，视觉 2px 粗边、零布局位移
+  // 输入框聚焦：只把自身 border-color 加深到主文本色（1px），不加外圈、不叠 inset 阴影。
+  // 曾经是「border 加深 + inset 1px 同色阴影」的视觉 2px 粗边，比协议下拉展开态重一截
+  // （用户 09-23 批注：API 地址及其它项编辑时边框太粗，应对齐协议的加粗程度）。
+  // 与 .pv_selTrigger.pv_selOpen 完全同款（1px + 同一个 label-primary token）——
+  // 那处早前也是因同样批注从 inset 双层收敛回来的。
   'input.pv_field:not([readonly]):focus,select.pv_field:focus,textarea.pv_field:focus,.pv_mFilter:focus{' +
-  'outline:0;border-color:var(--dsw-alias-label-primary,rgba(0,0,0,.62));' +
-  'box-shadow:inset 0 0 0 1px var(--dsw-alias-label-primary,rgba(0,0,0,.62))}' +
+  'outline:0;border-color:var(--dsw-alias-label-primary,rgba(0,0,0,.62))}' +
   '.pv_pcBody{border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));' +
   'padding:10px 18px 14px;display:flex;flex-direction:column;gap:4px}' +
   '.pv_line .plan_tag{margin-left:0}' +
@@ -240,7 +242,8 @@ var css =
   // 原生 select 已全部替换为自绘下拉（.pv_sel*，用户批注：原生弹层与页面视觉不协调）
   // ---- 本地版新增：自绘下拉（用户批注：原生弹层与页面视觉不协调）----
   // 触发器外观与 pv_field 输入框一致（白底/同圆角/同边框），弹层用页面 token：
-  // 白底 + 圆角 + 柔和投影 + 悬停灰底，选中项品牌色加粗。展开时触发器边框加黑加粗。
+  // 白底 + 圆角 + 柔和投影 + 悬停灰底，选中项品牌色加粗 + 浅底 + 行尾对勾。
+  // 展开时触发器边框加黑加粗。
   '.pv_sel{position:relative;display:inline-flex}' +
   '.pv_selTrigger{display:inline-flex;align-items:center;justify-content:space-between;gap:8px;' +
   'min-width:240px;max-width:100%;padding:6px 12px;text-align:left;' +
@@ -251,19 +254,35 @@ var css =
   '.pv_selTrigger:focus{outline:0}' +
   // 展开态=悬停同款 1px 深边框（用户批注：原 inset 双层视觉 2px 太黑太粗，收回到图1 的粗度）
   '.pv_selTrigger.pv_selOpen{border-color:var(--dsw-alias-label-primary,rgba(0,0,0,.62))}' +
-  '.pv_selValue{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+  // 值文本与其它值列（.pv_field 输入框）同一个灰：曾经继承 trigger 的 label-primary，
+  // 于是「协议」行的值是黑的、其它行的值是灰的（用户 09-23 批注）
+  '.pv_selValue{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
+  'color:var(--dsw-alias-label-secondary)}' +
   '.pv_selChev{display:inline-flex;color:var(--dsw-alias-label-tertiary)}' +
   '.pv_selOpen .pv_selChev{color:var(--dsw-alias-label-primary)}' +
   // 弹层左右锚定容器（left:0;right:0）= 外沿与触发器严格等宽。不用 min-width:100%：
   // 页面没有全局 border-box，content-box 下弹层外沿会多出自身 padding+border（右侧冒出
   // 10px，用户批注：下拉框和协议填写框长度未对齐）。选项超宽时靠 overflow:auto 兜底。
+  // 弹层外观逐字段参照「供应商筛选」下拉 .pv_pickMenu（用户 09-23 批注：就按那个的描边做）：
+  // border 本来就是同一条 border-l1，差在投影（这里曾是更淡的 0 10px 28px .14，淡投影会把
+  // 12% 的边框吃掉，看着像没描边）——换成同一个 elevation-prominent，两个下拉同一张脸。
   '.pv_selMenu{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;' +
-  'background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));' +
-  'border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.14);padding:4px;max-height:240px;overflow:auto}' +
-  '.pv_selOption{padding:6px 12px;border-radius:6px;font-size:13px;line-height:20px;text-align:left;' +
-  'cursor:pointer;color:var(--dsw-alias-label-primary);white-space:nowrap}' +
+  'background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));' +
+  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));' +
+  'border-radius:10px;padding:6px;max-height:240px;overflow:auto;' +
+  'box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18))}' +
+  '.pv_selOption{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:6px;' +
+  'font-size:13px;line-height:20px;text-align:left;cursor:pointer;' +
+  'color:var(--dsw-alias-label-primary);white-space:nowrap}' +
+  '.pv_selOptLabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
   '.pv_selOption:hover{background:var(--dsw-alias-fill-tertiary,rgba(0,0,0,.045))}' +
-  '.pv_selOptionOn{color:var(--dsw-alias-brand-primary,#3b5bdb);font-weight:600}' +
+  // 选中态=品牌色 + 加粗 + 浅灰底 + 行尾官方对勾：只有颜色/加粗时，在一串 api 名跟前
+  // 不够显眼（用户 09-23 批注）。浅底与 hover 同 token；对勾用官方同款 SVG，
+  // 与模型座位里标「当前模型」的 .ms_check 同一套做法。
+  '.pv_selOptionOn{color:var(--dsw-alias-brand-primary,#3b5bdb);font-weight:600;' +
+  'background:var(--dsw-alias-fill-tertiary,rgba(0,0,0,.045))}' +
+  '.pv_selCheck{flex:none;margin-left:auto;display:grid;place-items:center;' +
+  'color:var(--dsw-alias-brand-primary,#3b5bdb)}' +
   // 预置字段（路由 ID）：灰底只读；密钥/待填项/协议：白底 + 深边框提示可操作
   // （用户批注：协议下拉的边框比 API 地址浅——pv_key 原来限定 input，select 吃不到）
   'input.pv_ro{background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.05));' +

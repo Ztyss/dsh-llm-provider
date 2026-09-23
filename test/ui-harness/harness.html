@@ -9,6 +9,28 @@
   #root { max-width: 1080px; margin: 18px auto; padding: 18px 20px; background: #fff; border-radius: 12px;
           box-shadow: 0 1px 3px rgba(0,0,0,.08); min-height: 400px; }
   #err { color: #c0392b; font-size: 12px; white-space: pre-wrap; padding: 8px 16px; }
+  /* 宿主设计 token 替身：harness 不引宿主样式表，--dsw-alias-* 里没有 fallback 的属性会退化成
+     inherit——「值文本是不是灰的」这类颜色断言会变成恒真的同色比较，永远测不出回归。
+     这一份替身让计算值彼此可辨；取值只要求「互不相同、不与 fallback 混淆」，不是宿主真实色值。 */
+  :root {
+    --dsw-alias-label-primary: rgba(0, 0, 0, .87);
+    --dsw-alias-label-secondary: rgba(0, 0, 0, .6);
+    --dsw-alias-label-tertiary: rgba(0, 0, 0, .38);
+    --dsw-alias-label-dimmed: rgba(0, 0, 0, .3);
+    --dsw-alias-border-l1: rgba(0, 0, 0, .12);
+    --dsw-alias-border-l2: rgba(0, 0, 0, .2);
+    --dsw-alias-border-l4: rgba(0, 0, 0, .15);
+    --dsw-alias-bg-layer-1: #fff;
+    --dsw-alias-bg-layer-2: rgba(0, 0, 0, .03);
+    --dsw-alias-bg-layer-3: #fff;
+    --dsw-alias-fill-tertiary: rgba(0, 0, 0, .045);
+    --dsw-alias-interactive-bg-hover: rgba(0, 0, 0, .05);
+    --dsw-alias-interactive-bg-hover-solid: rgba(0, 0, 0, .05);
+    --dsw-alias-brand-primary: #3b5bdb;
+    --dsw-alias-state-business-primary: #5b8cff;
+    --dsw-elevation-prominent: 0 8px 24px rgba(0, 0, 0, .18);
+    --dsw-specific-menu: #fff;
+  }
   /* 敌意样式模拟（?hostile=1 启用）：比插件类规则特异性更高（0,3,1）的宿主 select 规则
      （不带 !important，对应真实宿主里的普通设计系统规则），
      用于验证协议下拉的内联样式能穿透高特异性样式表覆盖。 */

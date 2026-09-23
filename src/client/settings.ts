@@ -25,7 +25,7 @@ import {
   withKeys,
 } from './data.js'
 import { dotClass, formatContext, fuzzyMatch, headlineChips, linkTextOf, relativeTime, resetCountdownText, shortName, toneColor, worstPercent } from './format.js'
-import { caretSvg } from './icons.js'
+import { caretSvg, checkSvg } from './icons.js'
 import { t, tf } from './i18n.js'
 import { addModelRow, buildModelEditor, modelListPayload, patchModelRow, validateModelRows } from './model-editor.js'
 import type { ModelEditorRow, ModelEditorState } from './model-editor.js'
@@ -295,7 +295,12 @@ function pvSelectView(config: {
           key: option.value === '' ? '__default' : option.value,
           className: 'pv_selOption' + (selected ? ' pv_selOptionOn' : ''),
           onClick: function () { config.onPick(option.value) },
-        }, option.label)
+        },
+          react.createElement('span', { className: 'pv_selOptLabel' }, option.label),
+          // 选中项行尾一枚官方同款对勾：只有品牌色 + 加粗时，在一串 api 名跟前不够显眼
+          // （用户 09-23 批注）；浅底见 .pv_selOptionOn
+          selected ? react.createElement('span', { className: 'pv_selCheck' }, checkSvg()) : null,
+        )
       }),
     ),
   )
@@ -3051,6 +3056,9 @@ export function ProviderSettingsSection() {
           ),
         )
         // API 地址：就地编辑；清空 = 移除这个键（回到官方默认端点）
+        // 「查询配置」压掉 .pv_action 基类的 margin-left:auto：按钮紧贴输入框右缘（行距 10px），
+        // 不顶行尾（用户 09-23 批注）。输入框保持自然宽度——把它 flex 撑满的话按钮只是被
+        // 推到行尾旁边，"贴近"看着跟右对齐一模一样。
         bodyRows.push(
           react.createElement(
             'div',
@@ -3066,6 +3074,7 @@ export function ProviderSettingsSection() {
             react.createElement('button', {
               type: 'button',
               className: 'pv_action',
+              style: { marginLeft: '0' },
               title: t('prov.queryConfigTip'),
               onClick: function () {
                 if (account.queryConfigNeeded !== true) {
