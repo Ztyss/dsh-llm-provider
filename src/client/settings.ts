@@ -2795,7 +2795,9 @@ export function ProviderSettingsSection() {
   // note 区只留给失败与拨 OFF 的同步结论。
   function togglePiAi(next: boolean) {
     setPiAiBusy(true)
-    if (next !== true) setNote('正在切换到 DSH 自带版本 ...')
+    // 拨 ON 清掉上一次拨 OFF 留下的同步结论（用户批注 09-24：OFF→ON 后旧 log 不该残留，
+    // ON 的进行中/终态都走开关行右侧文字）；拨 OFF 先给进行中提示，结论由响应给出
+    setNote(next === true ? null : '正在切换到 DSH 自带版本 ...')
     postJson('/provider/pi-ai', { enabled: next })
       .then(function (result) {
         if (next !== true) {

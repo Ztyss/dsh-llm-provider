@@ -69,7 +69,12 @@ git merge --no-ff "$BRANCH" \
 $SUMMARY"
 
 echo "== 主线复测（${MAIN_ROOT}）=="
-if ! npm test; then
+# 内容守恒：--no-ff 合并只新增一个提交、不改树——合并后的树与刚在 worktree 复测过的
+# 分支树逐位一致时免重复全量（用户批注 09-24：简化流程加速开发）；不一致（理论外
+# 情形，例如主线在锁内被外力改动）才兜底重跑。
+if [ "$(git rev-parse "$BRANCH^{tree}")" = "$(git rev-parse 'HEAD^{tree}')" ]; then
+  echo "   合并后树与已复测分支逐位一致，跳过重复全量。"
+elif ! npm test; then
   cat >&2 <<EOF
 主线测试没通过。当前 main 上已经有本次合并提交，先别继续合别的任务：
   - 能马上修：从最新 main 开新 worktree（scripts/dev-start.sh <任务名>），修好走完整流程再合。
