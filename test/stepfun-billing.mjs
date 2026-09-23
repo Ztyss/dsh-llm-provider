@@ -9,11 +9,18 @@
  *   5. QueryStepPlanRateLimit 的 credit_buckets/left_rate/reset（秒级 epoch）→ 窗口。
  */
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import adapter, { planFailureNote, planWindowsFrom, withRotatedToken } from '../lib/adapters/stepfun.js'
 import { loadCookieValue, parseCookieStore, saveCookieValue, serializeCookieStore } from '../lib/adapters/cookie-store.js'
 import { resolveDshHome } from '../lib/dsh-home.js'
+
+// ---- 存储隔离（根治）：DSH_HOME 指向一次性临时目录。此前测试在真实 bridge 目录上
+// 做「挪走-恢复」，窗口期与运行中的宿主竞争（宿主刷新会读写同一批文件），测试残留
+// 也会污染真数据（09-24 实际发生：测试键混进真 .cookies.yaml）。DSH_HOME 在
+// resolveDshHome() 里是调用时读取，import 之后设置即可全程生效。
+process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'dsh-lp-test-home-'))
 
 // ---- match：只认 baseURL 官方双域名（provider id 可改名，不作判据）----
 assert.equal(adapter.match('任意名字', 'https://api.stepfun.com/step_plan/v1'), true, '官方域名命中（与 id 无关）')
@@ -67,19 +74,11 @@ try {
 }
 
 // ---- plan 通道：baseURL 含 step_plan → 查套餐点数，未配 cookie 时不触任何网络 ----
-// 存储隔离：环境里可能留着上一轮实测的有效会话（统一存储 .cookies.yaml / 曾用名
-// cookies.yaml / 旧版 stepfun-console-session.json），会让「未配 cookie」分支真的查到
-// 数据——测试前挪走，全部断言结束后（文件末尾）再恢复。
+// 存储路径全部落在临时 DSH_HOME 内（见文件头），与真实 bridge 目录零接触。
 const bridgeDir = join(resolveDshHome(), 'llm-provider-bridge')
 const storePath = join(bridgeDir, '.cookies.yaml')
 const oldStorePath = join(bridgeDir, 'cookies.yaml')
 const sessionPath = join(bridgeDir, 'stepfun-console-session.json')
-const savedStore = existsSync(storePath) ? readFileSync(storePath, 'utf8') : null
-const savedOldStore = existsSync(oldStorePath) ? readFileSync(oldStorePath, 'utf8') : null
-const savedSession = existsSync(sessionPath) ? readFileSync(sessionPath, 'utf8') : null
-rmSync(storePath, { force: true })
-rmSync(oldStorePath, { force: true })
-rmSync(sessionPath, { force: true })
 stubFetch(() => {
   throw new Error('plan 模式不应调用钱包接口')
 })
@@ -192,11 +191,3 @@ assert.equal(afterRename['OLDNAME_B'].value, 'old-b', '曾用名里其它键一�
 assert.equal(existsSync(oldStorePath), false, '曾用名文件移除')
 
 console.log('stepfun-billing: match/分通道/钱包解析/plan 降级/套餐窗口/统一 Cookie 存储 断言全过')
-
-// ---- 恢复被隔离的真实存储（.cookies.yaml / 曾用名 / 旧会话文件） ----
-if (savedStore !== null) writeFileSync(storePath, savedStore)
-else rmSync(storePath, { force: true })
-if (savedOldStore !== null) writeFileSync(oldStorePath, savedOldStore)
-else rmSync(oldStorePath, { force: true })
-if (savedSession !== null) writeFileSync(sessionPath, savedSession)
-else rmSync(sessionPath, { force: true })
