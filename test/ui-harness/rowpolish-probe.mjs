@@ -162,6 +162,36 @@ const PROBE_PAGE_FN = `
     selOptionPlain: styleOf(document.querySelector('.pv_selOption:not(.pv_selOptionOn)')),
     pickBtn: styleOf(document.querySelector('.pv_pickBtn')),
     pickMenu: styleOf(document.querySelector('.pv_pickMenu')),
+    // StepFun 卡标题行的额度 chip：夹具必须复刻 stepfun 适配器真实形状（harness.html 注释）
+    stepChips: (function () {
+      var body = cardBody()
+      var card = body === null ? null : body.closest('.pv_pc')
+      if (card === null) return []
+      return Array.from(card.querySelectorAll('.pv_pcMeta .pv_chipItem')).map(function (el) {
+        return el.textContent || ''
+      })
+    })(),
+    // 「查询配置」展开后的控制台 Cookie 行（标签文案 + 按钮位置）
+    cookieRow: (function () {
+      var input = null
+      var all = Array.from(document.querySelectorAll('input.pv_field'))
+      for (var i = 0; i < all.length; i += 1) {
+        if ((all[i].getAttribute('placeholder') || '').indexOf('Cookie') !== -1) { input = all[i]; break }
+      }
+      if (input === null) return null
+      var row = input.closest('.pv_line')
+      var label = row === null ? null : row.firstElementChild
+      var btn = row === null ? null : row.querySelector('button.pv_action')
+      var box = row === null ? null : row.getBoundingClientRect()
+      return {
+        labelText: label === null ? '' : (label.textContent || ''),
+        labelHeight: label === null ? 0 : label.getBoundingClientRect().height,
+        lineHeight: label === null ? 0 : parseFloat(getComputedStyle(label).lineHeight),
+        input: styleOf(input),
+        btn: styleOf(btn),
+        rowRight: box === null ? null : box.right,
+      }
+    })(),
   }
 `
 
@@ -246,6 +276,24 @@ console.log('协议展开态:', JSON.stringify({
 // 协议菜单此刻开着：先量、先整页拍（再点「添加供应商」会被外点监听关掉它，且布局又挪一次）
 await shotPage('page-02-protocol-menu')
 
+// ---- 「查询配置」展开态：控制台 Cookie 行（标签文案 + 保存按钮位置）----
+await evalJs(`(function () {
+  var btns = Array.from(document.querySelectorAll('button.pv_action'))
+  var btn = btns.find(function (b) { return (b.textContent || '').indexOf('查询配置') !== -1 })
+  if (btn !== null && btn !== undefined) btn.click()
+  return btn !== null && btn !== undefined
+})()`)
+for (let i = 0; i < 20; i += 1) {
+  if (await evalJs(`
+    Array.from(document.querySelectorAll('input.pv_field')).some(function (el) {
+      return (el.getAttribute('placeholder') || '').indexOf('Cookie') !== -1
+    })`) === true) break
+  await sleep(200)
+}
+const cookieState = await evalJs(`(function () { ${PROBE_PAGE_FN} })()`)
+console.log('控制台 Cookie 行:', JSON.stringify(cookieState.cookieRow, null, 1))
+await shotPage('page-04-cookie-row')
+
 await evalJs(`(function () { var btn = document.querySelector('.pv_addBtn'); if (btn !== null) btn.click(); return true })()`)
 for (let i = 0; i < 20; i += 1) {
   if (await evalJs(`document.querySelector('.pv_pickBtn') !== null`) === true) break
@@ -307,6 +355,32 @@ check('选中项带背景（不再与未选中同一张脸）',
   `${openState.selOptionOn?.backgroundColor} vs 未选中 ${openState.selOptionPlain?.backgroundColor}`)
 check('选中项行尾有对勾', openState.selOptionOn !== null && openState.selOptionOn.hasSvg === true,
   `fontWeight=${openState.selOptionOn?.fontWeight}`)
+
+// 6. 控制台 Cookie 行（用户 09-23 追加批注）
+const cookie = cookieState.cookieRow
+check('「查询配置」能展开出 Cookie 行', cookie !== null)
+if (cookie !== null) {
+  check('Cookie 行标签就是「Cookie」（不再写「控制台 Cookie」、不再折两行）',
+    cookie.labelText === 'Cookie' && cookie.labelHeight <= cookie.lineHeight + 1,
+    `label=${JSON.stringify(cookie.labelText)} 高 ${cookie.labelHeight}px / 行高 ${cookie.lineHeight}px`)
+  const cookieGap = cookie.btn.rect.x - cookie.input.rect.right
+  check('「保存」紧贴 Cookie 输入框（间距 ≤ 12px）', cookieGap >= -1 && cookieGap <= 12, `gap=${cookieGap.toFixed(1)}px`)
+  check('「保存」不再顶到行尾', cookie.btn.rect.right < cookie.rowRight - 40,
+    `btn.right=${cookie.btn.rect.right.toFixed(1)} row.right=${Number(cookie.rowRight).toFixed(1)}`)
+  check('「保存」与「查询配置」左缘对齐（≤ 12px）',
+    Math.abs(cookie.btn.rect.x - rest.urlBtn.rect.x) <= 12,
+    `save.x=${cookie.btn.rect.x.toFixed(1)} query.x=${rest.urlBtn.rect.x.toFixed(1)}`)
+  check('Cookie 输入框与 API 地址输入框等宽（按钮才谈得上对齐）',
+    Math.abs(cookie.input.rect.w - rest.urlInput.rect.w) <= 2,
+    `cookie.w=${cookie.input.rect.w.toFixed(1)} url.w=${rest.urlInput.rect.w.toFixed(1)}`)
+}
+
+// 7. StepFun 卡额度标签 = Step（bucket 后缀里的 month 曾把标签劫成 30d）
+const stepChipLabels = cookieState.stepChips.map((text) => String(text).split(':')[0])
+check('StepFun 卡有 Step 档额度 chip', stepChipLabels.indexOf('Step') !== -1,
+  `chips=${JSON.stringify(cookieState.stepChips)}`)
+check('StepFun 卡不再出现 30d/7d 这种被劫的标签', stepChipLabels.every((label) => label !== '30d' && label !== '7d'),
+  `labels=${JSON.stringify(stepChipLabels)}`)
 
 ws.close()
 if (failures.length > 0) {

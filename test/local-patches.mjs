@@ -51,6 +51,15 @@ check('#2 5 小时滚动窗口 → 5h', client.shortWindowLabel('5 小时滚动�
 check('#2 订阅周期 → 7d', client.shortWindowLabel('订阅周期'), '7d')
 check('#2 monthly → 30d', client.shortWindowLabel('monthly window'), '30d')
 
+// 1c. StepFun 套餐点数窗口：标签固定 Step，bucket 后缀里的词不许抢
+// （线上 credit_buckets[].type 形如 monthly/subscription/weekly；后缀一进窗口名，
+//  monthly 就把标签劫成 30d、subscription/weekly 劫成 7d——用户 09-23 报的就是这个）
+check('Step Plan 套餐点数 → Step', client.shortWindowLabel('Step Plan 套餐点数'), 'Step')
+check('Step Plan + bucket 1 → Step', client.shortWindowLabel('Step Plan 套餐点数（bucket 1）'), 'Step')
+check('Step Plan + bucket monthly → Step（后缀不得劫持）', client.shortWindowLabel('Step Plan 套餐点数（bucket monthly）'), 'Step')
+check('Step Plan + bucket subscription → Step（后缀不得劫持）', client.shortWindowLabel('Step Plan 套餐点数（bucket subscription）'), 'Step')
+check('Step Plan + bucket weekly → Step（后缀不得劫持）', client.shortWindowLabel('Step Plan 套餐点数（bucket weekly）'), 'Step')
+
 // 1b. 窗口组之间的分隔线：5h ｜ 7d ｜ 30d（三档 = 两条分割线）
 const chips = client.headlineChips({
   id: 'opencode-go',

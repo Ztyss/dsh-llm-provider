@@ -153,14 +153,20 @@ export function quotaTextOf(account: PlanAccount | undefined | null): string | u
 }
 
 /**
- * 窗口短名（卡片头部摘要与悬停详情共用）：5 小时窗口→5h，每周/订阅周期→7d，每月→30d。
+ * 窗口短名（卡片头部摘要与悬停详情共用）：5 小时窗口→5h，每周/订阅周期→7d，每月→30d，
+ * Step Plan 套餐点数→Step。
  *
- * 判序要紧：裸 `每` 会把「每月窗口」也吞进 7d（那正是 issue #2 的现象：第三档被显示成第二个
- * 7d），所以「月」必须排在「每」之前判。认不出的窗口名返回截断的原名，不再冒充 7d。
+ * 判序要紧，两条都不能倒：
+ *   - 「月」必须排在「每」之前——裸 `每` 会把「每月窗口」也吞进 7d（issue #2 的现象）；
+ *   - Step Plan 必须排在最前——适配器给套餐点数窗口起名带 bucket 类型后缀
+ *     （`Step Plan 套餐点数（bucket monthly）`），线上 type 形如 monthly/subscription/weekly，
+ *     后缀里的 month/week 会抢在窗口名前把标签劫成 30d/7d（用户 09-23 报的就是这个）。
+ *     认不出的窗口名返回截断的原名，不再冒充 7d。
  */
 export function shortWindowLabel(name: unknown): string {
   var text = String(name ?? '')
   var lower = text.toLowerCase()
+  if (text.indexOf('Step Plan') !== -1 || lower.indexOf('step plan') !== -1) return 'Step'
   if (text.indexOf('5 小时') !== -1 || text.indexOf('5小时') !== -1 || lower.indexOf('5 hour') !== -1) return '5h'
   if (text.indexOf('月') !== -1 || lower.indexOf('month') !== -1) return '30d'
   if (text.indexOf('每') !== -1 || text.indexOf('订阅') !== -1 || text.indexOf('周') !== -1

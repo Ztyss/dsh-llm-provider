@@ -283,6 +283,12 @@ var css =
   'background:var(--dsw-alias-fill-tertiary,rgba(0,0,0,.045))}' +
   '.pv_selCheck{flex:none;margin-left:auto;display:grid;place-items:center;' +
   'color:var(--dsw-alias-brand-primary,#3b5bdb)}' +
+  // 带按钮的行（API 地址 + 控制台 Cookie）共用的输入框宽度：两个输入框等宽，
+  // 「查询配置」与「保存」才落在同一竖线上（用户 09-23 批注：两个按钮要对齐）。
+  // 各自内容定宽的话，URL 长、Cookie 短，按钮会一前一后。
+  // 300 是量过的：再宽（360）会把按钮顶到离行尾只剩 34px，看着又成了右对齐
+  // （用户上一轮刚批过「不要右对齐」）；再窄则长 URL 可视区不够。
+  '.pv_rowField{flex:none;width:min(300px,100%)}' +
   // 预置字段（路由 ID）：灰底只读；密钥/待填项/协议：白底 + 深边框提示可操作
   // （用户批注：协议下拉的边框比 API 地址浅——pv_key 原来限定 input，select 吃不到）
   'input.pv_ro{background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.05));' +

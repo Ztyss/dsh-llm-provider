@@ -95,15 +95,24 @@
         ] },
       { id: 'stepfun-test', displayName: 'StepFun Test', kind: 'quota', authConfigured: true, api: 'openai-completions',
         apiKeyEnv: 'STEPFUN_TEST_API_KEY', baseUrl: 'https://api.stepfun.com/step_plan/v1',
+        // host 按适配器 queryConfigNeeded(baseUrl) 求值后随 AccountStatus 下发：
+        // step_plan 地址 = true（「查询配置」点得开，展开控制台 Cookie 行）
+        queryConfigNeeded: true,
         keyHint: 'sk-****test', deletable: true, fetchedAt: new Date().toISOString(),
         // 现场复刻用户报的坏状态（step-5-preview）：声明条目只有 reasoning: true、没有
         // reasoningEfforts，compat 是手写字段——编辑器不动它、保存时必须补齐档位表
         models: [{ id: 'step-5-preview', name: 'step-5-preview', input: ['text', 'image'],
                    compat: { chatTemplateKwargs: {}, chatTemplateArgs: {} },
                    contextWindow: 1000000, maxTokens: 65536, reasoning: true }],
+        // 窗口名必须复刻 adapters/stepfun.ts 的 planWindowsFrom() 真实输出形状——这张卡走的是
+        // step_plan 通道（baseURL 含 step_plan），不是 GLM 那套 5 小时/每周/每月。曾经夹具按
+        // GLM 形状编，截图里 StepFun 卡显示「30d:40%」，而真实 app 的标签只会是 Step/5h/7d
+        // （用户 09-23 批注：step provider 的额度应显示 Step）。bucket 后缀刻意用 monthly：
+        // 线上 credit_buckets[].type 就是这类词，而后缀里的 month 会抢在窗口名前把标签劫成
+        // 30d——shortWindowLabel 的 Step Plan 前缀规则治的正是它，换成 type=1 就测不到回归。
         windows: [
-          { window: '5 小时滚动窗口', percentLeft: 90, resetAt: new Date(Date.now() + 2 * 3600e3).toISOString() },
-          { window: '每月窗口', percentLeft: 40, resetAt: new Date(Date.now() + 8 * 864e5).toISOString() },
+          { window: 'Step Plan 套餐点数（bucket monthly）', percentLeft: 40, resetAt: new Date(Date.now() + 8 * 864e5).toISOString() },
+          { window: '5 小时窗口', percentLeft: 90, resetAt: new Date(Date.now() + 2 * 3600e3).toISOString() },
         ] },
       { id: 'zai-coding-cn', displayName: 'Z.ai Coding (CN)', kind: 'quota', authConfigured: true, api: 'openai-completions',
         apiKeyEnv: 'ZAI_API_KEY', baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4', websiteUrl: 'https://open.bigmodel.cn',
