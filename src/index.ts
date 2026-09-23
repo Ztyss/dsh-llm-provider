@@ -137,6 +137,14 @@ export function apply(ctx: PluginContext, config: unknown): void {
     if (credential.configured && credential.key !== undefined) {
       credentials.push({ provider: providerId, ref: route.apiKeyEnv, value: credential.key })
     }
+    // 控制台 cookie（可选附带凭据）：约定 <apiKeyEnv 去掉 _API_KEY>_CONSOLE_COOKIE，
+    // 给需要控制台会话的适配器用（stepfun 的 Step Plan 点数）；没配置就 undefined。
+    const consoleCookieRef = (route.apiKeyEnv ?? '').replace(/_API_KEY$/i, '_CONSOLE_COOKIE')
+    let consoleCookie: string | undefined
+    if (consoleCookieRef !== '' && consoleCookieRef !== route.apiKeyEnv) {
+      const consoleResolved = await resolveKey(consoleCookieRef)
+      if (consoleResolved.configured && consoleResolved.key !== undefined) consoleCookie = consoleResolved.key
+    }
 
     if (adapter === undefined) {
       return {
@@ -163,7 +171,7 @@ export function apply(ctx: PluginContext, config: unknown): void {
       }
     }
     try {
-      const result = await adapter.query({ id: providerId, displayName, key: credential.key, baseUrl, extras: {} })
+      const result = await adapter.query({ id: providerId, displayName, key: credential.key, baseUrl, extras: { consoleCookie } })
       if (result.websiteUrl === undefined) result.websiteUrl = websiteUrl
       if (result.keyHint === undefined) result.keyHint = keyHint
       if (result.deletable === undefined) result.deletable = route.source === 'llm-pi-ai'
