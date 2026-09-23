@@ -7,7 +7,7 @@ self-maintained pi-ai bridge, model selector, quota lookups and provider managem
 
 [中文](README.md) · **English**
 
-> This repository is forked from [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider) and maintained independently since. Current version [v0.2.1](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.1) (installs from main).
+> This repository is forked from [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider) and maintained independently since. Current version [v0.2.2](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.2) (installs from main).
 
 ## Install
 
