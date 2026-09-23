@@ -80,7 +80,7 @@ function isoFromEpochSec(value: unknown): string | undefined {
 
 /** QueryStepPlanRateLimit 响应 → 套餐点数窗口（纯函数，可离线测试）。 */
 export function planWindowsFrom(body: unknown): QuotaWindow[] {
-  const record = asRecord(body)
+  const record = asRecord(typeof body === 'string' ? JSON.parse(body) : body)
   const plan = asRecord(record['plan_credit_rate_limit'])
   const windows: QuotaWindow[] = []
   for (const raw of Array.isArray(plan['credit_buckets']) ? plan['credit_buckets'] : []) {
@@ -159,7 +159,7 @@ function planQuotaViaCurl(cookie: string): { windows: QuotaWindow[]; note?: stri
       return { windows: [], note: 'Step Plan 点数查询失败：curl 未执行成功' }
     }
     const text = readFileSync(outPath, 'utf8')
-    if (text.includes('"plan_credit_rate_limit"')) return { windows: planWindowsFrom(text) }
+    if (text.includes('"plan_credit_rate_limit"')) return { windows: planWindowsFrom(JSON.parse(text)) }
     return { windows: [], note: planFailureNote(text) }
   } catch (error) {
     return { windows: [], note: 'Step Plan 点数查询失败：' + (error instanceof Error ? error.message : String(error)) }
