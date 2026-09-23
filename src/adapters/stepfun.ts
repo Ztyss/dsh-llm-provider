@@ -192,7 +192,7 @@ export default {
   id: 'stepfun',
   label: 'StepFun 开放平台',
   match(providerId: string, baseUrl: string | undefined): boolean {
-    if (/^stepfun/i.test(providerId)) return true
+    // provider id 可改名，不作判据；baseURL 官方双域名才是稳定依据（api.stepfun.com / api.stepfun.ai）。
     return typeof baseUrl === 'string' && /stepfun\.(com|ai)/i.test(baseUrl)
   },
 
