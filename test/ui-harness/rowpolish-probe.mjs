@@ -185,19 +185,32 @@ const PROBE_PAGE_FN = `
         var r = row(labelText)
         if (r === null) return null
         var input = r.querySelector('input')
+        // 可编辑 = 有 input，或是自绘下拉的触发器按钮（协议行选中 custom 时就是它）
+        var editable = input !== null || r.querySelector('.pv_selTrigger') !== null
+        // 字段盒（span 或 input）的高度：空 span 曾塌成 14px，比按钮矮一截
+        var field = r.querySelector('.pv_field')
+        var box = field === null ? null : field.getBoundingClientRect()
         var buttons = Array.from(r.querySelectorAll('button.pv_action')).map(function (b) {
           var box = b.getBoundingClientRect()
           return { text: (b.textContent || '').trim(), disabled: b.disabled === true, x: box.x, right: box.right }
         })
-        return { hasInput: input !== null, buttons: buttons, text: (r.textContent || '').slice(0, 40) }
+        return {
+          hasInput: editable,
+          fieldHeight: box === null ? null : box.height,
+          buttons: buttons,
+          text: (r.textContent || '').slice(0, 40),
+        }
       }
       var acts = panel.querySelector('.pv_actRow')
       var actButtons = acts === null ? [] : Array.from(acts.querySelectorAll('button.pv_action')).map(function (b) {
         var box = b.getBoundingClientRect()
         return { text: (b.textContent || '').trim(), x: box.x, right: box.right }
       })
+      var pickBtn = panel.querySelector('.pv_pickBtn')
+      var pickBox = pickBtn === null ? null : pickBtn.getBoundingClientRect()
       return {
         text: panel.textContent || '',
+        pickHeight: pickBox === null ? null : pickBox.height,
         routeId: rowInfo('路由 ID'),
         apiKey: rowInfo('API 密钥'),
         apiBase: rowInfo('API 地址'),
@@ -373,6 +386,47 @@ const addState = await evalJs(`(function () { ${PROBE_PAGE_FN} })()`)
 console.log('添加面板（未选供应商）:', JSON.stringify(addState.addPanel, null, 1))
 await shotPage('page-05-add-panel')
 
+// 选中 OpenCode Go（有 baseURL 的预置）后再量：查询配置应解灰、发现模型仍置灰（密钥空）
+await evalJs(`(function () {
+  var btn = document.querySelector('.pv_pickBtn')
+  if (btn !== null) btn.click()
+  return true
+})()`)
+for (let i = 0; i < 20; i += 1) {
+  if (await evalJs(`document.querySelector('.pv_pickItem') !== null`) === true) break
+  await sleep(200)
+}
+await evalJs(`(function () {
+  var items = Array.from(document.querySelectorAll('.pv_pickItem'))
+  // 不能点 OpenCode Go：夹具里它 configured:true，presetPickState 会把它置灰
+  // （已配置的供应商不允许重复添加）——挑一个未配置的 Moonshot (CN)
+  var item = items.find(function (el) { return (el.textContent || '').indexOf('Moonshot') !== -1 })
+  if (item !== null && item !== undefined) item.click()
+  return item !== null && item !== undefined
+})()`)
+await sleep(250)
+const pickedState = await evalJs(`(function () { ${PROBE_PAGE_FN} })()`)
+console.log('添加面板（选了 Moonshot）:', JSON.stringify(pickedState.addPanel, null, 1))
+await shotPage('page-06-add-panel-picked')
+
+// 再选 Custom Gateway（custom:true、baseURL 为空）：地址变可填但为空 → 查询配置仍置灰，
+// 协议从只读变成可编辑下拉（item 7 的选项就出自这里）
+await evalJs(`(function () { var btn = document.querySelector('.pv_pickBtn'); if (btn !== null) btn.click(); return true })()`)
+for (let i = 0; i < 20; i += 1) {
+  if (await evalJs(`document.querySelector('.pv_pickItem') !== null`) === true) break
+  await sleep(200)
+}
+await evalJs(`(function () {
+  var items = Array.from(document.querySelectorAll('.pv_pickItem'))
+  var item = items.find(function (el) { return (el.textContent || '').indexOf('Custom Gateway') !== -1 })
+  if (item !== null && item !== undefined) item.click()
+  return item !== null && item !== undefined
+})()`)
+await sleep(250)
+const customState = await evalJs(`(function () { ${PROBE_PAGE_FN} })()`)
+console.log('添加面板（选了 Custom Gateway）:', JSON.stringify(customState.addPanel, null, 1))
+await shotPage('page-07-add-panel-custom')
+
 console.log('\n=== rowpolish 断言 ===')
 // 1. 聚焦描边 = 协议展开态那条 1px 深色 border，不再叠 inset 阴影
 check('聚焦输入框：无 inset 阴影（视觉回到 1px）', focused.matchesFocus === true && focusStyle.urlInput.boxShadow === 'none',
@@ -476,6 +530,38 @@ if (panel !== null) {
     `x=${addBtn === undefined ? '?' : addBtn.x.toFixed(1)} rowLeft=${panel.actRowLeft}`)
   check('「取消」仍在右侧', cancelBtn !== undefined && addBtn !== undefined && cancelBtn.x > addBtn.x)
 }
+// item 2 附：Custom Gateway 分支——地址可填但为空 → 查询配置仍置灰；协议变可编辑下拉
+const custom = customState.addPanel
+check('Custom Gateway：API 地址可填（input）', custom !== null && custom.apiBase !== null && custom.apiBase.hasInput === true,
+  JSON.stringify(custom === null ? null : custom.apiBase))
+check('Custom Gateway：地址为空 →「查询配置」仍置灰', custom !== null && custom.apiBase !== null
+  && custom.apiBase.buttons.every(function (b) { return b.text !== '查询配置' || b.disabled === true }))
+check('Custom Gateway：协议变成可编辑下拉', custom !== null && custom.protocol !== null && custom.protocol.hasInput === true,
+  JSON.stringify(custom === null ? null : custom.protocol))
+check('Custom Gateway：路由 ID 可填', custom !== null && custom.routeId !== null && custom.routeId.hasInput === true)
+
+// item 1 附：锁死字段的高度与下拉按钮一致（空 span 曾塌成 14px）
+if (panel !== null && panel.pickHeight !== null) {
+  check('锁死字段盒高度与下拉按钮一致（不塌成 14px）',
+    [panel.routeId, panel.apiKey, panel.apiBase, panel.protocol].every(function (r) {
+      return r !== null && r.fieldHeight === panel.pickHeight
+    }),
+    `fields=${[panel.routeId, panel.apiKey, panel.apiBase, panel.protocol].map(function (r) { return r === null ? '?' : r.fieldHeight }).join('/')} pick=${panel.pickHeight}`)
+}
+// item 2 附：查询配置随 API 地址解灰；发现模型仍随密钥置灰
+const picked = pickedState.addPanel
+check('选中供应商后「查询配置」解灰', picked !== null && picked.apiBase !== null
+  && picked.apiBase.buttons.every(function (b) { return b.text !== '查询配置' || b.disabled === false }),
+  JSON.stringify(picked === null ? null : picked.apiBase))
+check('选中供应商但密钥还空着：「发现模型」仍置灰', picked !== null && picked.apiKey !== null
+  && picked.apiKey.buttons.every(function (b) { return b.text !== '发现模型' || b.disabled === true }))
+check('预置的 API 地址按只读展示（Moonshot 端点）', picked !== null && picked.apiBase !== null
+  && picked.apiBase.hasInput === false && String(picked.apiBase.text).indexOf('api.moonshot.cn') !== -1,
+  JSON.stringify(picked === null ? null : picked.apiBase))
+check('预置的协议按人类可读文案只读展示', picked !== null && picked.protocol !== null
+  && picked.protocol.hasInput === false && String(picked.protocol.text).indexOf('OpenAI Completions') !== -1,
+  JSON.stringify(picked === null ? null : picked.protocol))
+
 // item 1：供应商下拉箭头是官方 caretSvg（与协议下拉同一只）
 check('供应商下拉箭头用官方 caretSvg', addState.pickCaretSvg === true, `svg=${addState.pickCaretSvg}`)
 // item 7：provider 编辑页协议下拉的选项文案（菜单只在打开时有 .pv_selOption，

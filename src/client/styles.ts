@@ -166,7 +166,12 @@ var css =
   // 次要注解（凭据名这类）：单独一行小字，缩进跟着值列
   '.pv_hint{font-size:12px;line-height:16px;color:var(--dsw-alias-label-tertiary)}' +
   // 值框（API 密钥/端点）：Cherry 式输入框外观
-  '.pv_field{display:inline-flex;align-items:center;min-width:240px;max-width:100%;padding:6px 12px;' +
+  // min-height:20px = 内容盒下限（页面没有全局 border-box）：input 与有文字的 span 靠
+  // line-height 本就 20+12+2=34px，而**空 span**（添加面板里锁死的那些字段）没有行盒，
+  // 高度会塌成 12+2=14px、比按钮矮一截（用户 09-23 批注：输入框高度被改错了）。钉住内容盒
+  // 下限后三种形态一律 34px；input 固有高度不受影响。
+  '.pv_field{display:inline-flex;align-items:center;min-width:240px;min-height:20px;max-width:100%;' +
+  'padding:6px 12px;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:10px;' +
   'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.03));font-size:13px;line-height:20px;' +
   'color:var(--dsw-alias-label-secondary)}' +

@@ -696,9 +696,11 @@ function AddProviderPanel(props: AddProviderPanelProps) {
       // 自定义网关（custom: true）的路由 ID 是「建议值」不是预填值：留空让用户输入，
       // 输入框里以 placeholder 展示建议（custom-gateway），一旦输入即覆盖（对齐密钥框行为）
       routeId: preset.custom === true ? '' : preset.id,
-      baseURL: preset.baseURL,
-      api: preset.api,
-      apiKeyEnv: preset.apiKeyEnv,
+      // 形态归一成字符串：预设可能不带 baseURL / api（如只填了 label 的条目），
+      // undefined 会让下游 `form.baseURL === ''` 判断失准、`.trim()` 直接抛
+      baseURL: preset.baseURL ?? '',
+      api: preset.api ?? '',
+      apiKeyEnv: preset.apiKeyEnv ?? '',
       websiteUrl: preset.websiteUrl,
       key: '',
     })
@@ -1011,7 +1013,9 @@ function AddProviderPanel(props: AddProviderPanelProps) {
           type: 'button',
           className: 'pv_action',
           style: { marginLeft: '0' },
-          disabled: fieldEditable !== true || test.phase === 'run',
+          // 没选供应商或密钥还空着就置灰：runTest 本来就要求密钥非空（否则只弹「都要填」），
+          // 让它从一开始就点不下去，别等用户点完才告知（用户 09-23 批注）
+          disabled: fieldEditable !== true || String(form.key ?? '').trim() === '' || test.phase === 'run',
           onClick: runTest,
         }, test.phase === 'run' ? t('prov.discovering') : t('prov.discover')),
         form.websiteUrl === undefined
@@ -1035,6 +1039,8 @@ function AddProviderPanel(props: AddProviderPanelProps) {
           type: 'button',
           className: 'pv_action',
           style: { marginLeft: '0' },
+          // 与「发现模型」同款：API 地址为空时置灰不可点（用户 09-23 批注）
+          disabled: String(form.baseURL ?? '').trim() === '',
           title: t('prov.queryConfigTip'),
           onClick: function () {
             var pickedPreset = presets.find(function (p: ProviderPreset) { return p.id === form.presetId })
