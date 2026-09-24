@@ -126,6 +126,8 @@ export interface PlanAccount {
   windows?: QuotaWindow[]
   /** 这条路由显式声明的模型清单（undefined = 没配，服务 pi-ai 目录全量）。 */
   models?: DeclaredModel[] | undefined
+  /** 适配器给的一句话说明（欠费/未订阅套餐/限流…）。曾随快照下发但客户端不渲染，等于不可见。 */
+  note?: string
 }
 
 /** 官方目录服务的 snapshot store；subscribe 契约各版本不一，我们只用 getSnapshot。 */
