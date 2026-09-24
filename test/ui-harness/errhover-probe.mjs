@@ -128,7 +128,7 @@ const state = await evalJs(`(function () {
   // 收起态全卡文本不该出现报错原文；告警红行槽位已废除（全部 chip 化）
   var collapsedHasError = (badCard.textContent || '').indexOf(ERROR_TEXT) !== -1
   var collapsedAlertLines = badCard.querySelectorAll('.pv_pcAlert').length
-  // glm-cn 告警卡（error+warn+note 三种都配了）：三颗告警 chips——查询失败/凭据告警/账户提示
+  // glm-cn 告警卡（error+warn+note 三种都配了）：三颗告警 chips——查询失败/凭据告警/账户不可用
   var alertCard = null
   for (var a = 0; a < cards.length; a += 1) {
     if ((cards[a].textContent || '').indexOf('GLM Coding') !== -1) { alertCard = cards[a]; break }
@@ -222,8 +222,8 @@ check('旧告警红行槽位已废除（.pv_pcAlert = 0）', state.collapsedAler
 check('展开体不再平铺报错原文', opened !== null && opened.bodyHasError === false)
 check('展开体没有 plan_badText 报错行（opencode-err 只有 error 一种）', opened !== null && opened.badTextRows === 0,
   `badTextRows=${opened === null ? 'n/a' : opened.badTextRows}`)
-check('glm-cn 告警卡三颗 chips：查询失败/凭据告警/账户提示',
-  state.alertCardChips.map((c) => c.text).join(',') === '查询失败,凭据告警,账户提示',
+check('glm-cn 告警卡三颗 chips：查询失败/凭据告警/账户不可用',
+  state.alertCardChips.map((c) => c.text).join(',') === '查询失败,凭据告警,账户不可用',
   JSON.stringify(state.alertCardChips.map((c) => c.text)))
 check('glm-cn 的凭据/账户 chips 的 title 各挂原文（hover 全文）',
   state.alertCardChips[1] !== undefined && state.alertCardChips[1].title === 'GLM_API_KEY 与 ZAI_API_KEY 配了同一把 key'

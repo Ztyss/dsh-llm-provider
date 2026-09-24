@@ -302,7 +302,7 @@ export function headlineChips(account: PlanAccount | undefined | null): Headline
  *
  * 用户 09-24 批注：错误卡不再自动展开；晚批注「统一处理」：三类告警一律「短标签 chip +
  * hover 全文」，不再平铺。本函数是唯一的取数口——headlineChips 把它映射成告警 chips
- * （err→查询失败 / warn→凭据告警 / note→账户提示），短标签与原文都从这里出，两处不会漂移。
+ * （err→查询失败 / warn→凭据告警 / note→账户不可用），短标签与原文都从这里出，两处不会漂移。
  *
  * `key` 是语义键（err / warn / note 三类互斥命名），映射时兼作分类依据。
  */
