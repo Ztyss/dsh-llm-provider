@@ -7,7 +7,7 @@ self-maintained pi-ai bridge, model selector, quota lookups and provider managem
 
 [中文](README.md) · **English**
 
-> This repository is forked from [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider) and maintained independently since. Current version [v0.2.2](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.2) (installs from main).
+> This repository is forked from [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider) and maintained independently since. Current version [v0.2.3](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.3) (installs from main).
 
 ## Install
 
@@ -38,6 +38,11 @@ DSH-bundled copy — new pi-ai versions and model support arrive without waiting
   the switch always has a safety net.
 - **OFF = fall back to the DSH-bundled copy**: downloaded files are kept, and flipping back ON
   costs nothing.
+- **The toggle preference also lives in the safe zone**:
+  `$DSH_HOME/llm-provider-bridge/vendor-status.json` — the preference used to be written inside the
+  package as `vendor/status.json`, and the package manager rebuilds the plugin directory from
+  scratch on every reinstall/upgrade, resetting the switch to OFF. Moved out, a reinstall loses
+  nothing (an in-package legacy file is merged into the safe zone on first read, then removed).
 - **Only the newest downloaded version is kept**: `loadBridge` cleans older ones after the switch
   has completed (the running process never steps on a directory being deleted).
 - **The network is touched only while the switch is ON, in two places**: the flip itself, and
@@ -81,6 +86,25 @@ DSH-bundled copy — new pi-ai versions and model support arrive without waiting
   separately; models missing from the catalog get capabilities from the route declaration and
   adapter self-report (modlens-style synthetic providers).
 
+### Console cookie storage
+
+Providers that need a console session (StepFun's Step Plan points, for one) keep their cookies in
+`$DSH_HOME/llm-provider-bridge/.cookies.yaml` — **one file, dot-prefixed** to match the
+`.credentials.yaml` habit; same schema as credentials (`version` + flat key table), keys are
+credential ref names (e.g. `STEPFUN_CONSOLE_COOKIE`), so a new provider or cookie is just another
+key. Parsing tolerates hand edits, and a bad row never kills a lookup.
+
+- **Legacy single-slot session files migrate automatically**:
+  `stepfun-console-session.json` is merged into the new file on first read, then removed.
+- **Seed fingerprint dedup (write convergence)**: an entry records `seedSha`, the fingerprint of
+  the seed credential — later quota lookups for the same credential reuse the stored value instead
+  of writing the static credential back. Previously one lookup meant two writes plus a pointless
+  renewal RPC; now writes happen only on two real changes: repasting a cookie, and renewal
+  rotation.
+- **Fragment seed guard**: a seed must contain an `Oasis-Token` section — a fragment with only
+  `Oasis-Webid` can no longer overwrite a rotated good jar.
+- **First write on a fresh machine**: the bridge directory is created when missing.
+
 ### Model selector
 
 - **Full takeover**: once the official model selector is disabled, the selection seat (current
@@ -115,6 +139,6 @@ DSH-bundled copy — new pi-ai versions and model support arrive without waiting
 ## Tests
 
 ```sh
-npm test                      # build + a 15-step offline chain (no dsh needed)
+npm test                      # build + an 18-step offline chain (no dsh needed; the last step is the patch-condition drift check)
 node test/host-safety.mjs     # junction-safety regression: run under BOTH node 24.14 and the DSH runtime (≥24.15)
 ```

@@ -283,6 +283,39 @@ export function headlineChips(account: PlanAccount | undefined | null): Headline
   return [{ text: summaryOf(account), percent: undefined }]
 }
 
+/**
+ * 卡片告警行：`error` → `credentialWarning` → `note`，顺序固定。
+ *
+ * 用户 09-24 批注：错误卡不再自动展开，告警原文改在收起态卡片上直接显示；展开态底部
+ * 也取这一份——两个槽位共用同一个函数，避免各写一遍然后漂移（顺序一变，同一张卡的
+ * 两处显示就对不上了）。
+ *
+ * `key` 是 react key，同一张卡内必须唯一（err / warn / note 三类互斥命名）。
+ */
+export function providerAlerts(account: PlanAccount | undefined | null): { key: string; text: string }[] {
+  if (account === undefined || account === null) return []
+  var rows: { key: string; text: string }[] = []
+  var error = alertText(account.error)
+  if (error !== undefined) rows.push({ key: 'err', text: error })
+  var warning = alertText(account.credentialWarning)
+  if (warning !== undefined) rows.push({ key: 'warn', text: warning })
+  // unknown-provider 的 note 是给插件作者的（「在 src/adapters/ 加一个适配器并在
+  // registry.ts 注册即可」），摊给终端用户是无从下手的噪声；那一类卡片的 chips 已经有
+  // 「无适配器」。其它 kind 的 note 是用户向的（deepseek 欠费、minimax 未订阅套餐）。
+  if (account.kind !== 'unknown-provider') {
+    var note = alertText(account.note)
+    if (note !== undefined) rows.push({ key: 'note', text: note })
+  }
+  return rows
+}
+
+/** 告警文案：非字符串收敛成一句话（宿主侧曾放过非字符串），空白一律当没有。原文不 trim。 */
+function alertText(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined
+  var text = typeof value === 'string' ? value : String(value)
+  return text.trim() === '' ? undefined : text
+}
+
 /** 链接显示文本：去掉协议和末尾斜杠。 */
 export function linkTextOf(url: unknown): string {
   return String(url).replace(/^https?:\/\//, '').replace(/\/$/, '')

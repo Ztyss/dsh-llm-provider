@@ -76,7 +76,8 @@
     llmDirectorySize: 12,
     routes: [{ id: 'opencode-go', apiKeyEnv: 'OPENCODE_GO_API_KEY', source: 'llm-pi-ai', api: 'openai-completions', baseURL: 'https://opencode.ai/zen/go/v1' },
              { id: 'stepfun-test', apiKeyEnv: 'STEPFUN_TEST_API_KEY', source: 'llm-pi-ai', api: 'openai-completions', baseURL: 'https://api.stepfun.com/step_plan/v1' },
-             { id: 'zai-coding-cn', apiKeyEnv: 'ZAI_API_KEY', source: 'llm-pi-ai' }],
+             { id: 'zai-coding-cn', apiKeyEnv: 'ZAI_API_KEY', source: 'llm-pi-ai' },
+             { id: 'glm-cn', apiKeyEnv: 'GLM_API_KEY', source: 'llm-pi-ai' }],
     deepseekRouteMissing: false,
     testMode: false,
   }
@@ -118,6 +119,15 @@
         // 故意不配 models = 跟随 pi-ai 目录（catalog 全量生效）：驱动用它验证编辑器初始把目录模型全部预勾
         windows: [ { window: '5 小时滚动窗口', percentLeft: 88, resetAt: new Date(Date.now() + 2 * 3600e3).toISOString() },
                    { window: '每月窗口', percentLeft: 42, resetAt: new Date(Date.now() + 9 * 864e5).toISOString() } ] },
+      // 告警态卡片（用户 09-24 批注）：错误卡不再自动展开，告警原文改显示在收起态卡片上。
+      // 三类告警各一条（error 查询失败 / credentialWarning 共用 key / note 欠费），顺序与
+      // providerAlerts 的产出一致——展开态底部取同一个函数，两处文案不会漂移。
+      { id: 'glm-cn', displayName: 'GLM Coding (CN)', kind: 'quota', authConfigured: true, api: 'openai-completions',
+        apiKeyEnv: 'GLM_API_KEY', baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4', websiteUrl: 'https://open.bigmodel.cn',
+        keyHint: 'abc****wxyz', deletable: true, fetchedAt: new Date().toISOString(),
+        error: 'API key 有效，但该 workspace 没有订阅 OpenCode Go（HTTP 403）',
+        credentialWarning: 'GLM_API_KEY 与 ZAI_API_KEY 配了同一把 key',
+        note: '账户不可用（余额不足或已欠费）' },
     ],
   }
   var CATALOG = {

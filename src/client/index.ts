@@ -186,6 +186,6 @@ export { normalizeSelection, onPlanChange, mergePlanAccount, dropPlanAccount, lo
 export { aliasSelection, withEffortLadder, LEGACY_PROVIDER_ALIASES } from './model-seat.js'
 export { piAiBridgeRows, piAiUpstreamText, piAiToggleState, presetPickState, providerSaveOps, isRouteConfigured, refreshFailure, routeYamlOf, capabilityBadges, capabilityKeysOf, capabilitiesKnown, modelRow, modelTip, buildEditRows, resolveAddDefaults, EFFORT_LEVELS, DEFAULT_EFFORT_LADDER, EFFORT_FAMILY_LADDERS, effortsDraftOf, prefillEffortsOf, effortsToDeclared, payloadFromRows } from './settings.js'
 export { providerEditForm, providerEditSaveOps, validateProviderEdit, isProviderEditDirty, PROVIDER_API_OPTIONS } from './provider-edit.js'
-export { reasoningTextOf, defaultEffortOf, headlineChips, shortWindowLabel, relativeTime, resetCountdownText, quotaShortOf, quotaTextOf, quotaTipOf } from './format.js'
+export { reasoningTextOf, defaultEffortOf, headlineChips, shortWindowLabel, relativeTime, resetCountdownText, quotaShortOf, quotaTextOf, quotaTipOf, providerAlerts } from './format.js'
 export { LOCAL_DICT, localT, t, tf, setT } from './i18n.js'
 export { buildModelEditor, patchModelRow, addModelRow, validateModelRows, modelListPayload, isDefaultCatalogEquivalent } from './model-editor.js'

@@ -104,7 +104,8 @@ for (let i = 0; i < 40; i += 1) {
   await sleep(250)
 }
 
-// 页侧量测：定位失败卡（meta 里有「查询失败」chip 的那张），抓 chip 的 title 与展开体内容
+// 页侧量测：定位失败卡（displayName「OpenCode Go」且带「查询失败」chip 的那张——夹具里
+// glm-cn 告警卡也有一颗同文案的失败 chip，靠显示名区分），抓 chip 的 title 与展开体内容
 const state = await evalJs(`(function () {
   var ERROR_TEXT = ${JSON.stringify(ERROR_TEXT)}
   // 只认 provider 卡（带 .pv_pcMeta）；添加面板展开时根节点也是 .pv_pc，得排除
@@ -113,7 +114,8 @@ const state = await evalJs(`(function () {
   })
   var badCard = null
   for (var i = 0; i < cards.length; i += 1) {
-    if ((cards[i].textContent || '').indexOf('查询失败') !== -1) { badCard = cards[i]; break }
+    var tx = cards[i].textContent || ''
+    if (tx.indexOf('查询失败') !== -1 && tx.indexOf('OpenCode Go') !== -1) { badCard = cards[i]; break }
   }
   if (badCard === null) return { found: false }
   var meta = badCard.querySelector('.pv_pcMeta')
@@ -122,15 +124,24 @@ const state = await evalJs(`(function () {
   for (var j = 0; j < chips.length; j += 1) {
     if ((chips[j].textContent || '').indexOf('查询失败') !== -1) { failChip = chips[j]; break }
   }
-  // 失败卡当前是否展开（error 卡 dflt=true，首次打开默认展开）
-  var body = badCard.querySelector('.pv_pcBody')
-  // 全卡任何位置都不该再平铺报错原文
-  var bodyHasError = body !== null && (body.textContent || '').indexOf(ERROR_TEXT) !== -1
-  var cardHasError = (badCard.textContent || '').indexOf(ERROR_TEXT) !== -1
-  var badTextRows = badCard.querySelectorAll('.plan_badText').length
+  // 错误卡默认收起（err-hover 与远端「不再自动展开」合流后的一致行为）：
+  // 收起态全卡文本 + 收起态告警行都不该出现报错原文
+  var collapsedHasError = (badCard.textContent || '').indexOf(ERROR_TEXT) !== -1
+  var collapsedAlertLines = Array.from(badCard.querySelectorAll('.pv_pcAlert')).map(function (el) {
+    return el.getAttribute('title')
+  })
+  // glm-cn 告警卡（error+warn+note 三种都配了）：err 被过滤，只剩 warn/note 两条红行
+  var alertCard = null
+  for (var a = 0; a < cards.length; a += 1) {
+    if ((cards[a].textContent || '').indexOf('GLM Coding') !== -1) { alertCard = cards[a]; break }
+  }
+  var alertCardLines = alertCard === null ? [] : Array.from(alertCard.querySelectorAll('.pv_pcAlert')).map(function (el) {
+    return el.getAttribute('title')
+  })
+  var alertCardHasError = alertCard !== null && (alertCard.textContent || '').indexOf(ERROR_TEXT) !== -1
   // 正常卡的余量 chips 不该带 title
   var healthyChipTitles = []
-  var healthy = cards.filter(function (c) { return c !== badCard })
+  var healthy = cards.filter(function (c) { return c !== badCard && c !== alertCard })
   for (var k = 0; k < healthy.length; k += 1) {
     var hs = healthy[k].querySelectorAll('.pv_pcMeta .pv_chipItem')
     for (var h = 0; h < hs.length; h += 1) healthyChipTitles.push(hs[h].getAttribute('title'))
@@ -139,25 +150,74 @@ const state = await evalJs(`(function () {
     found: true,
     failChipText: failChip === null ? null : (failChip.textContent || '').trim(),
     failChipTitle: failChip === null ? null : failChip.getAttribute('title'),
-    expanded: body !== null,
-    bodyHasError: bodyHasError,
-    cardHasError: cardHasError,
-    badTextRows: badTextRows,
+    collapsedHasError: collapsedHasError,
+    collapsedAlertLines: collapsedAlertLines,
+    alertCardLines: alertCardLines,
+    alertCardHasError: alertCardHasError,
     healthyChipTitles: healthyChipTitles,
     cardCount: cards.length,
   }
 })()`)
 
 console.log('失败卡状态:', JSON.stringify(state, null, 1))
+
+// 点开失败卡：展开体同样不该平铺报错原文（err 只活在 chip 的 title hover 里）
+await evalJs(`(function () {
+  var cards = Array.from(document.querySelectorAll('.pv_pc'))
+  for (var i = 0; i < cards.length; i += 1) {
+    var tx = cards[i].textContent || ''
+    if (tx.indexOf('查询失败') !== -1 && tx.indexOf('OpenCode Go') !== -1) {
+      var head = cards[i].querySelector('.pv_pcHead')
+      if (head !== null) head.click()
+      return true
+    }
+  }
+  return false
+})()`)
+for (let i = 0; i < 20; i += 1) {
+  if (await evalJs(`(function () {
+    var cards = Array.from(document.querySelectorAll('.pv_pc'))
+    for (var i = 0; i < cards.length; i += 1) {
+      var tx = cards[i].textContent || ''
+      if (tx.indexOf('查询失败') !== -1 && tx.indexOf('OpenCode Go') !== -1) {
+        return cards[i].querySelector('.pv_pcBody') !== null
+      }
+    }
+    return false
+  })()`) === true) break
+  await sleep(200)
+}
+const opened = await evalJs(`(function () {
+  var ERROR_TEXT = ${JSON.stringify(ERROR_TEXT)}
+  var cards = Array.from(document.querySelectorAll('.pv_pc'))
+  for (var i = 0; i < cards.length; i += 1) {
+    var tx = cards[i].textContent || ''
+    if (tx.indexOf('查询失败') !== -1 && tx.indexOf('OpenCode Go') !== -1 && cards[i].querySelector('.pv_pcBody') !== null) {
+      var body = cards[i].querySelector('.pv_pcBody')
+      return {
+        bodyHasError: (body.textContent || '').indexOf(ERROR_TEXT) !== -1,
+        badTextRows: body.querySelectorAll('.plan_badText').length,
+      }
+    }
+  }
+  return null
+})()`)
+console.log('展开态:', JSON.stringify(opened))
 await shotPage('page-01-err-card')
 
 console.log('\n=== errhover 断言 ===')
-check('errCard 夹具渲染出失败卡（4 张卡）', state.found === true && state.cardCount === 4, `cardCount=${state.cardCount}`)
+check('errCard 夹具渲染出失败卡（5 张卡：4 基础 + errCard）', state.found === true && state.cardCount === 5, `cardCount=${state.cardCount}`)
 check('失败 chip 短句就是「查询失败」', state.failChipText === '查询失败', JSON.stringify(state.failChipText))
 check('chip.title 挂完整报错原文（hover 数据源）', state.failChipTitle === ERROR_TEXT, JSON.stringify(state.failChipTitle))
-check('失败卡展开体不再平铺报错原文', state.bodyHasError === false)
-check('全卡任何位置都不含报错原文（含 title 属性外的文本节点）', state.cardHasError === false)
-check('展开体没有 plan_badText 报错行（凭据警告本轮也不在夹具里）', state.badTextRows === 0, `badTextRows=${state.badTextRows}`)
+check('收起态卡片不平铺报错原文（err 不进收起态告警行）', state.collapsedHasError === false)
+check('收起态失败卡没有告警红行（纯 error 卡 warn/note 皆无）', state.collapsedAlertLines.length === 0,
+  JSON.stringify(state.collapsedAlertLines))
+check('展开体不再平铺报错原文', opened !== null && opened.bodyHasError === false)
+check('展开体没有 plan_badText 报错行（opencode-err 只有 error 一种）', opened !== null && opened.badTextRows === 0,
+  `badTextRows=${opened === null ? 'n/a' : opened.badTextRows}`)
+check('glm-cn 告警卡只剩 warn/note 两条红行（err 已过滤）', state.alertCardLines.length === 2,
+  JSON.stringify(state.alertCardLines))
+check('glm-cn 告警卡也不平铺报错原文', state.alertCardHasError === false)
 check('正常卡的余量 chips 不带 title', Array.isArray(state.healthyChipTitles) && state.healthyChipTitles.every((t) => t === null),
   JSON.stringify(state.healthyChipTitles))
 

@@ -24,7 +24,7 @@ import {
   withKey,
   withKeys,
 } from './data.js'
-import { dotClass, formatContext, fuzzyMatch, headlineChips, linkTextOf, relativeTime, resetCountdownText, shortName, toneColor, worstPercent } from './format.js'
+import { dotClass, formatContext, fuzzyMatch, headlineChips, linkTextOf, providerAlerts, relativeTime, resetCountdownText, shortName, toneColor, worstPercent } from './format.js'
 import { caretSvg, checkSvg } from './icons.js'
 import { t, tf } from './i18n.js'
 import { addModelRow, buildModelEditor, modelListPayload, patchModelRow, validateModelRows } from './model-editor.js'
@@ -2879,9 +2879,12 @@ export function ProviderSettingsSection() {
       })
   }
 
-  /** 折叠态记忆：undefined 时回落到默认值（报警/错误的卡片默认展开）。 */
-  function isOpen(key: string, dflt: boolean) {
-    return openMap[key] === undefined ? dflt : openMap[key]
+  /**
+   * 折叠态记忆：没有默认展开态（用户 09-24 批注：错误卡不再自动展开，告警原文显示在收起态
+   * 卡片上）。openMap 里 undefined / false 一律按收起算——告警不再影响开合，只有用户点过才算。
+   */
+  function isOpen(key: string) {
+    return openMap[key] === true
   }
   /** 把所有 provider 卡片的顶层展开键显式压灭（exceptId 除外）。子键（:models 等）保留。 */
   function collapseAllProviderCards(exceptId?: string) {
@@ -2895,7 +2898,7 @@ export function ProviderSettingsSection() {
     setOpenMap(function (prev: AnyRecord) {
       var next: AnyRecord = {}
       for (var key in prev) next[key] = prev[key]
-      // 显式写 false：连「报警/错误默认展开」的卡也被收起，重新点开算新的用户意图
+      // 显式写 false：把「上一次展开过」的意图清掉，重新点开算新的用户意图
       for (var j = 0; j < ids.length; j += 1) next[ids[j]] = false
       return next
     })
@@ -2911,8 +2914,8 @@ export function ProviderSettingsSection() {
     if (next === true) collapseAllProviderCards()
   }
 
-  function toggle(key: string, dflt: boolean) {
-    var opening = isOpen(key, dflt) !== true
+  function toggle(key: string) {
+    var opening = isOpen(key) !== true
     // 展开互斥（用户批注）：展开一张卡时把其它卡全部收起 + 关掉添加面板——
     // 同时只留一个 provider 编辑面
     if (opening) {
@@ -3016,8 +3019,10 @@ export function ProviderSettingsSection() {
   for (var i = 0; i < accounts.length; i += 1) {
     ;(function (account: PlanAccount) {
       var chips = headlineChips(account)
-      var dflt = account.error !== undefined || typeof account.credentialWarning === 'string'
-      var expanded = isOpen(account.id, dflt)
+      // 告警卡不再自动展开（用户 09-24 批注）：默认值恒 false，告警原文改显示在收起态卡片上
+      // （.pv_pcAlert）。openMap 里 undefined = 用户没表达过意图，此时回落到这个 false。
+      var alerts = providerAlerts(account)
+      var expanded = isOpen(account.id)
 
       var chipEls = []
       for (var c = 0; c < chips.length; c += 1) chipEls.push(headlineChip(chips[c], c))
@@ -3250,8 +3255,8 @@ export function ProviderSettingsSection() {
         } else {
           // 模型区（带外框）独立折叠：卡片展开时默认收起，点「模型（N）」头展开。
           // 展开先看「当前清单」（只读，即 settings.yaml 生效的模型）；点「编辑模型」才进勾选编辑器。
-          var modelsOpen = isOpen(account.id + ':models', false)
-          var modelsEdit = isOpen(account.id + ':models-edit', false)
+          var modelsOpen = isOpen(account.id + ':models')
+          var modelsEdit = isOpen(account.id + ':models-edit')
           // 折叠模型框时连同编辑态一起复位：下次展开总是先落在清单页
           function toggleModels() {
             setOpenMap(function (prev: AnyRecord) {
@@ -3401,10 +3406,17 @@ export function ProviderSettingsSection() {
           }
           bodyRows.push(react.createElement('div', { className: 'pv_mBox', key: 'mbox' }, mBoxRows))
         }
-        // 查询失败的详细报错不再在展开卡里平铺（用户批注）：改挂「查询失败」chip 的 title hover。
-        // 凭据体检结论是另一回事——它是「多个 provider 共用一把 key」的处置建议，不是报错 log，保留原文。
-        if (typeof account.credentialWarning === 'string') {
-          bodyRows.push(react.createElement('div', { className: 'plan_note plan_badText', key: 'warn' }, account.credentialWarning))
+        // 告警行：与收起态共用 providerAlerts——同一个函数取数，两处的顺序与文案不会漂移。
+        // err 不在此列（用户 09-24 晚批注）：查询失败的详细报错只挂「查询失败」chip 的
+        // title hover，收起态/展开态都不再平铺——这里跳过 err，只渲染 warn/note。
+        for (var ai = 0; ai < alerts.length; ai += 1) {
+          var alertRow = alerts[ai]
+          if (alertRow.key === 'err') continue
+          bodyRows.push(react.createElement(
+            'div',
+            { className: 'plan_note plan_badText', key: alertRow.key, title: alertRow.text },
+            alertRow.text,
+          ))
         }
       }
 
@@ -3430,11 +3442,11 @@ export function ProviderSettingsSection() {
                 role: 'button',
                 tabIndex: 0,
                 'aria-expanded': expanded ? 'true' : 'false',
-                onClick: function () { toggle(account.id, dflt) },
+                onClick: function () { toggle(account.id) },
                 onKeyDown: function (ev: KeyboardEvent) {
                   if (ev && (ev.key === 'Enter' || ev.key === ' ')) {
                     if (typeof ev.preventDefault === 'function') ev.preventDefault()
-                    toggle(account.id, dflt)
+                    toggle(account.id)
                   }
                 },
               },
@@ -3515,11 +3527,27 @@ export function ProviderSettingsSection() {
               {
                 className: 'pv_pcCaretCol',
                 title: expanded ? t('prov.collapse') : t('prov.expand'),
-                onClick: function () { toggle(account.id, dflt) },
+                onClick: function () { toggle(account.id) },
               },
               caretSvg(expanded),
             ),
           ),
+          // 收起态告警行：credentialWarning / note 各一条红字（用户 09-24 批注）。
+          // err 不渲染（用户 09-24 晚批注）：查询失败的详细报错只挂「查询失败」chip 的
+          // title hover——收起态卡片本身有红点 + 红色短句，全文 hover 才出现。
+          // 挂在 pv_pcTop **外面**做兄弟节点——塞进 pv_pcMain 会被 align-items:stretch 把
+          // pv_pcCaretCol 的垂直中心从标题区拽到整卡中间（实测 caretSkew 从 0 变 +21）。
+          // 展开时这些行走 pv_pcBody 底部同一个 providerAlerts，两处内容天然一致。
+          expanded
+            ? null
+            : alerts.map(function (alertRow) {
+                if (alertRow.key === 'err') return null
+                return react.createElement(
+                  'div',
+                  { className: 'pv_pcAlert plan_badText', key: alertRow.key, title: alertRow.text },
+                  alertRow.text,
+                )
+              }),
           // 展开体：分割线上边缘贯穿整卡
           expanded ? react.createElement('div', { className: 'pv_pcBody' }, bodyRows) : null,
         ),
