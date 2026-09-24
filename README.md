@@ -7,7 +7,7 @@ pi-ai 适配器（`llm-pi-ai`）、DeepSeek 适配器（`llm-deepseek`）、模�
 
 **中文** · [English](README.en.md)
 
-> 本仓库 fork 自 [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider)，此后独立维护演进。当前版本 [v0.2.2](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.2)（安装走 main 分支）。
+> 本仓库 fork 自 [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider)，此后独立维护演进。当前版本 [v0.2.3](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.3)（安装走 main 分支）。
 
 ## 安装
 
@@ -32,6 +32,9 @@ dsh web     # 需要重启：插件树在进程启动时组装
   `$DSH_HOME/llm-provider-bridge/pi-ai/<版本>/`（插件包随时可能被整棵递归删，几百 MB 不放
   包里）；重启后桥接软链指向自有版，顶替 DSH 自带那份，体检不过自动回退，开关永远有兜底。
 - **拨 OFF = 回退 DSH 自带版**：已下载文件保留，再拨 ON 零成本。
+- **开关偏好也住安全区**：`$DSH_HOME/llm-provider-bridge/vendor-status.json`——此前偏好写在
+  插件包内 `vendor/status.json`，包管理器每次重装/升级都整棵重建插件目录，开关被重置回 OFF；
+  迁出后重装零丢失（包内过渡版文件首次读取时自动并入安全区再移除）。
 - **只保留最新一个自有版本**：loadBridge 选中新版、切换完成后才清旧版（当前进程绝不踩待删
   目录）。
 - **触网只与开关 ON 相关，共两处**：拨开关那一下，以及**每次启动检查一次**——本地没有就绪
@@ -63,6 +66,21 @@ dsh web     # 需要重启：插件树在进程启动时组装
 - **能力三态徽章**：支持 / 明确不支持 / **未知** 分开渲染；目录查不到的模型从路由声明与
   适配器自报补齐能力（modlens 这类合成 provider）。
 
+### 控制台 Cookie 存储
+
+需要控制台会话的 provider（StepFun 的 Step Plan 点数这一类）把 Cookie 存在
+`$DSH_HOME/llm-provider-bridge/.cookies.yaml`——**单文件、点前缀隐藏**，对齐 `.credentials.yaml`
+的习惯；范式同 credentials（`version` + 扁平键表），键 = 凭据 ref 名（如
+`STEPFUN_CONSOLE_COOKIE`），新 provider / 新 Cookie 直接加键。解析容错手改，坏行不炸查询。
+
+- **旧版单槽会话文件自动迁移**：`stepfun-console-session.json` 首次读取并入新文件后移除。
+- **种子指纹去重（写盘收敛）**：条目记 `seedSha`（种子凭据指纹）——同一凭据的后续配额刷新
+  命中指纹即用存储值，不再把静态凭据反复写回。此前一次刷新 = 两次写盘 + 一次白做的续期 RPC；
+  现在只在「重贴 Cookie」与「续期轮换」两种真实变化时落盘。
+- **碎片种子守护**：种子必须含 `Oasis-Token` 段——只贴了 `Oasis-Webid` 一枚的碎片不会覆盖
+  已轮换的好 jar。
+- **全新机器首存**：bridge 目录不存在时自动创建。
+
 ### 模型选择器
 
 - **整体接管**：官方模型选择器停用后，选择座位（当前模型状态）、`/model` 命令与模型目录
@@ -90,6 +108,6 @@ dsh web     # 需要重启：插件树在进程启动时组装
 ## 测试
 
 ```sh
-npm test                      # 构建 + 15 步离线测试链（不需要 dsh）
+npm test                      # 构建 + 18 步离线测试链（不需要 dsh；末步是 patch 条件漂移校验）
 node test/host-safety.mjs     # junction 安全回归：须在 node 24.14 与 DSH 自带运行时（≥24.15）各跑一遍
 ```
