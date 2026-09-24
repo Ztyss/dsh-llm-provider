@@ -195,6 +195,9 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'quota.seeConsole': '看控制台',
     'quota.noAdapter': '无适配器',
     'quota.noAdapterTip': '插件还没有适配这个 provider，暂时查不了用量',
+    // 告警 chips 的短标签（用户批注「统一处理」）：全文一律挂 chip.tip，不平铺
+    'quota.credentialAlert': '凭据告警',
+    'quota.accountNotice': '账户提示',
     'quota.noData': '无数据',
     'quota.headlineRemaining': '{label}余量 {percent}%',
     // 兜底档位标签：认不出的窗口名统一显示它（曾经是截原名四个字，产出 'Step'/'Openc' 这类乱码）
@@ -406,6 +409,9 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     'quota.seeConsole': 'check console',
     'quota.noAdapter': 'no adapter',
     'quota.noAdapterTip': 'This provider has no adapter in the plugin yet, so usage cannot be queried',
+    // alert chip short labels (user note: unify) — full text always lives in chip.tip, never flat
+    'quota.credentialAlert': 'credential alert',
+    'quota.accountNotice': 'account notice',
     'quota.noData': 'No data',
     'quota.headlineRemaining': '{label} {percent}% left',
     'win.remain': 'Remaining',

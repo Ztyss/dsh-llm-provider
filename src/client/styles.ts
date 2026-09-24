@@ -140,9 +140,6 @@ var css =
   '.pv_pcWeb{display:inline-flex;align-items:center;color:var(--dsw-alias-label-tertiary);text-decoration:none;' +
   'font-size:14px;line-height:20px;padding:0 2px;border-radius:6px}' +
   '.pv_pcWeb:hover{color:var(--dsw-alias-label-secondary)}' +
-  // 收起态告警行（用户 09-24 批注：错误卡不再自动展开）：红色单行，超长省略号，
-  // 全文在 title 里。红色与展开态底部同一来源（plan_badText），这里只管排版。
-  '.pv_pcAlert{padding:0 16px 12px;font-size:13px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
   // 等级胶囊（Coding Plan 会员档）：业务蓝描边 + 蓝字，靠右
   '.pv_lv{flex:none;margin-left:auto;font-size:12px;line-height:18px;padding:1px 10px;border-radius:999px;' +
   'white-space:nowrap;color:var(--dsw-alias-state-business-primary,#5b8cff);' +

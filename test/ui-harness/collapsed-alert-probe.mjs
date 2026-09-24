@@ -91,29 +91,20 @@ function check(name, cond, detail) {
   if (!cond) failures.push(name)
 }
 
-// 页面里量的形状：每张卡 → 名字 / 展开态 / 告警行 / 箭头中心偏移
+// 页面里量的形状：每张卡 → 名字 / 展开态 / 告警 chips / 箭头中心偏移
 function survey() {
   return Array.from(document.querySelectorAll('.pv_pc')).map((card) => {
     const name = card.querySelector('.pv_pcName')
     const caret = card.querySelector('.pv_pcCaretCol')
     const top = card.querySelector('.pv_pcTop')
-    const alerts = Array.from(card.querySelectorAll('.pv_pcAlert')).map((el) => ({
-      text: el.textContent,
+    // 告警已全部 chip 化（用户批注「统一处理」）：err/warn/note 三类短标签都在 meta 的
+    // chips 行里，全文只在 title。量每颗 chip 的文本 / title / 颜色。
+    var chips = Array.from(card.querySelectorAll('.pv_pcMeta .pv_chipItem')).map((el) => ({
+      text: (el.textContent || '').trim(),
       title: el.getAttribute('title'),
-      // 独立字面量判红：不拿代码里的 .plan_badText 反推（那是同义反复），直接对 #d9534f
-      red: getComputedStyle(el).color === 'rgb(217, 83, 79)',
-      singleLine: el.getClientRects().length === 1,
-      truncated: el.scrollWidth > el.clientWidth + 1,
-      ellipsis: getComputedStyle(el).textOverflow === 'ellipsis',
-      noWrap: getComputedStyle(el).whiteSpace === 'nowrap',
+      color: getComputedStyle(el).color,
     }))
-    // 失败 chip：err 的详情现在挂这里（用户 09-24 晚批注：详细报错 hover「查询失败」才出现，
-    // 不再进收起态/展开态的告警红行）
-    var failChip = null
-    var chipEls = card.querySelectorAll('.pv_pcMeta .pv_chipItem')
-    for (var ci = 0; ci < chipEls.length; ci += 1) {
-      if ((chipEls[ci].textContent || '').indexOf('查询失败') !== -1) { failChip = chipEls[ci]; break }
-    }
+    const alertChips = chips.filter((c) => c.text === '查询失败' || c.text === '凭据告警' || c.text === '账户提示')
     const cr = caret === null ? null : caret.getBoundingClientRect()
     const tr = top === null ? null : top.getBoundingClientRect()
     return {
@@ -123,11 +114,14 @@ function survey() {
         ? null
         : card.querySelector('.pv_pcHead').getAttribute('aria-expanded'),
       hasBody: card.querySelector('.pv_pcBody') !== null,
+      // 展开体里不允许再有任何告警/报错平铺行
       bodyAlerts: Array.from(card.querySelectorAll('.pv_pcBody .plan_note')).map((el) => el.textContent),
-      alerts,
-      failChipText: failChip === null ? null : (failChip.textContent || '').trim(),
-      failChipTitle: failChip === null ? null : failChip.getAttribute('title'),
-      // 全卡可见文本（不含属性）：验证报错原文没有以任何文本节点平铺
+      alertChips,
+      // 旧红行槽位必须已不存在
+      alertLines: card.querySelectorAll('.pv_pcAlert').length,
+      failChipText: alertChips.length > 0 ? alertChips[0].text : null,
+      failChipTitle: alertChips.length > 0 ? alertChips[0].title : null,
+      // 全卡可见文本（不含属性）：验证报错/告警原文没有以任何文本节点平铺
       rawText: card.textContent || '',
       // 箭头中心相对 pv_pcTop 中心的偏移（0 = 仍居中在标题区）
       caretSkew: cr === null || tr === null ? null : Math.round((cr.top + cr.bottom) / 2 - (tr.top + tr.bottom) / 2),
@@ -179,20 +173,25 @@ try {
     `expanded=${alert.expanded} aria=${alert.ariaExpanded}`)
   check('三张健康卡也全部收起', healthy.every((c) => c.expanded === false && c.hasBody === false),
     healthy.map((c) => `${c.name}:${c.expanded}`).join(' '))
-  // err 已移出告警红行（用户 09-24 晚批注：详细报错 hover「查询失败」才出现）——红行只剩 warn/note
-  check('收起态两条告警，顺序 warn/note（err 不再进红行）',
-    alert.alerts.length === 2 && alert.alerts[0].text === WARN && alert.alerts[1].text === NOTE,
-    JSON.stringify(alert.alerts.map((a) => a.text)))
-  check('两条都是红色（#d9534f）', alert.alerts.length === 2 && alert.alerts.every((a) => a.red === true))
-  check('两条都单行不换行', alert.alerts.length === 2 && alert.alerts.every((a) => a.singleLine === true && a.noWrap === true))
-  check('超长那条走省略号',
-    alert.alerts.length === 2 && alert.alerts[0].truncated === true && alert.alerts[0].ellipsis === true,
-    `scrollWidth-clientWidth 溢出，ellipsis=${alert.alerts.length === 2 ? alert.alerts[0].ellipsis : 'n/a'}`)
-  check('省略号那条 title 给全文', alert.alerts.length === 2 && alert.alerts[0].title === WARN, String(alert.alerts.length === 2 ? alert.alerts[0].title : 'n/a'))
-  check('报错原文不再平铺在收起卡任何位置', !(alert.rawText || '').includes(ERR) && alert.alerts.every((a) => a.text !== ERR))
+  // 告警全部 chip 化（用户批注「统一处理」）：三颗短标签 chip，原文只在 title
+  check('告警 chips 三颗、顺序 err/warn/note：查询失败/凭据告警/账户提示',
+    alert.alertChips.length === 3
+    && alert.alertChips[0].text === '查询失败' && alert.alertChips[1].text === '凭据告警' && alert.alertChips[2].text === '账户提示',
+    JSON.stringify(alert.alertChips.map((c) => c.text)))
+  check('三颗 chip 的 title 各挂完整原文',
+    alert.alertChips[0].title === ERR && alert.alertChips[1].title === WARN && alert.alertChips[2].title === NOTE,
+    JSON.stringify(alert.alertChips.map((c) => c.title)))
+  check('色调：err/warn 红（#d9534f）、note 橙（#d9a300）',
+    alert.alertChips[0].color === 'rgb(217, 83, 79)' && alert.alertChips[1].color === 'rgb(217, 83, 79)'
+    && alert.alertChips[2].color === 'rgb(217, 163, 0)',
+    JSON.stringify(alert.alertChips.map((c) => c.color)))
+  check('旧红行槽位（.pv_pcAlert）已不存在', alert.alertLines === 0 && healthy.every((c) => c.alertLines === 0),
+    JSON.stringify(cards.map((c) => c.alertLines)))
+  check('三段原文都不再平铺在卡上（报错/凭据/欠费）',
+    !(alert.rawText || '').includes(ERR) && !(alert.rawText || '').includes(WARN) && !(alert.rawText || '').includes(NOTE))
   check('报错原文改挂「查询失败」chip 的 title', alert.failChipText === '查询失败' && alert.failChipTitle === ERR,
     `chip=${JSON.stringify(alert.failChipText)} title=${JSON.stringify(alert.failChipTitle)}`)
-  check('健康卡没有告警行', healthy.every((c) => c.alerts.length === 0), JSON.stringify(healthy.map((c) => c.alerts.length)))
+  check('健康卡没有告警 chips', healthy.every((c) => c.alertChips.length === 0), JSON.stringify(healthy.map((c) => c.alertChips.length)))
   check('箭头列中心仍在标题区（caretSkew=0）', cards.every((c) => c.caretSkew === 0),
     JSON.stringify(cards.map((c) => `${c.name}:${c.caretSkew}`)))
   // 量完窄视口恢复常规宽度：截图要能看清排版（320px 下的图字都挤在一起）
@@ -200,7 +199,7 @@ try {
   await sleep(300)
   await shotPage('collapsed')
 
-  // 展开：底部那三行必须和收起态同一个顺序、同一份文案
+  // 展开：chips 行原样保留（收起/展开同一行），展开体里不允许再平铺任何告警
   await evalJs(`(function () {
     var card = Array.from(document.querySelectorAll('.pv_pc')).find(function (c) {
       var n = c.querySelector('.pv_pcName')
@@ -213,9 +212,11 @@ try {
   const opened = afterOpen.find((c) => c.name === 'GLM Coding (CN)')
   console.log('\n展开态：')
   check('点开后展开', opened.expanded === true && opened.hasBody === true)
-  check('展开态底部同样是那两条、顺序一致（err 不在）',
-    JSON.stringify(opened.bodyAlerts) === JSON.stringify([WARN, NOTE]),
-    JSON.stringify(opened.bodyAlerts))
+  check('展开后告警 chips 原样保留（三颗、顺序不变）',
+    opened.alertChips.length === 3 && opened.alertChips[0].text === '查询失败'
+    && opened.alertChips[1].text === '凭据告警' && opened.alertChips[2].text === '账户提示',
+    JSON.stringify(opened.alertChips.map((c) => c.text)))
+  check('展开体不再平铺任何告警行', opened.bodyAlerts.length === 0, JSON.stringify(opened.bodyAlerts))
   await shotPage('expanded')
 
   // 互斥没被改坏：展开另一张卡时，告警卡要收起

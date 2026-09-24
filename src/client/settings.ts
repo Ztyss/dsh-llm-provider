@@ -24,7 +24,7 @@ import {
   withKey,
   withKeys,
 } from './data.js'
-import { dotClass, formatContext, fuzzyMatch, headlineChips, linkTextOf, providerAlerts, relativeTime, resetCountdownText, shortName, toneColor, worstPercent } from './format.js'
+import { dotClass, formatContext, fuzzyMatch, headlineChips, linkTextOf, relativeTime, resetCountdownText, shortName, toneColor, worstPercent } from './format.js'
 import { caretSvg, checkSvg } from './icons.js'
 import { t, tf } from './i18n.js'
 import { addModelRow, buildModelEditor, modelListPayload, patchModelRow, validateModelRows } from './model-editor.js'
@@ -3019,9 +3019,8 @@ export function ProviderSettingsSection() {
   for (var i = 0; i < accounts.length; i += 1) {
     ;(function (account: PlanAccount) {
       var chips = headlineChips(account)
-      // 告警卡不再自动展开（用户 09-24 批注）：默认值恒 false，告警原文改显示在收起态卡片上
-      // （.pv_pcAlert）。openMap 里 undefined = 用户没表达过意图，此时回落到这个 false。
-      var alerts = providerAlerts(account)
+      // 告警卡不再自动展开（用户 09-24 批注）：默认恒收起。告警信息在 chips 行里
+      // （headlineChips 统一产出），短标签常驻、全文 hover。
       var expanded = isOpen(account.id)
 
       var chipEls = []
@@ -3406,18 +3405,9 @@ export function ProviderSettingsSection() {
           }
           bodyRows.push(react.createElement('div', { className: 'pv_mBox', key: 'mbox' }, mBoxRows))
         }
-        // 告警行：与收起态共用 providerAlerts——同一个函数取数，两处的顺序与文案不会漂移。
-        // err 不在此列（用户 09-24 晚批注）：查询失败的详细报错只挂「查询失败」chip 的
-        // title hover，收起态/展开态都不再平铺——这里跳过 err，只渲染 warn/note。
-        for (var ai = 0; ai < alerts.length; ai += 1) {
-          var alertRow = alerts[ai]
-          if (alertRow.key === 'err') continue
-          bodyRows.push(react.createElement(
-            'div',
-            { className: 'plan_note plan_badText', key: alertRow.key, title: alertRow.text },
-            alertRow.text,
-          ))
-        }
+        // 告警不再在展开体平铺（用户 09-24 晚批注「统一处理」）：err/warn/note 三类一律
+        // 走 headlineChips 的短标签 chip + hover 全文（err→查询失败 / warn→凭据告警 /
+        // note→账户提示），收起态与展开态看到的都是同一行 chips。
       }
 
       var linkUrl = typeof account.websiteUrl === 'string' && account.websiteUrl !== ''
@@ -3532,22 +3522,8 @@ export function ProviderSettingsSection() {
               caretSvg(expanded),
             ),
           ),
-          // 收起态告警行：credentialWarning / note 各一条红字（用户 09-24 批注）。
-          // err 不渲染（用户 09-24 晚批注）：查询失败的详细报错只挂「查询失败」chip 的
-          // title hover——收起态卡片本身有红点 + 红色短句，全文 hover 才出现。
-          // 挂在 pv_pcTop **外面**做兄弟节点——塞进 pv_pcMain 会被 align-items:stretch 把
-          // pv_pcCaretCol 的垂直中心从标题区拽到整卡中间（实测 caretSkew 从 0 变 +21）。
-          // 展开时这些行走 pv_pcBody 底部同一个 providerAlerts，两处内容天然一致。
-          expanded
-            ? null
-            : alerts.map(function (alertRow) {
-                if (alertRow.key === 'err') return null
-                return react.createElement(
-                  'div',
-                  { className: 'pv_pcAlert plan_badText', key: alertRow.key, title: alertRow.text },
-                  alertRow.text,
-                )
-              }),
+          // 告警已全部 chip 化（用户 09-24 晚批注「统一处理」）：短标签在 pv_pcMeta 的
+          // chips 行里，全文只在 title hover——没有独立的告警行槽位了。
           // 展开体：分割线上边缘贯穿整卡
           expanded ? react.createElement('div', { className: 'pv_pcBody' }, bodyRows) : null,
         ),
