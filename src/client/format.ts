@@ -228,15 +228,27 @@ const HEADLINE_BUCKETS = ['5h', '7d', '30d'] as const
 
 export function headlineChips(account: PlanAccount | undefined | null): HeadlineChip[] {
   if (account === undefined || account === null) return [{ text: t('quota.noData'), percent: undefined }]
-  // 状态类 chip 的 hover 说明（用户批注：与「查询失败」详情 hover 同一套惯例）——
-  // 未配置说清「去哪填」；无适配器说清「为什么查不了」。unsupported 不出 chip，无需 tip。
-  if (account.authConfigured === false) return [{ text: t('quota.notConfigured'), percent: 0, tip: t('quota.notConfiguredTip') }]
-  // 查询失败：chip 本身只给短句，详细报错挂 tip（headlineChip 渲染成 title hover）——
-  // 用户批注：「API key 有效…」这段详细 log 不再平铺在展开卡底部，hover「查询失败」才出现。
-  // tip 给原始报错不拼前缀：hover 目标本身就是「查询失败」四个字，再拼一遍是废话。
-  if (account.error !== undefined) return [{ text: t('quota.queryFailed'), percent: 0, tip: String(account.error) }]
-  if (account.kind === 'unsupported') return []
+  // 告警 chips（用户 09-24 晚批注「统一处理」）：err/warn/note 三类一律「短标签 + hover 全文」，
+  // 不再有收起态/展开态的平铺红行——短标签与余量 chips 同一行，原文只在 title 里。
+  // 色调：err/warn 红（percent 0），note 橙（percent 20）——欠费是提醒不是失败。
+  var alertChips: HeadlineChip[] = []
+  var alerts = providerAlerts(account)
+  for (var ai = 0; ai < alerts.length; ai += 1) {
+    var alertRow = alerts[ai]
+    if (alertRow.key === 'err') alertChips.push({ text: t('quota.queryFailed'), percent: 0, tip: alertRow.text })
+    else if (alertRow.key === 'warn') alertChips.push({ text: t('quota.credentialAlert'), percent: 0, tip: alertRow.text })
+    else alertChips.push({ text: t('quota.accountNotice'), percent: 20, tip: alertRow.text })
+  }
+  // 状态类 chip 的 hover 说明（用户批注：与报错 hover 同一套惯例）——
+  // 未配置说清「去哪填」；无适配器说清「为什么查不了」。unsupported 不出状态 chip，只出告警 chips。
+  if (account.authConfigured === false) {
+    return [{ text: t('quota.notConfigured'), percent: 0, tip: t('quota.notConfiguredTip') }].concat(alertChips)
+  }
   if (account.kind === 'unknown-provider') return [{ text: t('quota.noAdapter'), percent: undefined, tip: t('quota.noAdapterTip') }]
+  if (account.kind === 'unsupported') return alertChips
+  // 查询失败：err chip 本身只给短句，详细报错挂在它的 tip 上（headlineChip 渲染成 title hover）——
+  // 用户批注：「API key 有效…」这段详细 log 不再平铺，hover「查询失败」才出现。
+  if (account.error !== undefined) return alertChips
   var windows = Array.isArray(account.windows) ? account.windows : []
   var groups: { label: string; chips: HeadlineChip[] }[] = []
   var known: string[] = HEADLINE_BUCKETS.slice()
@@ -278,21 +290,21 @@ export function headlineChips(account: PlanAccount | undefined | null): Headline
     if (chips.length > 0) chips.push({ sep: true })
     for (var c = 0; c < ordered[o].chips.length; c += 1) chips.push(ordered[o].chips[c])
   }
-  if (chips.length > 0) return chips
+  if (chips.length > 0) return chips.concat(alertChips)
   var balances = Array.isArray(account.balances) ? account.balances : []
   if (balances.length > 0) chips.push({ text: String(balances[0].value), percent: undefined })
-  if (chips.length > 0) return chips
-  return [{ text: summaryOf(account), percent: undefined }]
+  if (chips.length > 0) return chips.concat(alertChips)
+  return [{ text: summaryOf(account), percent: undefined }].concat(alertChips)
 }
 
 /**
- * 卡片告警行：`error` → `credentialWarning` → `note`，顺序固定。
+ * 卡片告警数据：`error` → `credentialWarning` → `note`，顺序固定。
  *
- * 用户 09-24 批注：错误卡不再自动展开，告警原文改在收起态卡片上直接显示；展开态底部
- * 也取这一份——两个槽位共用同一个函数，避免各写一遍然后漂移（顺序一变，同一张卡的
- * 两处显示就对不上了）。
+ * 用户 09-24 批注：错误卡不再自动展开；晚批注「统一处理」：三类告警一律「短标签 chip +
+ * hover 全文」，不再平铺。本函数是唯一的取数口——headlineChips 把它映射成告警 chips
+ * （err→查询失败 / warn→凭据告警 / note→账户提示），短标签与原文都从这里出，两处不会漂移。
  *
- * `key` 是 react key，同一张卡内必须唯一（err / warn / note 三类互斥命名）。
+ * `key` 是语义键（err / warn / note 三类互斥命名），映射时兼作分类依据。
  */
 export function providerAlerts(account: PlanAccount | undefined | null): { key: string; text: string }[] {
   if (account === undefined || account === null) return []

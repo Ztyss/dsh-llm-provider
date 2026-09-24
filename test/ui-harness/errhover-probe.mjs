@@ -125,19 +125,21 @@ const state = await evalJs(`(function () {
     if ((chips[j].textContent || '').indexOf('查询失败') !== -1) { failChip = chips[j]; break }
   }
   // 错误卡默认收起（err-hover 与远端「不再自动展开」合流后的一致行为）：
-  // 收起态全卡文本 + 收起态告警行都不该出现报错原文
+  // 收起态全卡文本不该出现报错原文；告警红行槽位已废除（全部 chip 化）
   var collapsedHasError = (badCard.textContent || '').indexOf(ERROR_TEXT) !== -1
-  var collapsedAlertLines = Array.from(badCard.querySelectorAll('.pv_pcAlert')).map(function (el) {
-    return el.getAttribute('title')
-  })
-  // glm-cn 告警卡（error+warn+note 三种都配了）：err 被过滤，只剩 warn/note 两条红行
+  var collapsedAlertLines = badCard.querySelectorAll('.pv_pcAlert').length
+  // glm-cn 告警卡（error+warn+note 三种都配了）：三颗告警 chips——查询失败/凭据告警/账户提示
   var alertCard = null
   for (var a = 0; a < cards.length; a += 1) {
     if ((cards[a].textContent || '').indexOf('GLM Coding') !== -1) { alertCard = cards[a]; break }
   }
-  var alertCardLines = alertCard === null ? [] : Array.from(alertCard.querySelectorAll('.pv_pcAlert')).map(function (el) {
-    return el.getAttribute('title')
-  })
+  var alertCardChips = []
+  if (alertCard !== null) {
+    var acs = alertCard.querySelectorAll('.pv_pcMeta .pv_chipItem')
+    for (var ac = 0; ac < acs.length; ac += 1) {
+      alertCardChips.push({ text: (acs[ac].textContent || '').trim(), title: acs[ac].getAttribute('title') })
+    }
+  }
   var alertCardHasError = alertCard !== null && (alertCard.textContent || '').indexOf(ERROR_TEXT) !== -1
   // 正常卡的余量 chips 不该带 title
   var healthyChipTitles = []
@@ -152,7 +154,12 @@ const state = await evalJs(`(function () {
     failChipTitle: failChip === null ? null : failChip.getAttribute('title'),
     collapsedHasError: collapsedHasError,
     collapsedAlertLines: collapsedAlertLines,
-    alertCardLines: alertCardLines,
+    failChipCount: (function () {
+      var n = 0
+      for (var f = 0; f < chips.length; f += 1) { if ((chips[f].textContent || '').indexOf('查询失败') !== -1) n += 1 }
+      return n
+    })(),
+    alertCardChips: alertCardChips,
     alertCardHasError: alertCardHasError,
     healthyChipTitles: healthyChipTitles,
     cardCount: cards.length,
@@ -209,14 +216,19 @@ console.log('\n=== errhover 断言 ===')
 check('errCard 夹具渲染出失败卡（5 张卡：4 基础 + errCard）', state.found === true && state.cardCount === 5, `cardCount=${state.cardCount}`)
 check('失败 chip 短句就是「查询失败」', state.failChipText === '查询失败', JSON.stringify(state.failChipText))
 check('chip.title 挂完整报错原文（hover 数据源）', state.failChipTitle === ERROR_TEXT, JSON.stringify(state.failChipTitle))
-check('收起态卡片不平铺报错原文（err 不进收起态告警行）', state.collapsedHasError === false)
-check('收起态失败卡没有告警红行（纯 error 卡 warn/note 皆无）', state.collapsedAlertLines.length === 0,
-  JSON.stringify(state.collapsedAlertLines))
+check('失败卡只有这一颗告警 chip（err 卡不出凭据/账户 chips）', state.failChipCount === 1, `count=${state.failChipCount}`)
+check('收起态卡片不平铺报错原文', state.collapsedHasError === false)
+check('旧告警红行槽位已废除（.pv_pcAlert = 0）', state.collapsedAlertLines === 0, `lines=${state.collapsedAlertLines}`)
 check('展开体不再平铺报错原文', opened !== null && opened.bodyHasError === false)
 check('展开体没有 plan_badText 报错行（opencode-err 只有 error 一种）', opened !== null && opened.badTextRows === 0,
   `badTextRows=${opened === null ? 'n/a' : opened.badTextRows}`)
-check('glm-cn 告警卡只剩 warn/note 两条红行（err 已过滤）', state.alertCardLines.length === 2,
-  JSON.stringify(state.alertCardLines))
+check('glm-cn 告警卡三颗 chips：查询失败/凭据告警/账户提示',
+  state.alertCardChips.map((c) => c.text).join(',') === '查询失败,凭据告警,账户提示',
+  JSON.stringify(state.alertCardChips.map((c) => c.text)))
+check('glm-cn 的凭据/账户 chips 的 title 各挂原文（hover 全文）',
+  state.alertCardChips[1] !== undefined && state.alertCardChips[1].title === 'GLM_API_KEY 与 ZAI_API_KEY 配了同一把 key'
+  && state.alertCardChips[2] !== undefined && state.alertCardChips[2].title === '账户不可用（余额不足或已欠费）',
+  JSON.stringify(state.alertCardChips.map((c) => c.title)))
 check('glm-cn 告警卡也不平铺报错原文', state.alertCardHasError === false)
 check('正常卡的余量 chips 不带 title', Array.isArray(state.healthyChipTitles) && state.healthyChipTitles.every((t) => t === null),
   JSON.stringify(state.healthyChipTitles))
