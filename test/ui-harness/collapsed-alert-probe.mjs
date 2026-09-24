@@ -98,12 +98,16 @@ function survey() {
     const caret = card.querySelector('.pv_pcCaretCol')
     const top = card.querySelector('.pv_pcTop')
     // 告警已全部 chip 化（用户批注「统一处理」）：err/warn/note 三类短标签都在 meta 的
-    // chips 行里，全文只在 title。量每颗 chip 的文本 / title / 颜色。
-    var chips = Array.from(card.querySelectorAll('.pv_pcMeta .pv_chipItem')).map((el) => ({
-      text: (el.textContent || '').trim(),
-      title: el.getAttribute('title'),
-      color: getComputedStyle(el).color,
-    }))
+    // chips 行里，全文只在 title。量每颗 chip 的文本 / title / 颜色——颜色在**内层**
+    // 文本 span 上（headlineChip 的 toneColor 内联），不是外层 .pv_chipItem 容器。
+    var chips = Array.from(card.querySelectorAll('.pv_pcMeta .pv_chipItem')).map((el) => {
+      const textSpan = el.lastElementChild
+      return {
+        text: (el.textContent || '').trim(),
+        title: el.getAttribute('title'),
+        color: textSpan === null || textSpan.nodeType !== 1 ? getComputedStyle(el).color : getComputedStyle(textSpan).color,
+      }
+    })
     const alertChips = chips.filter((c) => c.text === '查询失败' || c.text === '凭据告警' || c.text === '账户提示')
     const cr = caret === null ? null : caret.getBoundingClientRect()
     const tr = top === null ? null : top.getBoundingClientRect()
