@@ -258,6 +258,16 @@ contractCheck('详细报错挂在 chip.tip（hover 数据源）', failed[0].tip 
 contractCheck('失败 chip 沿用坏色调（percent 0）', failed[0].percent === 0)
 contractCheck('窗口/余额 chips 不带 tip（不误挂 hover）', headlineChips({ id: 'x', windows: [win('5 小时窗口', 90, '2030-01-01T00:00:00Z')] })[0].tip === undefined)
 
+// ---- 状态 chip 的 hover 说明（用户批注：与报错 hover 同一套惯例）----
+const notConfigured = headlineChips({ id: 'nokey-demo', authConfigured: false })
+contractCheck('未配置 key 的 chip 带 hover 说明（说清去哪填）',
+  notConfigured[0].text === '未配置 key' && typeof notConfigured[0].tip === 'string' && notConfigured[0].tip.indexOf('API 密钥') !== -1,
+  JSON.stringify(notConfigured[0].tip))
+const noAdapter = headlineChips({ id: 'mystery', kind: 'unknown-provider' })
+contractCheck('无适配器的 chip 带 hover 说明（说清为何查不了）',
+  noAdapter[0].text === '无适配器' && typeof noAdapter[0].tip === 'string' && noAdapter[0].tip.indexOf('适配') !== -1,
+  JSON.stringify(noAdapter[0].tip))
+
 if (contractFailures > 0) throw new Error(`契约/分割线断言有 ${contractFailures} 条没过`)
 
 // ---- 「pi-ai 桥接」标签页的明细行（纯函数，不渲染）----
