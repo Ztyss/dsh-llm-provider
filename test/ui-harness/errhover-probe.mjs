@@ -221,6 +221,42 @@ check('glm-cn 告警卡也不平铺报错原文', state.alertCardHasError === fa
 check('正常卡的余量 chips 不带 title', Array.isArray(state.healthyChipTitles) && state.healthyChipTitles.every((t) => t === null),
   JSON.stringify(state.healthyChipTitles))
 
+// ---- 第二段：状态 chip 的 hover 说明（?statCard=1：追加未配置凭据 + 无适配器两张卡）----
+await send('Page.navigate', { url: 'file:///' + join(here, 'harness.html').replace(/\\/g, '/') + '?statCard=1' })
+for (let i = 0; i < 40; i += 1) {
+  if (await evalJs(`document.querySelector('.pv_addBtn') !== null && window.__ready === true`) === true) break
+  await sleep(250)
+}
+const statState = await evalJs(`(function () {
+  var cards = Array.from(document.querySelectorAll('.pv_pc')).filter(function (c) {
+    return c.querySelector('.pv_pcMeta') !== null
+  })
+  function chipOf(nameText) {
+    for (var i = 0; i < cards.length; i += 1) {
+      if ((cards[i].textContent || '').indexOf(nameText) === -1) continue
+      var chips = cards[i].querySelectorAll('.pv_pcMeta .pv_chipItem')
+      return chips.length > 0
+        ? { text: (chips[0].textContent || '').trim(), title: chips[0].getAttribute('title'), dotWarn: cards[i].querySelector('.plan_dot_warn') !== null }
+        : null
+    }
+    return null
+  }
+  return {
+    cardCount: cards.length,
+    nokey: chipOf('NoKey Demo'),
+    mystery: chipOf('Mystery'),
+  }
+})()`)
+console.log('状态卡:', JSON.stringify(statState))
+await shotPage('page-02-stat-cards')
+
+check('statCard 夹具渲染出 6 张卡（4 基础 + 2 状态）', statState.cardCount === 6, `cardCount=${statState.cardCount}`)
+check('「未配置 key」chip 的 title 是填 key 指引', statState.nokey !== null && statState.nokey.title !== null
+  && statState.nokey.title.indexOf('API 密钥') !== -1, JSON.stringify(statState.nokey === null ? null : statState.nokey.title))
+check('未配置卡带警示黄点', statState.nokey !== null && statState.nokey.dotWarn === true)
+check('「无适配器」chip 的 title 是原因说明', statState.mystery !== null && statState.mystery.title !== null
+  && statState.mystery.title.indexOf('适配') !== -1, JSON.stringify(statState.mystery === null ? null : statState.mystery.title))
+
 ws.close()
 if (failures.length > 0) {
   console.error(`\nPROBE-FAIL：${failures.length} 项未过 — ${failures.join(' / ')}`)

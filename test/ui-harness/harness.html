@@ -176,6 +176,17 @@
         error: 'API key 有效，但该 workspace 没有订阅 OpenCode Go（HTTP 403）',
       })
     }
+    // ?statCard=1：追加两张状态卡（「状态 chip 加 hover 说明」批注的取证夹具）——
+    // 一张未配置凭据（黄点 + 未配置 key）、一张无适配器。默认不带。
+    if (/[?&]statCard=1/.test(String(location.search))) {
+      PLAN.accounts.push(
+        { id: 'nokey-demo', displayName: 'NoKey Demo', kind: 'quota', authConfigured: false, api: 'openai-completions',
+          apiKeyEnv: 'NOKEY_DEMO_API_KEY', baseUrl: 'https://example.com/v1', websiteUrl: 'https://example.com',
+          deletable: true, fetchedAt: new Date().toISOString() },
+        { id: 'mystery-provider', displayName: 'Mystery', kind: 'unknown-provider', authConfigured: true,
+          apiKeyEnv: 'MYSTERY_API_KEY', deletable: true, fetchedAt: new Date().toISOString() },
+      )
+    }
   } catch (e) { /* 没有查询参数 */ }
   function reply(body) {
     return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve(body) } })
