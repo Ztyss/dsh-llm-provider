@@ -275,9 +275,9 @@ const combined = headlineChips({
   credentialWarning: 'GLM_API_KEY 与 ZAI_API_KEY 配了同一把 key',
   note: '账户不可用（余额不足或已欠费）',
 })
-contractCheck('三类告警齐出三颗 chip：查询失败/凭据告警/账户提示',
+contractCheck('三类告警齐出三颗 chip：查询失败/凭据告警/账户不可用',
   combined.length === 3
-  && combined[0].text === '查询失败' && combined[1].text === '凭据告警' && combined[2].text === '账户提示',
+  && combined[0].text === '查询失败' && combined[1].text === '凭据告警' && combined[2].text === '账户不可用',
   JSON.stringify(combined.map((c) => c.text)))
 contractCheck('warn/note chip 的 tip 各挂自己的原文',
   combined[1].tip === 'GLM_API_KEY 与 ZAI_API_KEY 配了同一把 key'
@@ -286,11 +286,11 @@ contractCheck('色调：err/warn 红（0）、note 橙（20）',
   combined[0].percent === 0 && combined[1].percent === 0 && combined[2].percent === 20)
 contractCheck('查询失败卡不再重复出 err chip（providerAlerts 与旧分支合一）',
   headlineChips({ id: 'opencode-err', error: 'HTTP 403' }).filter((c) => c.text === '查询失败').length === 1)
-contractCheck('unknown-provider 的开发者向 note 不出「账户提示」chip',
+contractCheck('unknown-provider 的开发者向 note 不出「账户不可用」chip',
   headlineChips({ id: 'mystery', kind: 'unknown-provider', note: '在 src/adapters/ 加适配器' }).length === 1)
 contractCheck('余量 chips 与告警 chips 共存（余量在前、告警在后）',
   headlineChips({ id: 'x', note: '账户欠费', windows: [win('5 小时窗口', 90, '2030-01-01T00:00:00Z')] })
-    .map((c) => c.text).join(',') === '90%,账户提示')
+    .map((c) => c.text).join(',') === '90%,账户不可用')
 
 if (contractFailures > 0) throw new Error(`契约/分割线断言有 ${contractFailures} 条没过`)
 

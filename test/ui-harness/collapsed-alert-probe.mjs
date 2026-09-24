@@ -108,7 +108,7 @@ function survey() {
         color: textSpan === null || textSpan.nodeType !== 1 ? getComputedStyle(el).color : getComputedStyle(textSpan).color,
       }
     })
-    const alertChips = chips.filter((c) => c.text === '查询失败' || c.text === '凭据告警' || c.text === '账户提示')
+    const alertChips = chips.filter((c) => c.text === '查询失败' || c.text === '凭据告警' || c.text === '账户不可用')
     const cr = caret === null ? null : caret.getBoundingClientRect()
     const tr = top === null ? null : top.getBoundingClientRect()
     return {
@@ -178,9 +178,9 @@ try {
   check('三张健康卡也全部收起', healthy.every((c) => c.expanded === false && c.hasBody === false),
     healthy.map((c) => `${c.name}:${c.expanded}`).join(' '))
   // 告警全部 chip 化（用户批注「统一处理」）：三颗短标签 chip，原文只在 title
-  check('告警 chips 三颗、顺序 err/warn/note：查询失败/凭据告警/账户提示',
+  check('告警 chips 三颗、顺序 err/warn/note：查询失败/凭据告警/账户不可用',
     alert.alertChips.length === 3
-    && alert.alertChips[0].text === '查询失败' && alert.alertChips[1].text === '凭据告警' && alert.alertChips[2].text === '账户提示',
+    && alert.alertChips[0].text === '查询失败' && alert.alertChips[1].text === '凭据告警' && alert.alertChips[2].text === '账户不可用',
     JSON.stringify(alert.alertChips.map((c) => c.text)))
   check('三颗 chip 的 title 各挂完整原文',
     alert.alertChips[0].title === ERR && alert.alertChips[1].title === WARN && alert.alertChips[2].title === NOTE,
@@ -218,7 +218,7 @@ try {
   check('点开后展开', opened.expanded === true && opened.hasBody === true)
   check('展开后告警 chips 原样保留（三颗、顺序不变）',
     opened.alertChips.length === 3 && opened.alertChips[0].text === '查询失败'
-    && opened.alertChips[1].text === '凭据告警' && opened.alertChips[2].text === '账户提示',
+    && opened.alertChips[1].text === '凭据告警' && opened.alertChips[2].text === '账户不可用',
     JSON.stringify(opened.alertChips.map((c) => c.text)))
   check('展开体不再平铺任何告警行', opened.bodyAlerts.length === 0, JSON.stringify(opened.bodyAlerts))
   await shotPage('expanded')

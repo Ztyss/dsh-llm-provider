@@ -3407,7 +3407,7 @@ export function ProviderSettingsSection() {
         }
         // 告警不再在展开体平铺（用户 09-24 晚批注「统一处理」）：err/warn/note 三类一律
         // 走 headlineChips 的短标签 chip + hover 全文（err→查询失败 / warn→凭据告警 /
-        // note→账户提示），收起态与展开态看到的都是同一行 chips。
+        // note→账户不可用），收起态与展开态看到的都是同一行 chips。
       }
 
       var linkUrl = typeof account.websiteUrl === 'string' && account.websiteUrl !== ''
