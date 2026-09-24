@@ -156,6 +156,16 @@
     if (pd) planDelayMs = Number(pd[1])
     var sd = String(location.search).match(/[?&]statusDelay=(\d+)/)
     if (sd) statusDelayMs = Number(sd[1])
+    // ?errCard=1：追加一张查询失败的卡（「报错 hover 化」批注的取证夹具）——报错形状
+    // 复刻 adapters/opencode-go.ts 403 分支的真实输出。默认不带，既有探针不受影响。
+    if (/[?&]errCard=1/.test(String(location.search))) {
+      PLAN.accounts.push({
+        id: 'opencode-err', displayName: 'OpenCode Go', kind: 'quota', authConfigured: true, api: 'openai-completions',
+        apiKeyEnv: 'OPENCODE_GO_API_KEY', baseUrl: 'https://opencode.ai/zen/go/v1', websiteUrl: 'https://opencode.ai/go',
+        keyHint: 'sk-****abcd', deletable: true, fetchedAt: new Date().toISOString(),
+        error: 'API key 有效，但该 workspace 没有订阅 OpenCode Go（HTTP 403）',
+      })
+    }
   } catch (e) { /* 没有查询参数 */ }
   function reply(body) {
     return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve(body) } })

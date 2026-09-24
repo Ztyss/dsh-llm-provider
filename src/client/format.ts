@@ -229,7 +229,10 @@ const HEADLINE_BUCKETS = ['5h', '7d', '30d'] as const
 export function headlineChips(account: PlanAccount | undefined | null): HeadlineChip[] {
   if (account === undefined || account === null) return [{ text: t('quota.noData'), percent: undefined }]
   if (account.authConfigured === false) return [{ text: t('quota.notConfigured'), percent: 0 }]
-  if (account.error !== undefined) return [{ text: t('quota.queryFailed'), percent: 0 }]
+  // 查询失败：chip 本身只给短句，详细报错挂 tip（headlineChip 渲染成 title hover）——
+  // 用户批注：「API key 有效…」这段详细 log 不再平铺在展开卡底部，hover「查询失败」才出现。
+  // tip 给原始报错不拼前缀：hover 目标本身就是「查询失败」四个字，再拼一遍是废话。
+  if (account.error !== undefined) return [{ text: t('quota.queryFailed'), percent: 0, tip: String(account.error) }]
   if (account.kind === 'unsupported') return []
   if (account.kind === 'unknown-provider') return [{ text: t('quota.noAdapter'), percent: undefined }]
   var windows = Array.isArray(account.windows) ? account.windows : []

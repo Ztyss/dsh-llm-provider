@@ -189,7 +189,11 @@ export function piAiUpstreamText(piAi: unknown, bridge?: unknown): string | unde
   return undefined
 }
 
-/** 单个摘要 chip：「5h余量:90% 34min后重置」；余额类无标签只显示金额；sep 为组间分割线。 */
+/**
+ * 单个摘要 chip：「5h余量:90% 34min后重置」；余额类无标签只显示金额；sep 为组间分割线。
+ * chip.tip 存在时挂到 title 上做原生 hover（用户批注：查询失败的详细报错 hover 才出现，
+ * 不再平铺在展开卡底部）——与桥接页「短句 + 详情挂 title」同一套惯例。
+ */
 function headlineChip(chip: HeadlineChip, key: number) {
   if (chip.sep === true) {
     return react.createElement('span', { key: 'sep' + String(key), className: 'pv_chipSep' })
@@ -198,7 +202,7 @@ function headlineChip(chip: HeadlineChip, key: number) {
     // 余额类（API 按量）：无窗口标签，直接显示金额
     return react.createElement(
       'span',
-      { key: String(key), className: 'pv_chipItem' },
+      { key: String(key), className: 'pv_chipItem', title: chip.tip },
       react.createElement('span', { key: 't', style: { color: toneColor(chip.percent) } }, chip.text),
     )
   }
@@ -209,7 +213,7 @@ function headlineChip(chip: HeadlineChip, key: number) {
   if (chip.reset !== undefined && chip.reset !== '') {
     parts.push(react.createElement('span', { key: 'r', className: 'pv_chipReset' }, ' ◷ ' + resetCountdownText(chip.reset)))
   }
-  return react.createElement('span', { key: String(key), className: 'pv_chipItem' }, parts)
+  return react.createElement('span', { key: String(key), className: 'pv_chipItem', title: chip.tip }, parts)
 }
 
 /**
@@ -3397,10 +3401,8 @@ export function ProviderSettingsSection() {
           }
           bodyRows.push(react.createElement('div', { className: 'pv_mBox', key: 'mbox' }, mBoxRows))
         }
-        if (account.error !== undefined) {
-          bodyRows.push(react.createElement('div', { className: 'plan_note plan_badText', key: 'err' }, String(account.error)))
-        }
-        // 凭据体检结论：多个 provider 共用同一把 key（值本身不会下发到浏览器）
+        // 查询失败的详细报错不再在展开卡里平铺（用户批注）：改挂「查询失败」chip 的 title hover。
+        // 凭据体检结论是另一回事——它是「多个 provider 共用一把 key」的处置建议，不是报错 log，保留原文。
         if (typeof account.credentialWarning === 'string') {
           bodyRows.push(react.createElement('div', { className: 'plan_note plan_badText', key: 'warn' }, account.credentialWarning))
         }

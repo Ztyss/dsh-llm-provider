@@ -247,6 +247,17 @@ const monthlyOnly = headlineChips({ id: 'x', windows: [win('每月窗口', 8, '2
 contractCheck('只有一档时不画分割线', sepCount(monthlyOnly) === 0)
 contractCheck('每月窗口不再被显示成 7d', textsOf(monthlyOnly).join(',') === '30d:8%')
 
+// ---- 查询失败的报错 hover 化（用户批注）：详细 log 挂 chip.tip，展开卡底部不再平铺 ----
+// 报错原文复刻 adapters/opencode-go.ts 403 分支的真实输出。
+const failed = headlineChips({
+  id: 'opencode-err',
+  error: 'API key 有效，但该 workspace 没有订阅 OpenCode Go（HTTP 403）',
+})
+contractCheck('查询失败出且仅出一个短句 chip', failed.length === 1 && failed[0].text === '查询失败')
+contractCheck('详细报错挂在 chip.tip（hover 数据源）', failed[0].tip === 'API key 有效，但该 workspace 没有订阅 OpenCode Go（HTTP 403）')
+contractCheck('失败 chip 沿用坏色调（percent 0）', failed[0].percent === 0)
+contractCheck('窗口/余额 chips 不带 tip（不误挂 hover）', headlineChips({ id: 'x', windows: [win('5 小时窗口', 90, '2030-01-01T00:00:00Z')] })[0].tip === undefined)
+
 if (contractFailures > 0) throw new Error(`契约/分割线断言有 ${contractFailures} 条没过`)
 
 // ---- 「pi-ai 桥接」标签页的明细行（纯函数，不渲染）----

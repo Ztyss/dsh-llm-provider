@@ -175,13 +175,20 @@ export interface BridgeRow {
   warn?: boolean
 }
 
-/** 卡片头部摘要 chip：窗口余量（label+text+percent）、钱包余额（只有 text）或组间分割线（sep）。 */
+/** 卡片头部摘要 chip：窗口余量（label+text+percent）、钱包余额（只有 text）或组间分割线（sep）。
+ *  tip 是可选的悬停详情（见 format.ts headlineChips 的错误分支）。 */
 export interface HeadlineChip {
   sep?: boolean
   label?: string
   text?: string
   percent?: number | undefined
   reset?: string | undefined
+  /**
+   * 悬停详情原文。用户批注：「API key 有效…」这段详细报错改为鼠标 hover「查询失败」时出现，
+   * 展开卡底部不再重复渲染——设置页 headlineChip 把它挂到 title 上；
+   * 窗口/余额 chips 不产生 tip，模型面板的 hover 仍走 quotaTipOf。
+   */
+  tip?: string
 }
 
 /** createElement 里 input/select 的 onChange 事件对象：只读得到 target.value / target.checked。 */
