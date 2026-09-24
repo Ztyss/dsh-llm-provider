@@ -11,13 +11,13 @@
     "llm-provider",
     "pi-ai"
   ],
-  "homepage": "https://github.com/imchangchang/dsh-llm-provider#readme",
+  "homepage": "https://github.com/Ztyss/dsh-llm-provider#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/imchangchang/dsh-llm-provider.git"
+    "url": "git+https://github.com/Ztyss/dsh-llm-provider.git"
   },
   "bugs": {
-    "url": "https://github.com/imchangchang/dsh-llm-provider/issues"
+    "url": "https://github.com/Ztyss/dsh-llm-provider/issues"
   },
   "type": "module",
   "scripts": {
