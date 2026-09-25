@@ -21,7 +21,17 @@
 #    它独有的逐模型清单编辑（ModelListEditor / DeepSeekModelsEditor / CustomProviderCard）
 #    没有替代——记在 README「已知缺口」一节。
 - id: llm-pi-ai
-  disabled: !!js (()=>{try{const fs=process.getBuiltinModule?process.getBuiltinModule("node:fs"):null;if(!fs||typeof fs.existsSync!=="function")return false;const sep=process.platform==="win32"?"\\":"/";const spec="node_modules"+sep+"@earendil-works"+sep+"pi-ai";const starts=[];if(process.argv&&typeof process.argv[1]==="string")starts.push(process.argv[1]);if(typeof process.execPath==="string")starts.push(process.execPath);for(const start of starts){let dir=start;for(let hop=0;hop<12;hop+=1){const cut=Math.max(dir.lastIndexOf("/"),dir.lastIndexOf("\\"));if(cut<=0)break;dir=dir.slice(0,cut);const root=dir+sep+spec;if(fs.existsSync(root+sep+"package.json")&&fs.existsSync(root+sep+"dist"+sep+"index.js"))return true}}return false}catch{return false}})()
+  disabled: !!js (()=>{try{const fs=process.getBuiltinModule?process.getBuiltinModule("node:fs"):null;if(!fs||typeof fs.readFileSync!=="function"||typeof fs.existsSync!=="function")return false;const sep=process.platform==="win32"?"\\":"/";const pkg="node_modules"+sep+"@deepseek-ai"+sep+"dsh"+sep+"package.json";const starts=[];if(process.argv&&typeof process.argv[1]==="string")starts.push(process.argv[1]);if(typeof process.execPath==="string")starts.push(process.execPath);for(const start of starts){let dir=start;for(let hop=0;hop<12;hop+=1){const cut=Math.max(dir.lastIndexOf("/"),dir.lastIndexOf("\\"));if(cut<=0)break;dir=dir.slice(0,cut);const root=dir+sep+pkg;if(fs.existsSync(root)){let native=false;try{const v=JSON.parse(fs.readFileSync(root,"utf8")).version;if(typeof v==="string"){const m=/^(\d+)\.(\d+)\.(\d+)/.exec(v.trim());if(m)native=Number(m[1])>0||Number(m[2])>1||(Number(m[2])===1&&Number(m[3])>=7)}}catch{}if(native)return false;break;}}}const spec="node_modules"+sep+"@earendil-works"+sep+"pi-ai";for(const start of starts){let dir=start;for(let hop=0;hop<12;hop+=1){const cut=Math.max(dir.lastIndexOf("/"),dir.lastIndexOf("\\"));if(cut<=0)break;dir=dir.slice(0,cut);const root=dir+sep+spec;if(fs.existsSync(root+sep+"package.json")&&fs.existsSync(root+sep+"dist"+sep+"index.js"))return true}}return false}catch{return false}})()
+  # 内核 >= 0.1.7：本行放行给原生 pi-ai（volatile config 直接吃用户 llm-pi-ai.providers），
+  # 这里的 deepseek 是该命名空间的插件层默认路由；0.1.5 系本行被禁用，deepseek 由下方
+  # insert 的 dsh-llm-provider 行带给桥接（两处文案保持一致）。
+  config:
+    providers:
+      deepseek:
+        displayName: DeepSeek
+        apiKeyEnv: DEEPSEEK_API_KEY
+        api: openai-completions
+        baseURL: https://api.deepseek.com
 
 - id: llm-deepseek
   disabled: !!js (()=>{try{const fs=process.getBuiltinModule?process.getBuiltinModule("node:fs"):null;if(!fs||typeof fs.existsSync!=="function")return false;const sep=process.platform==="win32"?"\\":"/";const spec="node_modules"+sep+"@earendil-works"+sep+"pi-ai";const starts=[];if(process.argv&&typeof process.argv[1]==="string")starts.push(process.argv[1]);if(typeof process.execPath==="string")starts.push(process.execPath);for(const start of starts){let dir=start;for(let hop=0;hop<12;hop+=1){const cut=Math.max(dir.lastIndexOf("/"),dir.lastIndexOf("\\"));if(cut<=0)break;dir=dir.slice(0,cut);const root=dir+sep+spec;if(fs.existsSync(root+sep+"package.json")&&fs.existsSync(root+sep+"dist"+sep+"index.js"))return true}}return false}catch{return false}})()

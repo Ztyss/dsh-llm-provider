@@ -15,11 +15,18 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const patchPath = join(root, 'cordis.patch.yml')
 const checkOnly = process.argv.includes('--check')
 
-const { piAiGuardExpression } = await import(pathToFileURL(join(root, 'lib', 'patch-condition.js')).href)
-const expression = piAiGuardExpression()
+const { piAiGuardExpression, llmPiAiDisabledExpression } = await import(pathToFileURL(join(root, 'lib', 'patch-condition.js')).href)
 
-// 四个官方条目改用同一条件（同一个判据，语义一致）。
-const IDS = ['llm-pi-ai', 'llm-deepseek', 'ui-model-selection', 'ui-settings-models']
+// 逐行表达式：内核 >= 0.1.7 放行原生 llm-pi-ai（volatile config 自己吃用户路由），
+// 其余三行维持「pi-ai 可加载才禁用」的接管语义。
+// prettier-ignore
+const EXPRESSIONS = {
+  'llm-pi-ai': llmPiAiDisabledExpression(),
+  'llm-deepseek': piAiGuardExpression(),
+  'ui-model-selection': piAiGuardExpression(),
+  'ui-settings-models': piAiGuardExpression(),
+}
+const IDS = Object.keys(EXPRESSIONS)
 
 const source = readFileSync(patchPath, 'utf8')
 let text = source
@@ -33,7 +40,7 @@ for (const id of IDS) {
     drift.push(`patch 里找不到条目 ${id}`)
     continue
   }
-  const rendered = `${match[1]}  disabled: !!js ${expression}\n`
+  const rendered = `${match[1]}  disabled: !!js ${EXPRESSIONS[id]}\n`
   text = text.slice(0, match.index) + rendered + text.slice(match.index + match[0].length)
 }
 

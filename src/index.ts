@@ -23,6 +23,10 @@ import Schema from '@deepseek-ai/schemastery'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { activePiAiRoot, loadBridge, piAiNeedsRestart, readPiAiPreference, readVendorStatus, removeTree, safeInstalledVersions, safeRootDir, setPiAiPreference, vendorDir } from './bridge.js'
+import { configAccessKind } from './kernel-compat.js'
+// 显式再导出：测试（test/kernel-compat.mjs）直接吃 lib/kernel-compat.js 的这些纯函数，
+// 不再导出会被 tsdown 摇掉（本入口只用 configAccessKind）。
+export { mergeBridgeProviders, readBaseProviders, readUserProviders, volatileProvidersConfig } from './kernel-compat.js'
 import { enrichModelDetails, loadModelDetails, withAdapterModels, withDeclaredModels, type AdapterModelInfo, type ModelDetail } from './model-details.js'
 import { checkAndUpdate } from './updater.js'
 import { labelOf, providerRoutes, websiteOf, type ProviderRoute } from './routes.js'
@@ -50,6 +54,11 @@ const bridge = loadBridge()
 
 export const name = 'provider'
 
+// settings：内核 0.1.7 桥接分支要在 apply 期实时读用户 llm-pi-ai 路由（volatile 访问器
+// 的取数源），声明依赖保证 apply 时它已就位。0.1.5 上该服务本就全局可用，无副作用。
+// 不声明 settings 依赖：0.1.7 上服务命名在更名期（draft-fold 等条目挂在 settingsScope
+// 上不激活会拖死整棵 web boot），缺一个依赖就把条目挂 pending 的代价太大。settings 在
+// apply 期早已就位，用 service() 运行时取即可（它只是桥接取数源，不是硬依赖）。
 export const inject = ['llm', 'webServer']
 
 /** 给浏览器渲染的一条账户（额度快照 + 路由元信息）。 */
@@ -81,9 +90,25 @@ export function apply(ctx: PluginContext, config: unknown): void {
   const logger: Logger | undefined = typeof ctx.logger === 'function' ? ctx.logger('provider') : undefined
   const webServer = ctx['webServer'] as WebServerService
 
+  // 配置语义探测（0.1.7 适配，handoff 2026-09-25）：volatile = 0.1.7+（原生 llm-pi-ai
+  // 负责适配器注册），plain = 0.1.5 系（本插件桥接接管）。诊断路由也用它上报。
+  const access = bridge.ok ? configAccessKind(bridge.plugin) : 'unknown'
+
   if (bridge.ok) {
-    // 完全接管官方 llm-pi-ai 的行为：路由注册、settings 段、模型发现全在这一个调用里
-    bridge.plugin.apply(ctx, config)
+    if (access === 'volatile') {
+      logger?.info?.('native llm-pi-ai handles adapter registration on this kernel; billing/management only')
+    } else if (access === 'plain') {
+      // 完全接管官方 llm-pi-ai 的行为：路由注册、settings 段、模型发现全在这一个调用里。
+      // 失败不炸条目（极端情况下官方行若被别的机制放行会 DUPLICATE_ADAPTER）——
+      // 退化为纯计费模式，保住额度查询能力。
+      try {
+        bridge.plugin.apply(ctx, config)
+      } catch (error) {
+        logger?.warn?.(`llm bridge apply 失败，退化为纯计费模式：${error instanceof Error ? error.message : String(error)}`)
+      }
+    } else {
+      logger?.warn?.('llm bridge 配置语义无法识别，跳过桥接（额度查询不受影响）')
+    }
     logger?.info?.(`llm bridge active on pi-ai ${bridge.piAiVersion}`)
     if (bridge.repairedFiles > 0) {
       // 插件自管的那份 pi-ai（vendor/）残缺时用安全副本补回。dsh 自带那份不备份、不修复
@@ -297,6 +322,49 @@ export function apply(ctx: PluginContext, config: unknown): void {
       },
     }),
     'dsh-llm-provider: /plan/status route',
+  )
+
+    // 内核适配诊断（0.1.7 handoff）：只暴露计数与 id，不暴露任何凭据/配置值。
+    ctx.effect(
+      () => webServer.register({
+        kind: 'exact',
+        path: '/provider/kernel-diag',
+        handler: (_req, res) => {
+          const settings = service<SettingsService>('settings')
+          const llm = service<LlmService>('llm')
+          const keysOf = (value: unknown): string[] => {
+            const record = asRecord(value)
+            return Object.keys(record)
+          }
+          const sectionRecord = (() => {
+            try { return settings?.section?.('llm-pi-ai') } catch { return undefined }
+          })()
+          const getRecord = (() => {
+            try { return settings?.get?.('llm-pi-ai') } catch { return undefined }
+          })()
+          let llmProviders: string[] = []
+          let llmConfigurable: string[] = []
+          try {
+            llmProviders = (Array.isArray(llm?.listProviders?.()) ? llm.listProviders() : [] as unknown[]).map((entry) => String(asRecord(entry)['id']))
+          } catch { /* 服务不可用 */ }
+          try {
+            llmConfigurable = (Array.isArray(llm?.listConfigurableProviders?.()) ? llm.listConfigurableProviders() : [] as unknown[]).map((entry) => String(asRecord(entry)['provider']))
+          } catch { /* 服务不可用 */ }
+          json(res, 200, {
+            bridgeOk: bridge.ok,
+            bridgeSource: bridge.ok ? bridge.piAiSource : undefined,
+            configAccess: access,
+            settings: {
+              hasService: settings !== undefined,
+              getYamlKeys: keysOf(getRecord),
+              getYamlProviders: keysOf(asRecord(getRecord)['providers']),
+              sectionKeys: keysOf(sectionRecord),
+              sectionProviders: keysOf(asRecord(sectionRecord)['providers']),
+            },
+            llm: { providers: llmProviders, configurable: llmConfigurable },
+          })
+        },
+      }),
   )
 
   /**
