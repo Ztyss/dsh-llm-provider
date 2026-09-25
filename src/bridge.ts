@@ -23,6 +23,7 @@
  * 文件不可复现，也没法保证跟 lockfile 对得上。
  */
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, realpathSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync, type Stats } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { describeIntegrity, inspectPiAi, restoreHint } from './pi-ai-source.js'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve, sep } from 'node:path'
@@ -305,18 +306,17 @@ function resolvePackageRoot(fromFile: string, specifier: string): string | undef
  */
 function findSourceBundle(): string | undefined {
   const anchors: string[] = []
-  try {
-    anchors.push(join(resolveDshHome(), 'profiles', 'node_modules', '_anchor.js'))
-  } catch { /* 拿不到 DSH_HOME 就少一个锚点 */ }
-  // dsh 的入口脚本（argv[1] = `dsh/lib/bin.js` 这类）：npm -g 布局下它是唯一能指到
-  // 真实安装树（%APPDATA%\npm\node_modules）的线索——execPath 是纯 node.exe，指不到。
-  // 内核 0.1.7 dry-run 实测的失败根源之一：桥接在这里找不着官方 bundle，整条退化为
-  // 纯计费模式，一个适配器都注册不上（handoff 2026-09-25）。argv[1] 本身就是文件，
-  // 直接当锚点用（resolvePackageRoot 从它的目录往上走）。
+  // ① dsh 的入口脚本（argv[1] = `dsh/lib/bin.js` 这类）：它就是**正在运行的内核**——
+  //    桥接副本必须与运行内核同代（0.1.7 volatile 语义 vs 0.1.5 平面 config），
+  //    拿错代次会注册出半套适配器（实测：profiles/node_modules 里残留 0.1.5 bundle 时，
+  //    0.1.7 内核上桥接按旧语义只注册了 base 路由）。argv[1] 本身是文件，直接当锚点。
   if (typeof process.argv[1] === 'string' && process.argv[1] !== '') {
     anchors.push(process.argv[1])
   }
-  // dsh 的安装树：Windows 的官方安装包放在 <node>/node_modules，POSIX 在 <node>/lib/node_modules
+  try {
+    anchors.push(join(resolveDshHome(), 'profiles', 'node_modules', '_anchor.js'))
+  } catch { /* 拿不到 DSH_HOME 就少一个锚点 */ }
+  // ② dsh 的安装树：Windows 的官方安装包放在 <node>/node_modules，POSIX 在 <node>/lib/node_modules
   const nodeDir = dirname(process.execPath)
   anchors.push(join(nodeDir, 'node_modules', '_anchor.js'))
   anchors.push(join(nodeDir, '..', 'lib', 'node_modules', '_anchor.js'))
@@ -936,11 +936,18 @@ export function loadBridge(): BridgeLoadResult {
       return { ok: false, error: '找不到官方 llm-pi-ai bundle：profile 的 node_modules 与 dsh 安装目录里都没有 @deepseek-ai/dsh-llm-pi-ai', rejected: [], candidates: [] }
     }
 
-    // 1. 桥接目录：bundle 副本（源更新过就重拷）+ 固定 package.json
+    // 1. 桥接目录：bundle 副本 + 固定 package.json。
+    //    副本按**源内容哈希**刷新（mtime 在跨内核换代时不可靠：0.1.7 内核树可以比
+    //    0.1.5 时代的副本更旧，按 mtime 会永远加载错代次的 bundle——实测踩过）。
     mkdirSync(join(bridgeDir, 'lib'), { recursive: true })
-    const needsCopy = !existsSync(bridgeLib)
-      || statSync(srcBundle).mtimeMs > statSync(bridgeLib).mtimeMs
-    if (needsCopy) copyFileSync(srcBundle, bridgeLib)
+    const sourceHash = createHash('sha256').update(readFileSync(srcBundle)).digest('hex')
+    const hashFile = join(bridgeDir, '.source-hash')
+    const recordedHash = existsSync(hashFile) ? readFileSync(hashFile, 'utf8').trim() : ''
+    const needsCopy = !existsSync(bridgeLib) || recordedHash !== sourceHash
+    if (needsCopy) {
+      copyFileSync(srcBundle, bridgeLib)
+      writeFileSync(hashFile, sourceHash)
+    }
     writeFileSync(join(bridgeDir, 'package.json'), BRIDGE_PACKAGE_JSON)
 
     // 2. 挑一份能用的 pi-ai：候选按优先级排（热更新的新→旧 → 插件自带依赖 → dsh 自带），
