@@ -90,15 +90,11 @@ export function apply(ctx: PluginContext, config: unknown): void {
   const logger: Logger | undefined = typeof ctx.logger === 'function' ? ctx.logger('provider') : undefined
   const webServer = ctx['webServer'] as WebServerService
 
+  // 配置语义探测（0.1.7 适配，handoff 2026-09-25）：volatile = 0.1.7+（原生 llm-pi-ai
+  // 负责适配器注册），plain = 0.1.5 系（本插件桥接接管）。诊断路由也用它上报。
+  const access = bridge.ok ? configAccessKind(bridge.plugin) : 'unknown'
+
   if (bridge.ok) {
-    // 内核 0.1.7 适配（handoff 2026-09-25）：volatile 语义内核（Config 校验产物是
-    // `providers.get()` 访问器）上，官方 llm-pi-ai 行被 patch 放行（见
-    // patch-condition.ts 的 llmPiAiDisabledExpression：内核 >= 0.1.7 不禁用），
-    // 它的 volatile config 天然吃用户的 llm-pi-ai.providers，适配器注册由原生完成。
-    // 本插件此时**不得**再桥接（重复注册 = DUPLICATE_ADAPTER），只跑
-    // 额度查询 / provider 管理 / 模型选择器接管。
-    // 0.1.5 系（plain）：照旧桥接接管，行为零变化。
-    const access = configAccessKind(bridge.plugin)
     if (access === 'volatile') {
       logger?.info?.('native llm-pi-ai handles adapter registration on this kernel; billing/management only')
     } else if (access === 'plain') {
@@ -326,6 +322,49 @@ export function apply(ctx: PluginContext, config: unknown): void {
       },
     }),
     'dsh-llm-provider: /plan/status route',
+  )
+
+    // 内核适配诊断（0.1.7 handoff）：只暴露计数与 id，不暴露任何凭据/配置值。
+    ctx.effect(
+      () => webServer.register({
+        kind: 'exact',
+        path: '/provider/kernel-diag',
+        handler: (_req, res) => {
+          const settings = service<SettingsService>('settings')
+          const llm = service<LlmService>('llm')
+          const keysOf = (value: unknown): string[] => {
+            const record = asRecord(value)
+            return Object.keys(record)
+          }
+          const sectionRecord = (() => {
+            try { return settings?.section?.('llm-pi-ai') } catch { return undefined }
+          })()
+          const getRecord = (() => {
+            try { return settings?.get?.('llm-pi-ai') } catch { return undefined }
+          })()
+          let llmProviders: string[] = []
+          let llmConfigurable: string[] = []
+          try {
+            llmProviders = (Array.isArray(llm?.listProviders?.()) ? llm.listProviders() : [] as unknown[]).map((entry) => String(asRecord(entry)['id']))
+          } catch { /* 服务不可用 */ }
+          try {
+            llmConfigurable = (Array.isArray(llm?.listConfigurableProviders?.()) ? llm.listConfigurableProviders() : [] as unknown[]).map((entry) => String(asRecord(entry)['provider']))
+          } catch { /* 服务不可用 */ }
+          json(res, 200, {
+            bridgeOk: bridge.ok,
+            bridgeSource: bridge.ok ? bridge.piAiSource : undefined,
+            configAccess: access,
+            settings: {
+              hasService: settings !== undefined,
+              getYamlKeys: keysOf(getRecord),
+              getYamlProviders: keysOf(asRecord(getRecord)['providers']),
+              sectionKeys: keysOf(sectionRecord),
+              sectionProviders: keysOf(asRecord(sectionRecord)['providers']),
+            },
+            llm: { providers: llmProviders, configurable: llmConfigurable },
+          })
+        },
+      }),
   )
 
   /**
