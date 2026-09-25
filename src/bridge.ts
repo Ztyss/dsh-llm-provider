@@ -299,8 +299,8 @@ function resolvePackageRoot(fromFile: string, specifier: string): string | undef
 /**
  * 官方 llm-pi-ai bundle 的实际位置。
  *
- * 它是桥接要拷的那份源文件。路径同样不写死：按「profile 的 node_modules → dsh 安装目录
- * （全局 node_modules）→ 插件自己」的顺序沿解析链找，找到哪个用哪个。
+ * 它是桥接要拷的那份源文件。路径同样不写死：按「profile 的 node_modules → dsh 入口脚本
+ * 所在安装树 → dsh 安装目录（全局 node_modules）→ 插件自己」的顺序沿解析链找，找到哪个用哪个。
  * @returns bundle 入口文件的绝对路径；找不到返回 undefined。
  */
 function findSourceBundle(): string | undefined {
@@ -308,6 +308,14 @@ function findSourceBundle(): string | undefined {
   try {
     anchors.push(join(resolveDshHome(), 'profiles', 'node_modules', '_anchor.js'))
   } catch { /* 拿不到 DSH_HOME 就少一个锚点 */ }
+  // dsh 的入口脚本（argv[1] = `dsh/lib/bin.js` 这类）：npm -g 布局下它是唯一能指到
+  // 真实安装树（%APPDATA%\npm\node_modules）的线索——execPath 是纯 node.exe，指不到。
+  // 内核 0.1.7 dry-run 实测的失败根源之一：桥接在这里找不着官方 bundle，整条退化为
+  // 纯计费模式，一个适配器都注册不上（handoff 2026-09-25）。argv[1] 本身就是文件，
+  // 直接当锚点用（resolvePackageRoot 从它的目录往上走）。
+  if (typeof process.argv[1] === 'string' && process.argv[1] !== '') {
+    anchors.push(process.argv[1])
+  }
   // dsh 的安装树：Windows 的官方安装包放在 <node>/node_modules，POSIX 在 <node>/lib/node_modules
   const nodeDir = dirname(process.execPath)
   anchors.push(join(nodeDir, 'node_modules', '_anchor.js'))

@@ -115,6 +115,9 @@ export interface PluginContext {
   get?: (name: string) => unknown
   effect: (fn: () => unknown, label?: string) => void
   inject?: (names: readonly string[], callback: (scope: PluginContext) => void) => void
+  /** cordis 事件面（共享总线）：内核 0.1.7 桥接分支用它听 settings 更新、转发重注册。 */
+  on?: (event: string, listener: (this: unknown, ...args: never[]) => void) => unknown
+  emit?: (event: string, ...args: unknown[]) => unknown
   logger?: Logger | ((name: string) => Logger)
   [key: string]: unknown
 }

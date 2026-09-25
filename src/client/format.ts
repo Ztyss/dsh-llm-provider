@@ -242,7 +242,8 @@ export function headlineChips(account: PlanAccount | undefined | null): Headline
   // 状态类 chip 的 hover 说明（用户批注：与报错 hover 同一套惯例）——
   // 未配置说清「去哪填」；无适配器说清「为什么查不了」。unsupported 不出状态 chip，只出告警 chips。
   if (account.authConfigured === false) {
-    return [{ text: t('quota.notConfigured'), percent: 0, tip: t('quota.notConfiguredTip') }].concat(alertChips)
+    const notConfiguredChip: HeadlineChip[] = [{ text: t('quota.notConfigured'), percent: 0, tip: t('quota.notConfiguredTip') }]
+    return notConfiguredChip.concat(alertChips)
   }
   if (account.kind === 'unknown-provider') return [{ text: t('quota.noAdapter'), percent: undefined, tip: t('quota.noAdapterTip') }]
   if (account.kind === 'unsupported') return alertChips
@@ -294,7 +295,8 @@ export function headlineChips(account: PlanAccount | undefined | null): Headline
   var balances = Array.isArray(account.balances) ? account.balances : []
   if (balances.length > 0) chips.push({ text: String(balances[0].value), percent: undefined })
   if (chips.length > 0) return chips.concat(alertChips)
-  return [{ text: summaryOf(account), percent: undefined }].concat(alertChips)
+  var summaryChip: HeadlineChip[] = [{ text: summaryOf(account), percent: undefined }]
+  return summaryChip.concat(alertChips)
 }
 
 /**

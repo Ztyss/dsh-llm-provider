@@ -23,6 +23,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { activePiAiRoot, loadBridge, piAiNeedsRestart, readPiAiPreference, readVendorStatus, removeTree, safeInstalledVersions, safeRootDir, setPiAiPreference, vendorDir } from './bridge.js'
+import { configAccessKind, mergeBridgeProviders, readBaseProviders, readUserProviders, volatileProvidersConfig } from './kernel-compat.js'
 import { enrichModelDetails, loadModelDetails, withAdapterModels, withDeclaredModels, type AdapterModelInfo, type ModelDetail } from './model-details.js'
 import { checkAndUpdate } from './updater.js'
 import { labelOf, providerRoutes, websiteOf, type ProviderRoute } from './routes.js'
@@ -50,7 +51,9 @@ const bridge = loadBridge()
 
 export const name = 'provider'
 
-export const inject = ['llm', 'webServer']
+// settings：内核 0.1.7 桥接分支要在 apply 期实时读用户 llm-pi-ai 路由（volatile 访问器
+// 的取数源），声明依赖保证 apply 时它已就位。0.1.5 上该服务本就全局可用，无副作用。
+export const inject = ['llm', 'webServer', 'settings']
 
 /** 给浏览器渲染的一条账户（额度快照 + 路由元信息）。 */
 export interface AccountRow extends AccountStatus {
@@ -82,8 +85,30 @@ export function apply(ctx: PluginContext, config: unknown): void {
   const webServer = ctx['webServer'] as WebServerService
 
   if (bridge.ok) {
-    // 完全接管官方 llm-pi-ai 的行为：路由注册、settings 段、模型发现全在这一个调用里
-    bridge.plugin.apply(ctx, config)
+    // 内核 0.1.7 适配（handoff 2026-09-25）：volatile 语义的官方 Config（校验产物是
+    // `providers.get()` 访问器）读的是**条目自己的 config 命名空间**，用户在
+    // settings.yaml `llm-pi-ai.providers` 里的路由进不来——实测即
+    // `no adapter serves provider "zai-coding-cn"`。此时合成访问器：get 实时读
+    // settings 的 llm-pi-ai 段叠在插件自带 base（deepseek）之上，原样喂给官方 apply。
+    // 0.1.5 系（plain）照旧透传，行为零变化。探测按 schema 能力走，不认版本号。
+    const access = configAccessKind(bridge.plugin)
+    if (access === 'volatile') {
+      const settings = service<SettingsService>('settings')
+      const base = readBaseProviders(config)
+      const getProviders = () => mergeBridgeProviders(base, readUserProviders(settings))
+      bridge.plugin.apply(ctx, volatileProvidersConfig(getProviders))
+      // 用户改 settings.yaml 的 llm-pi-ai 段后让官方 apply 的重入钩子现读现重注册
+      //（它自己挂了 loader/volatile-update）。settings 服务的 document-updated 事件
+      // 跨 context 广播，这里替它转发一次；事件名在旧内核不存在也无妨（不注册就听不到）。
+      try {
+        ctx.on?.('settings/document-updated', function (this: unknown, namespace: unknown) {
+          if (namespace === 'llm-pi-ai') ctx.emit?.('loader/volatile-update')
+        })
+      } catch { /* 事件面不可用就退化为「改配置需重启」 */ }
+    } else {
+      // 完全接管官方 llm-pi-ai 的行为：路由注册、settings 段、模型发现全在这一个调用里
+      bridge.plugin.apply(ctx, config)
+    }
     logger?.info?.(`llm bridge active on pi-ai ${bridge.piAiVersion}`)
     if (bridge.repairedFiles > 0) {
       // 插件自管的那份 pi-ai（vendor/）残缺时用安全副本补回。dsh 自带那份不备份、不修复
