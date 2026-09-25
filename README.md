@@ -7,7 +7,7 @@ pi-ai 适配器（`llm-pi-ai`）、DeepSeek 适配器（`llm-deepseek`）、模�
 
 **中文** · [English](README.en.md)
 
-> 本仓库 fork 自 [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider)，此后独立维护演进。当前版本 [v0.2.3](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.3)（安装走 main 分支）。
+> 本仓库 fork 自 [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider)，此后独立维护演进。当前版本 [v0.2.4](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.4)（安装走 main 分支）。
 
 ## 安装
 
