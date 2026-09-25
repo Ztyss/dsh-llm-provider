@@ -17,11 +17,23 @@ function check(name, cond) {
   if (!cond) failures += 1
 }
 
-const { piAiGuardExpression } = await import(pathToFileURL(join(root, 'lib', 'patch-condition.js')).href)
+const { piAiGuardExpression, llmPiAiDisabledExpression, isNativeEraVersion } = await import(pathToFileURL(join(root, 'lib', 'patch-condition.js')).href)
 const expression = piAiGuardExpression()
+const llmPiAiExpression = llmPiAiDisabledExpression()
 const patch = readFileSync(join(root, 'cordis.patch.yml'), 'utf8')
 
+// 原生时代版本判定（与表达式内嵌的比较逻辑同口径）
+check('0.1.5-rc.2 不是原生时代', isNativeEraVersion('0.1.5-rc.2') === false)
+check('0.1.7-rc.1 是原生时代', isNativeEraVersion('0.1.7-rc.1') === true)
+check('0.1.7 正式版是原生时代', isNativeEraVersion('0.1.7') === true)
+check('0.1.6 不是', isNativeEraVersion('0.1.6') === false)
+check('0.2.0 / 1.0.0 是', isNativeEraVersion('0.2.0') === true && isNativeEraVersion('1.0.0') === true)
+check('垃圾输入不是', isNativeEraVersion('abc') === false && isNativeEraVersion(undefined) === false)
+
 check('patch 里逐字包含源码生成的条件表达式（无漂移）', patch.includes(expression))
+check('llm-pi-ai 行使用原生时代专用表达式（内核 >= 0.1.7 放行）', patch.includes(llmPiAiExpression) && llmPiAiExpression !== expression)
+check('原生时代表达式带版本读取（readFileSync package.json）', llmPiAiExpression.includes('readFileSync') && llmPiAiExpression.includes('@deepseek-ai'))
+check('原生时代表达式含 0.1.7 阈值比较', llmPiAiExpression.includes('Number(m[3])>=7'))
 check('表达式里没有 require（求值作用域内实测没有 require）', !/\brequire\s*\(/.test(expression))
 check('表达式自带 try/catch 兜底', /try\s*\{/.test(expression) && /catch/.test(expression))
 
@@ -38,7 +50,15 @@ try {
   }
   check('真实 loader 求值不抛错（抛错 = 插件树加载失败）', threw === undefined)
   check('求值结果是布尔值（disabledOf 只做 Boolean()）', typeof value === 'boolean')
-  console.log(`       （本机求值结果：${String(value)}；true=会禁用官方条目）`)
+  let value2
+  let threw2
+  try {
+    value2 = evaluate({ loader: {} }, llmPiAiExpression)
+  } catch (error) {
+    threw2 = error
+  }
+  check('llm-pi-ai 专用表达式真实求值不抛错', threw2 === undefined && typeof value2 === 'boolean')
+  console.log(`       （本机求值结果：${String(value)} / ${String(value2)}；true=会禁用官方条目）`)
 } catch {
   console.log('  跳过：本机找不到 cordis-plugin-loader，无法做真实求值验证')
 }
