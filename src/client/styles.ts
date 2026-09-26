@@ -57,11 +57,15 @@ var css =
   '.ms_chev{flex:0 0 auto;color:var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary));' +
   'transition:transform .12s ease}' +
   '.ms_chevOpen{transform:rotate(180deg)}' +
+  // 浮层（菜单/下拉/弹层）背景一律用不透明的 bg-layer-1，不再吃 --dsw-specific-menu：
+  // 内核 0.1.7 把该令牌改成了 58% 不透明度的玻璃面（#f8f9fa94），官方菜单自己配了
+  // backdrop-blur 所以能读，我们的浮层没有模糊层，玻璃面直接透底（用户批注 09-26：
+  // 「下拉框透明度太高看不清文字」）。layer-1 在两套主题下都是不透明实体色。
   '.ms_menu{position:absolute;bottom:calc(100% + 6px);right:0;z-index:1100;display:flex;flex-direction:column;' +
   'width:max-content;min-width:min(240px,calc(100vw - 32px));max-width:min(420px,calc(100vw - 32px));' +
   // 高度自适应（用户批注）：默认 360px；provider 多到 chips 换行时（ms_menuTall）才放大
   'max-height:min(360px,calc(100vh - 96px));overflow:hidden;padding:4px;border:0;border-radius:20px;' +
-  'background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));' +
+  'background:var(--dsw-alias-bg-layer-1,#fff);' +
   'box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18));color:var(--dsw-alias-label-primary)}' +
   '.ms_menu.ms_menuTall{max-height:min(560px,calc(100vh - 96px))}' +
   '.ms_cell{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:auto;min-width:100%;height:40px;' +
@@ -75,7 +79,7 @@ var css =
   '.ms_scroll{min-height:0;overflow-y:auto;display:flex;flex-direction:column}' +
   '.ms_group{margin-top:4px}' +
   '.ms_groupTitle{position:sticky;top:0;z-index:1;padding:5px 8px 3px;' +
-  'background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-tertiary);' +
+  'background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-tertiary);' +
   'font-size:12px;line-height:18px;font-weight:500}' +
   '.ms_option{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:auto;min-width:100%;' +
   'min-height:38px;padding:6px 8px;border:0;border-radius:10px;background:transparent;color:inherit;' +
@@ -230,7 +234,7 @@ var css =
   // 刷新结果 toast（右下，2.6s 自动消失）
   '.pv_toast{position:fixed;bottom:24px;right:24px;z-index:500;padding:10px 18px;border-radius:12px;' +
   'font-size:13px;line-height:20px;max-width:min(420px,80vw);' +
-  'background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));' +
+  'background:var(--dsw-alias-bg-layer-1,#fff);' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));' +
   'box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18))}' +
   '.pv_toastOk{color:#2f9e44}' +
@@ -274,7 +278,7 @@ var css =
   // border 本来就是同一条 border-l1，差在投影（这里曾是更淡的 0 10px 28px .14，淡投影会把
   // 12% 的边框吃掉，看着像没描边）——换成同一个 elevation-prominent，两个下拉同一张脸。
   '.pv_selMenu{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;' +
-  'background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));' +
+  'background:var(--dsw-alias-bg-layer-1,#fff);' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));' +
   'border-radius:10px;padding:6px;max-height:240px;overflow:auto;' +
   'box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18))}' +
@@ -332,7 +336,7 @@ var css =
   '.pv_pickMenu{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:250;padding:6px;' +
   'display:flex;flex-direction:column;gap:4px;border-radius:10px;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));' +
-  'background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));' +
+  'background:var(--dsw-alias-bg-layer-1,#fff);' +
   'box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18))}' +
   '.pv_pickList{max-height:240px;overflow:auto;display:flex;flex-direction:column}' +
   '.pv_pickItem{display:flex;align-items:center;gap:6px;padding:8px 12px;border:0;background:0 0;' +
@@ -400,7 +404,7 @@ var css =
   '.pv_fclear:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}' +
   '.pv_tip{display:none;position:absolute;left:0;bottom:calc(100% + 6px);z-index:300;width:270px;' +
   'padding:12px 14px;border-radius:12px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));' +
-  'background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));' +
+  'background:var(--dsw-alias-bg-layer-1,#fff);' +
   'box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18));flex-direction:column;gap:6px}' +
   '.pv_mRow:hover .pv_tip{display:flex}' +
   '.pv_tipTitle{font-size:13px;font-weight:600;line-height:18px}' +
@@ -481,7 +485,7 @@ var css =
   'background:rgba(0,0,0,.42);padding:24px}' +
   '.pv_modal{width:min(520px,100%);box-sizing:border-box;display:flex;flex-direction:column;gap:10px;' +
   'padding:18px 20px;border-radius:14px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));' +
-  'background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-primary);' +
+  'background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary);' +
   'box-shadow:var(--dsw-elevation-prominent,0 18px 48px rgba(0,0,0,.28))}' +
   '.pv_modalTitle{font-size:14px;font-weight:600;line-height:20px}' +
   '.pv_modalRow{display:flex;gap:12px;font-size:12px;line-height:19px}' +
