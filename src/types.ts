@@ -95,7 +95,19 @@ export interface SettingsService {
    * 但要求命名空间已注册；section() 读的是文档原文，命名空间还没注册时也拿得到。
    */
   section?: (namespace: string) => AnyRecord | undefined
-  mutate?: (namespace: string, ops: readonly SettingsOp[]) => Promise<void>
+  /**
+   * 内核 0.1.7+ 的读法：settings 服务改成**表单式**（`get`/`section` 已移除，
+   * 全树零消费），`describe()` 返回每个活动条目的
+   * `{ ns, schema, value, base, user, revision }` —— `value` 是解析后的合并值
+   * （schema 默认 + 插件 base + 用户层），语义与旧 `get()` 一致。
+   * 可选：旧内核没有这个方法，调用方按能力探测。
+   */
+  describe?: (options?: { redactSecrets?: boolean }) => unknown
+  /**
+   * 写操作。两代同名同形：ops = `[{ op: 'set' | 'unset', path, value? }]`。
+   * 0.1.7 起第三个参数（revision）可选，用于并发保护；不传即无条件写。
+   */
+  mutate?: (namespace: string, ops: readonly SettingsOp[], expectedRevision?: number) => Promise<void>
 }
 
 export interface CredentialsService {

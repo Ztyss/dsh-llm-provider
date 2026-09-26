@@ -324,7 +324,8 @@ export function apply(ctx: PluginContext, config: unknown): void {
     'dsh-llm-provider: /plan/status route',
   )
 
-    // 内核适配诊断（0.1.7 handoff）：只暴露计数与 id，不暴露任何凭据/配置值。
+    // 内核适配诊断（0.1.7 handoff；2026-09-26 补：读法代次）：只暴露计数与 id，
+    // 不暴露任何凭据/配置值——用来一眼看出「额度面板为什么没有 provider」。
     ctx.effect(
       () => webServer.register({
         kind: 'exact',
@@ -342,6 +343,27 @@ export function apply(ctx: PluginContext, config: unknown): void {
           const getRecord = (() => {
             try { return settings?.get?.('llm-pi-ai') } catch { return undefined }
           })()
+          /** 0.1.7+ 表单式读法：describe() 里 ns='llm-pi-ai' 那条的提供商 id 与层信息。 */
+          const describeReport = (() => {
+            if (typeof settings?.describe !== 'function') return { available: false, providers: [] as string[], layers: [] as string[] }
+            try {
+              const described = settings.describe({ redactSecrets: false })
+              const form = (Array.isArray(described) ? described : [])
+                .map((row) => asRecord(row))
+                .find((row) => row['ns'] === 'llm-pi-ai')
+              if (form === undefined) return { available: true, providers: [] as string[], layers: [] as string[] }
+              const layers: string[] = []
+              if (keysOf(asRecord(form['value'])['providers']).length > 0) layers.push('value')
+              if (keysOf(asRecord(form['user'])['providers']).length > 0) layers.push('user')
+              if (keysOf(asRecord(form['base'])['providers']).length > 0) layers.push('base')
+              const merged = keysOf(asRecord(form['value'])['providers']).length > 0
+                ? keysOf(asRecord(form['value'])['providers'])
+                : keysOf(asRecord(form['user'])['providers'])
+              return { available: true, providers: merged, layers }
+            } catch (error) {
+              return { available: true, providers: [] as string[], layers: [`throw:${messageOf(error)}`] }
+            }
+          })()
           let llmProviders: string[] = []
           let llmConfigurable: string[] = []
           try {
@@ -350,17 +372,25 @@ export function apply(ctx: PluginContext, config: unknown): void {
           try {
             llmConfigurable = (Array.isArray(llm?.listConfigurableProviders?.()) ? llm.listConfigurableProviders() : [] as unknown[]).map((entry) => String(asRecord(entry)['provider']))
           } catch { /* 服务不可用 */ }
+          // 真正生效的那份路由表（额度面板用它取数）——诊断的最终判据。
+          const effectiveRoutes = (() => {
+            try { return [...providerRoutes(settings, llm).keys()] } catch { return [] as string[] }
+          })()
           json(res, 200, {
             bridgeOk: bridge.ok,
             bridgeSource: bridge.ok ? bridge.piAiSource : undefined,
             configAccess: access,
             settings: {
               hasService: settings !== undefined,
-              getYamlKeys: keysOf(getRecord),
+              hasGet: typeof settings?.get === 'function',
+              hasSection: typeof settings?.section === 'function',
+              hasDescribe: typeof settings?.describe === 'function',
+              hasMutate: typeof settings?.mutate === 'function',
               getYamlProviders: keysOf(asRecord(getRecord)['providers']),
-              sectionKeys: keysOf(sectionRecord),
               sectionProviders: keysOf(asRecord(sectionRecord)['providers']),
+              describe: describeReport,
             },
+            effectiveRoutes,
             llm: { providers: llmProviders, configurable: llmConfigurable },
           })
         },

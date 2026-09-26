@@ -10,9 +10,55 @@
  *      这类错配检测不到（实测就是靠这条才发现的）。
  *
  * 命名空间没注册时退回 settings.section()：直接读 dsh 解析好的文档，不用自己解析 YAML。
+ * 内核 0.1.7+ 上这两个读法都没了（settings 服务表单化），改走 `describe()`——见
+ * {@link readPiAiProviders}。
  */
 import { piAiName } from './pi-ai-names.js'
 import { asRecord, readString, type AnyRecord, type LlmService, type SettingsService } from './types.js'
+
+/**
+ * `llm-pi-ai.providers` 的三代读法（按可用性依次尝试，取第一个非空）：
+ *
+ *   1. `settings.describe()` —— 内核 0.1.7+ 的表单式 API。返回每个活动条目的
+ *      `{ ns, value, base, user, revision }`；`value` 是解析后的合并值（schema 默认 +
+ *      插件 base + 用户层），语义与旧 `get()` 一致。0.1.7 上 `settings.yaml` 会被
+ *      迁移进条目配置（文件改名 `.imported`），旧读法整体失效——实测 `get`/`section`
+ *      都取空、额度面板报「没有发现可查额度的 provider」。
+ *   2. `settings.get(ns)` —— 0.1.5 系：命名空间解析后的值。
+ *   3. `settings.section(ns)` —— 同为 0.1.5 系，命名空间还没注册时的文档兜底。
+ *
+ * 只做「有值就用」的收敛：任何一层抛错/取空都静默往下一层走（额度面板宁缺勿炸）。
+ */
+function readPiAiProviders(settings: SettingsService | undefined): AnyRecord {
+  if (settings === undefined) return {}
+  if (typeof settings.describe === 'function') {
+    const described = safeValue(() => settings.describe?.({ redactSecrets: false }))
+    if (Array.isArray(described)) {
+      for (const rawForm of described) {
+        const form = asRecord(rawForm)
+        if (form['ns'] !== 'llm-pi-ai') continue
+        const merged = asRecord(asRecord(form['value'])['providers'])
+        if (Object.keys(merged).length > 0) return merged
+        const user = asRecord(asRecord(form['user'])['providers'])
+        if (Object.keys(user).length > 0) return user
+      }
+    }
+  }
+  const resolved = safeValue(() => asRecord(asRecord(settings.get?.('llm-pi-ai'))['providers']))
+  if (resolved !== undefined && Object.keys(resolved).length > 0) return resolved
+  const raw = safeValue(() => asRecord(asRecord(settings.section?.('llm-pi-ai'))['providers']))
+  return raw ?? {}
+}
+
+/** 读一次可能抛错的东西；抛错给 undefined（不掩盖「空」，只吞异常）。 */
+function safeValue(read: () => unknown): AnyRecord | undefined {
+  try {
+    const value = read()
+    return value !== undefined && value !== null && typeof value === 'object' ? (value as AnyRecord) : undefined
+  } catch {
+    return undefined
+  }
+}
 
 /** 一条要查额度的路由。 */
 export interface ProviderRoute {
@@ -102,17 +148,8 @@ export function providerRoutes(
 ): Map<string, ProviderRoute> {
   const routes = new Map<string, ProviderRoute>()
 
-  // 两条读法，按序兜底：
-  //   get()     —— 命名空间「解析后」的值：schema 默认 + 插件 config（base 层）+ 用户配置。
-  //                要的就是这个合并结果（DeepSeek 那条来自插件的 base 层，用户没写过）。
-  //                但它要求命名空间已注册，而 llm-pi-ai 的注册是在它自己 apply 里做的，
-  //                那一步之前（或它 apply 抛错时）就取不到。
-  //   section() —— 直接读 settings 文档里那一节的原始内容，不要求注册，正好补上面那个空档：
-  //                那份文档本来就是 dsh 解析好放在那儿的。
-  const resolved = safeObject(() => asRecord(asRecord(settings?.get?.('llm-pi-ai'))['providers']))
-  const piAiProviders = Object.keys(resolved).length > 0
-    ? resolved
-    : safeObject(() => asRecord(asRecord(settings?.section?.('llm-pi-ai'))['providers']))
+  // 用户配置的 pi-ai 路由：0.1.7+ 走 describe()，0.1.5 走 get()/section()——见 readPiAiProviders
+  const piAiProviders = readPiAiProviders(settings)
   for (const [id, rawRoute] of Object.entries(piAiProviders)) {
     const route = asRecord(rawRoute)
     routes.set(id, {

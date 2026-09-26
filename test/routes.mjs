@@ -73,6 +73,42 @@ check('get() 优先于 section()', [...providerRoutes(bothWays, undefined).keys(
 // 场景：两条路都拿不到 → 只剩原生路由
 check('两条路都空时仍能给出原生路由', [...providerRoutes(undefined, llm).keys()], ['deepseek-official'])
 
+// 场景（内核 0.1.7+）：settings 服务表单化——get/section 已移除，describe() 是唯一读法。
+// 实测症状：0.1.7 上旧读法全空，额度面板报「没有发现可查额度的 provider」。
+const formBased = {
+  describe: () => [
+    { ns: 'other-entry', value: { providers: { nope: { apiKeyEnv: 'NOPE' } } } },
+    {
+      ns: 'llm-pi-ai',
+      value: { providers: { 'zai-coding-cn': { apiKeyEnv: 'ZAI_CODING_CN_API_KEY', api: 'anthropic-messages' }, deepseek: { apiKeyEnv: 'DEEPSEEK_API_KEY' } } },
+      user: { providers: { 'zai-coding-cn': { apiKeyEnv: 'ZAI_CODING_CN_API_KEY' } } },
+    },
+  ],
+}
+const formMerged = providerRoutes(formBased, llm)
+// 注：fixture 的 pi-ai 段里已有 deepseek → 原生 deepseek-official 按跨源去重规则被吞掉（见上面的用例）
+check('0.1.7 表单式 describe() 里的路由都读出来', [...formMerged.keys()].sort(), ['zai-coding-cn', 'deepseek'].sort())
+check('describe() 路径同样带上凭据名与协议', [formMerged.get('zai-coding-cn').apiKeyEnv, formMerged.get('zai-coding-cn').api], ['ZAI_CODING_CN_API_KEY', 'anthropic-messages'])
+check('describe() 里别的条目不会被误读', formMerged.has('nope'), false)
+
+// 场景：describe() 在但 value 空（用户层另有值）→ 退 user 层
+const formUserOnly = { describe: () => [{ ns: 'llm-pi-ai', value: { providers: {} }, user: { providers: { 'kimi-coding': { apiKeyEnv: 'KIMI_CODING_API_KEY' } } } }] }
+check('describe() 的 value 空时退 user 层', [...providerRoutes(formUserOnly, undefined).keys()], ['kimi-coding'])
+
+// 场景：describe() 在但整体取空（迁移还没跑完/条目未激活）→ 继续退 get()/section()（0.1.5 双保险）
+const formEmptyLegacyFull = {
+  describe: () => [{ ns: 'llm-pi-ai', value: { providers: {} }, user: { providers: {} } }],
+  get: () => ({ providers: { 'kimi-coding': { apiKeyEnv: 'KIMI_CODING_API_KEY' } } }),
+}
+check('describe() 取空时继续退回 get()（跨内核双保险）', [...providerRoutes(formEmptyLegacyFull, undefined).keys()], ['kimi-coding'])
+
+// 场景：describe() 抛错 → 吞掉后仍能走 get()
+const formThrows = {
+  describe: () => { throw new Error('remote only') },
+  get: () => ({ providers: { deepseek: { apiKeyEnv: 'DEEPSEEK_API_KEY' } } }),
+}
+check('describe() 抛错被吞，退回 get()', [...providerRoutes(formThrows, undefined).keys()], ['deepseek'])
+
 // 场景：get() 和 section() 都抛（section 对非对象节会抛 TypeError）
 const throwing = { get: () => { throw new Error('boom') }, section: () => { throw new TypeError('must be an object') } }
 check('两条路抛错都被吞掉且不影响原生路由', [...providerRoutes(throwing, llm).keys()], ['deepseek-official'])
