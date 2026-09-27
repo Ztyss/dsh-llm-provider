@@ -4,7 +4,7 @@
  * 注册会抛，调用方静默让位；官方行被禁用后这里接管。
  */
 import { accountsById, loadModelCatalog, loadPlanStatus, submitSelection } from './data.js'
-import { lookupAccount, quotaTextOf } from './format.js'
+import { quotaTextOf } from './format.js'
 import { t } from './i18n.js'
 import type { ClientScope, SessionsFace } from './types.js'
 
@@ -54,7 +54,7 @@ export function registerModelCommand(scope: ClientScope): void {
                   var rows = []
                   for (var i = 0; i < groups.length; i += 1) {
                     var group = groups[i]
-                    var quota = quotaTextOf(lookupAccount(accounts, group.id))
+                    var quota = quotaTextOf(accounts[group.id])
                     for (var j = 0; j < group.models.length; j += 1) {
                       rows.push({
                         id: group.id + '/' + group.models[j].id,
