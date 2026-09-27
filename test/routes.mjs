@@ -143,14 +143,16 @@ ok('自定义模型 id 进了详情（目录里查不到也有条目，徽章才
 ok('能力取自 route 声明的 input：视觉 true、视频 false', custom !== undefined && custom.vision === true && custom.video === false)
 ok('合并后原有详情一条不少', declared.length === catalogDetails.length + 1)
 
-// ② route 声明覆盖目录里同 provider 同 id 的那条
+// ② route 解析的模态**只能点亮不能熄灭**（0.1.7 实测回归：宿主对「路由声明没写 input」的
+// 模型兜底 inputModalities:['text']，把 pi-ai 目录里 deepseek-flash 的 vision=true 覆盖成
+// false、视觉徽标消失——用户批注 09-27。与 withDeclaredModels 里 reasoning 的粘性语义同源）
 const overridden = mergeRouteModels(catalogDetails, [
   { provider: 'anthropic', id: 'claude-opus-5', input: ['text'] },
   { provider: 'cloudflare-ai-gateway', id: 'claude-opus-5', input: ['text', 'image'] },
 ])
-ok('route 说没有视觉就按没有（覆盖目录里的 true）',
-  overridden.find((detail) => detail.provider === 'anthropic' && detail.id === 'claude-opus-5')?.vision === false)
-ok('同名模型在另一家独立取值，不互相覆盖',
+ok('目录已明确支持的视觉不因 route 只报 text 被降级（宿主兜底不是用户声明）',
+  overridden.find((detail) => detail.provider === 'anthropic' && detail.id === 'claude-opus-5')?.vision === true)
+ok('route 报了 image 则照常点亮（另一家从 false 升 true）',
   overridden.find((detail) => detail.provider === 'cloudflare-ai-gateway' && detail.id === 'claude-opus-5')?.vision === true)
 ok('同名模型分属两家时仍是两条（按 id 去重就会丢一条）',
   overridden.filter((detail) => detail.id === 'claude-opus-5').length === 2)

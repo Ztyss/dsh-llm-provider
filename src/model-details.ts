@@ -385,8 +385,12 @@ export function mergeRouteModels(
       continue
     }
     if (declared !== undefined) {
-      found.vision = declared.includes('image')
-      found.video = declared.includes('video')
+      // 能力只点亮不熄灭（与 withDeclaredModels 里 reasoning 的粘性语义同源，用户批注先例）：
+      // 宿主对「路由声明没写 input」的模型会兜底 inputModalities:['text']——那不是用户声明，
+      // 是宿主猜测。0.1.7 实测它把 pi-ai 目录里 deepseek-flash 的 vision=true 覆盖成 false，
+      // 徽标消失。目录已明确支持的模态不因 route 解析没提就降级；目录未知/false 时照常采纳。
+      if (declared.includes('image') || found.vision !== true) found.vision = declared.includes('image')
+      if (declared.includes('video') || found.video !== true) found.video = declared.includes('video')
     }
     if (found.contextWindow === undefined) found.contextWindow = model.contextWindow
     if (found.maxTokens === undefined) found.maxTokens = model.maxTokens
