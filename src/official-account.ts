@@ -10,7 +10,7 @@
 import { asRecord } from './types.js'
 import { account as accountSkeleton, formatAmount, type AccountStatus } from './adapters/shared.js'
 
-/** 官方账号在额度快照里的固定 id；模型选择器的分组 id 与它一致（modlens 包装组走前缀回退）。 */
+/** 官方账号在额度快照里的固定 id；模型选择器的分组 id 与它一致。 */
 export const OFFICIAL_ACCOUNT_ID = 'deepseek-account'
 
 /**
@@ -21,11 +21,15 @@ export const OFFICIAL_ACCOUNT_ID = 'deepseek-account'
  *   - `{status:'failed'}` = 平台查询失败（平台侧网络/协议，非凭据问题）→ 行 + error 文案；
  *   - `{status:'ready', value: wallet[]}` = 普通钱包余额 → kind 'balance'，按币种格式化。
  *     赠送钱包（bonusWallets）不进 chip：那是活动赠额，官方账号页有专门展示。
+ *
+ * 所有行带 `pickerOnly: true`：这条额度只喂模型选择器的 provider chip，
+ * 「模型服务」页不出卡片——账号的登录态在官方账号页管理，重复一张余额卡没有动作可做
+ * （用户 09-27 批注）。
  */
 export function accountRowFromBalance(result: unknown, fetchedAt: string, usageUrl: string | undefined): AccountStatus | undefined {
   if (result === null || result === undefined) return undefined
   const record = asRecord(result)
-  const shared = { fetchedAt, websiteUrl: usageUrl, deletable: false }
+  const shared = { fetchedAt, websiteUrl: usageUrl, deletable: false, pickerOnly: true as const }
   if (record['status'] !== 'ready') {
     return accountSkeleton(OFFICIAL_ACCOUNT_ID, 'DeepSeek Account', 'quota', {
       ...shared,

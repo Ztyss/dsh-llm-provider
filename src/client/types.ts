@@ -117,6 +117,8 @@ export interface PlanAccount {
   queryConfigNeeded?: boolean
   keyHint?: string
   deletable?: boolean
+  /** 只喂模型选择器 chip；「模型服务」页按它过滤、不出卡片（官方账号 deepseek-account）。 */
+  pickerOnly?: boolean
   credentialWarning?: string
   api?: string
   apiKeyEnv?: string

@@ -153,18 +153,6 @@ export function quotaTextOf(account: PlanAccount | undefined | null): string | u
 }
 
 /**
- * 按分组/provider id 查账户：先精确命中；未命中且 id 带 `modlens-` 前缀时退回上游账户——
- * 包装 provider（modlens-<upstream>）的额度就是上游自己的额度，chip / 命令面板共用这一条。
- */
-export function lookupAccount(map: Record<string, PlanAccount | undefined>, id: unknown): PlanAccount | undefined {
-  var key = String(id ?? '')
-  var hit = map[key]
-  if (hit !== undefined) return hit
-  if (key.lastIndexOf('modlens-', 0) === 0) return map[key.slice(8)]
-  return undefined
-}
-
-/**
  * 窗口短名（卡片头部摘要与悬停详情共用）：5 小时窗口→5h，每周/订阅周期→7d，每月→30d，
  * 认不出的窗口名→Remain。
  *

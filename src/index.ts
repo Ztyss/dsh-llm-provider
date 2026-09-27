@@ -258,7 +258,7 @@ export function apply(ctx: PluginContext, config: unknown): void {
       return accountRowFromBalance(await platform.getBalance(client), fetchedAt, usageUrl)
     } catch (error) {
       return accountSkeleton(OFFICIAL_ACCOUNT_ID, 'DeepSeek Account', 'quota', {
-        error: messageOf(error), fetchedAt, websiteUrl: usageUrl, deletable: false,
+        error: messageOf(error), fetchedAt, websiteUrl: usageUrl, deletable: false, pickerOnly: true,
       })
     }
   }
