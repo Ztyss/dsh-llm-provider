@@ -50,6 +50,11 @@ export interface AccountStatus {
   /** 是否需要额外查询配置（host 按适配器 queryConfigNeeded(baseUrl) 求值）。 */
   queryConfigNeeded?: boolean
   deletable?: boolean
+  /**
+   * 只喂模型选择器 chip、不在「模型服务」页出卡片（官方账号 deepseek-account：
+   * 登录态在官方账号页管理，余额卡没有可做的动作）。设置页渲染卡片前按它过滤。
+   */
+  pickerOnly?: true | undefined
 }
 
 /** 适配器 query 的入参，由插件层组装。 */

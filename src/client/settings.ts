@@ -2993,8 +2993,12 @@ export function ProviderSettingsSection() {
       react.createElement('div', { className: 'pv_line', key: 'toggle' }, toggleChildren),
     )
   }
+  // pickerOnly 行（官方账号 deepseek-account）不在「模型服务」页出卡片（用户 09-27 批注）：
+  // 它的余额只喂模型选择器 chip；登录态在官方账号页管理，这里没有可做的动作。
   var accounts = plan !== null && Array.isArray(plan.accounts)
-    ? plan.accounts
+    ? plan.accounts.filter(function (account: PlanAccount) {
+        return !(account !== null && typeof account === 'object' && (account as unknown as AnyRecord).pickerOnly === true)
+      })
     : (function () {
         // 用量快照没到（或失败）也先把 provider 露出来（用户批注）：名单回退到本地路由表，
         // 卡片先以骨架形态出现（名字/密钥目标有，用量 chips / 告警 / 掩码等富字段到货后补齐）
