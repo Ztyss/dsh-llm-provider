@@ -33,7 +33,8 @@ import { labelOf, providerRoutes, websiteOf, type ProviderRoute } from './routes
 import { presetsWithMeta } from './provider-presets.js'
 import { findAdapter } from './adapters/registry.js'
 import { findSharedCredentials } from './credential-check.js'
-import type { AccountStatus } from './adapters/shared.js'
+import { account as accountSkeleton, type AccountStatus } from './adapters/shared.js'
+import { OFFICIAL_ACCOUNT_ID, accountRowFromBalance } from './official-account.js'
 import {
   asRecord,
   readNumber,
@@ -53,6 +54,15 @@ import {
 const bridge = loadBridge()
 
 export const name = 'provider'
+
+/** 本插件版本（读 package.json）：替插件调用官方 Remote 服务时充当 client 身份。 */
+const PLUGIN_VERSION = (() => {
+  try {
+    return String(asRecord(JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')))['version'] ?? '0.0.0')
+  } catch {
+    return '0.0.0'
+  }
+})()
 
 // settings：内核 0.1.7 桥接分支要在 apply 期实时读用户 llm-pi-ai 路由（volatile 访问器
 // 的取数源），声明依赖保证 apply 时它已就位。0.1.5 上该服务本就全局可用，无副作用。
@@ -213,6 +223,46 @@ export function apply(ctx: PluginContext, config: unknown): void {
     }
   }
 
+  /**
+   * 官方账号（deepseek-account）的额度行。
+   *
+   * 和 pi-ai 路由的本质差别：这条路由没有 apiKeyEnv，凭据在内核账号平台的登录态
+   * （grant）里，所以余额不走适配器层（resolveKey 必空），而是调 kernel 的
+   * deepseekAccount 服务（dsh-deepseek-account-platform，account-controller 同源）的
+   * getBalance。服务缺席（老内核 / 组件未装）、未登录 → undefined，快照里就没有这一行。
+   */
+  async function officialAccountRow(): Promise<AccountRow | undefined> {
+    let platform: { getState?: () => unknown; getBalance?: (client: unknown) => Promise<unknown> } | undefined
+    try {
+      // 未声明 inject 依赖（缺它不该拖死整条目挂 pending）——运行时取，取不到就当没有。
+      platform = service('deepseekAccount')
+    } catch {
+      return undefined // 内核 inject 守卫：未声明服务直接拒绝
+    }
+    if (platform === undefined || typeof platform.getBalance !== 'function') return undefined
+    const fetchedAt = new Date().toISOString()
+    // 账号页同款的「查看用量」链接（getState 是本地凭据读，零网络）；拿不到就算了。
+    let usageUrl: string | undefined
+    try {
+      const links = asRecord(asRecord(await platform.getState?.())['links'])
+      if (typeof links['usageUrl'] === 'string') usageUrl = links['usageUrl']
+    } catch { /* 锦上添花，缺了就缺了 */ }
+    try {
+      // client 身份（version/locale/timezoneOffsetSeconds）是官方 Remote 的必填参数，
+      // 平台用它派生 x-client-* 请求头；这里如实报插件自己的版本。
+      const client = {
+        version: PLUGIN_VERSION,
+        locale: 'zh-CN',
+        timezoneOffsetSeconds: new Date().getTimezoneOffset() * 60,
+      }
+      return accountRowFromBalance(await platform.getBalance(client), fetchedAt, usageUrl)
+    } catch (error) {
+      return accountSkeleton(OFFICIAL_ACCOUNT_ID, 'DeepSeek Account', 'quota', {
+        error: messageOf(error), fetchedAt, websiteUrl: usageUrl, deletable: false,
+      })
+    }
+  }
+
   /** 额度接口不该被菜单开关打成串流请求，60 秒内复用同一份结果。 */
   const CACHE_MS = 60_000
   let cached: { at: number; value: PlanSnapshot } | undefined
@@ -223,18 +273,21 @@ export function apply(ctx: PluginContext, config: unknown): void {
     const llm = service<LlmService>('llm')
     const routes = providerRoutes(settings, llm)
     const providers = [...routes.values()]
-    if (providers.length === 0) {
+    const credentials: { provider: string; ref: string | undefined; value: string }[] = []
+    const settled = await Promise.all(providers.map((route) => accountOf(route, credentials)))
+    // 官方账号（deepseek-account）不是 pi-ai 路由，额度在账号平台手里：服务在、登录在才并进快照。
+    // 放在空路由判空之后追加——只配了官方账号、没配任何 pi-ai 路由的机器也有额度可看。
+    const official = await officialAccountRow()
+    if (providers.length === 0 && official === undefined) {
       return {
         accounts: [],
         error: '没有发现可查额度的 provider：请在 $DSH_HOME/settings.yaml 的 llm-pi-ai.providers 里配置路由',
         fetchedAt: new Date().toISOString(),
       }
     }
-    const credentials: { provider: string; ref: string | undefined; value: string }[] = []
-    const settled = await Promise.all(providers.map((route) => accountOf(route, credentials)))
     // 凭据体检：共用同一把 key 时在界面上报警（值本身绝不出这个函数）
     const warnings = findSharedCredentials(credentials)
-    const accounts = settled.map((account) => {
+    const accounts = [...settled, ...(official === undefined ? [] : [official])].map((account) => {
       const warning = warnings.find((entry) => entry.provider === account.id)
       return warning === undefined ? account : { ...account, credentialWarning: warning.message }
     })
@@ -251,30 +304,16 @@ export function apply(ctx: PluginContext, config: unknown): void {
   type WriteHandler = (route: ProviderRoute, parsed: AnyRecord, res: ServerResponse) => Promise<void>
 
   /**
+   * pi-ai 路由表之外的额度来源（官方账号 deepseek-account）：给 providerId 返回一条
+   * 实查的账户行；undefined = 这个 id 不归这里管，维持原 404 语义。只有 refresh 用。
+   */
+  type SyntheticAccount = (providerId: string) => Promise<AccountRow | undefined>
+
+  /**
    * 自建写路由的公共骨架：只收 POST、读 JSON body、按 providerId 找路由（找不到回 404），
    * handler 里抛出的错误统一回 500。refresh / remove / test 三个路由共用这一份。
    */
-  /**
-   * 读 POST 的 JSON body（空 body 当 `{}`）。解析失败 reject，调用方回 400。
-   * 与 {@link writeRoute} 的区别：那条钉死了 providerId 语义，这是通用的。
-   */
-  function readJsonBody(req: ServerRequest): Promise<AnyRecord> {
-    return new Promise((resolve, reject) => {
-      let body = ''
-      req.on('data', (chunk) => {
-        body += String(chunk)
-      })
-      req.on('end', () => {
-        try {
-          resolve(asRecord(JSON.parse(body === '' ? '{}' : body)))
-        } catch (error) {
-          reject(error instanceof Error ? error : new Error(String(error)))
-        }
-      })
-    })
-  }
-
-  function writeRoute(handle: WriteHandler): (req: ServerRequest, res: ServerResponse) => void {
+  function writeRoute(handle: WriteHandler, resolveSynthetic?: SyntheticAccount): (req: ServerRequest, res: ServerResponse) => void {
     return (req, res) => {
       if (req.method !== 'POST') {
         res.writeHead(405, { allow: 'POST' })
@@ -293,7 +332,24 @@ export function apply(ctx: PluginContext, config: unknown): void {
             const routes = providerRoutes(service<SettingsService>('settings'), service<LlmService>('llm'))
             const route = typeof providerId === 'string' ? routes.get(providerId) : undefined
             if (route === undefined) {
-              json(res, 404, { ok: false, error: `没有发现这个 provider：${String(providerId)}` })
+              const synthetic = resolveSynthetic !== undefined && typeof providerId === 'string'
+                ? await resolveSynthetic(providerId)
+                : undefined
+              if (synthetic === undefined) {
+                json(res, 404, { ok: false, error: `没有发现这个 provider：${String(providerId)}` })
+                return
+              }
+              // 与 /provider/refresh 的 handler 同一套响应与缓存合并（那边改了这里也要改）。
+              if (cached !== undefined) {
+                cached = {
+                  at: cached.at,
+                  value: {
+                    ...cached.value,
+                    accounts: cached.value.accounts.map((entry) => (entry.id === synthetic.id ? synthetic : entry)),
+                  },
+                }
+              }
+              json(res, 200, { ok: synthetic.error === undefined && synthetic.authConfigured !== false, account: synthetic })
               return
             }
             await handle(route, parsed, res)
@@ -303,6 +359,26 @@ export function apply(ctx: PluginContext, config: unknown): void {
         })()
       })
     }
+  }
+
+  /**
+   * 读 POST 的 JSON body（空 body 当 `{}`）。解析失败 reject，调用方回 400。
+   * 与 {@link writeRoute} 的区别：那条钉死了 providerId 语义，这是通用的。
+   */
+  function readJsonBody(req: ServerRequest): Promise<AnyRecord> {
+    return new Promise((resolve, reject) => {
+      let body = ''
+      req.on('data', (chunk) => {
+        body += String(chunk)
+      })
+      req.on('end', () => {
+        try {
+          resolve(asRecord(JSON.parse(body === '' ? '{}' : body)))
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error(String(error)))
+        }
+      })
+    })
   }
 
   ctx.effect(
@@ -835,7 +911,8 @@ export function apply(ctx: PluginContext, config: unknown): void {
     'dsh-llm-provider: /provider/presets route',
   )
 
-  // 刷新单个 provider 的余量：实查并顺手更新全局缓存里的这一条（徽标等其他读者也能看到新值）
+  // 刷新单个 provider 的余量：实查并顺手更新全局缓存里的这一条（徽标等其他读者也能看到新值）。
+  // 官方账号（deepseek-account）不在 pi-ai 路由表里，走合成解析单独实查。
   ctx.effect(
     () => webServer.register({
       kind: 'exact',
@@ -852,7 +929,8 @@ export function apply(ctx: PluginContext, config: unknown): void {
           }
         }
         json(res, 200, { ok: account.error === undefined && account.authConfigured !== false, account })
-      }),
+      }, (providerId) =>
+        providerId === OFFICIAL_ACCOUNT_ID ? officialAccountRow() : Promise.resolve(undefined)),
     }),
     'dsh-llm-provider: /provider/refresh route',
   )
