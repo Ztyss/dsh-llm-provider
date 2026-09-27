@@ -1,9 +1,11 @@
 // cordis.patch.yml 的防回归检查。
 //
 // 三件连坐的事：
-//   1. patch 禁用了内置 llm-deepseek，DeepSeek 就只剩 pi-ai 的 deepseek 路由一条路，
-//      而那条路由必须有人声明（插件 config 的 base 层）。万一有人删了 config 那块，
-//      DeepSeek 会从模型列表里静默消失——没人会立刻发现。两者必须同时存在。
+//   1. patch 禁用了内置 llm-deepseek。**DeepSeek 路由不再由本文件内置声明**（09-27 用户
+//      决策：0.1.7+ 官方已有登录态 deepseek-account；API-key 版由用户在「模型服务」自行
+//      添加）。此前插件 config 的 base 层会内置一条 deepseek 路由，用户删除后该路由按
+//      pi-ai 目录默认值「复活」整套官方模型，违背删除预期——所以现在反过来：patch 里
+//      **不允许**再出现 deepseek 基础声明，要走目录默认值得显式改这里的断言。
 //   2. 本插件接管的那几个官方行必须都在禁用名单里。少一个的后果不是报错而是"两套并存"：
 //      比如 ui-model-selection 没禁，官方就会再拉一份目录、再推一份 composer 置灰状态，
 //      跟我们的状态机打架，而且只表现为偶发的显示不一致，很难追。
@@ -57,9 +59,11 @@ check('每条条件禁用都带 try/catch（表达式抛错 = 插件树加载失
 check('表达式不依赖 require（求值作用域内没有 require，实测）',
   expressions.every((e) => !/\brequire\s*\(/.test(e)))
 
-check('禁用 llm-deepseek 时必须自己声明 deepseek 路由', !disablesDeepseek || declaresRoute)
-check('deepseek 路由声明在插件 config 里（不写宿主 settings）', /config:\s*\n\s*providers:\s*\n\s*deepseek:/.test(text))
-check('路由声明带 apiKeyEnv（复用 DEEPSEEK_API_KEY 凭据）', /deepseek:[\s\S]{0,200}apiKeyEnv:\s*DEEPSEEK_API_KEY/.test(text))
+// 09-27 用户决策：不内置 deepseek 基础路由（官方已有登录态 deepseek-account；此前的基础
+// 路由会在用户删除后按目录默认值复活整套官方模型，违背删除预期）。
+check('patch 不再内置 deepseek 基础路由（09-27 决策防复发）', !declaresRoute)
+check('patch 里也没有 deepseek 的 apiKeyEnv 声明', !/apiKeyEnv:\s*DEEPSEEK_API_KEY/.test(text))
+check('llm-deepseek 的禁用理由注释已更新（不与新决策矛盾）', /登录态的 deepseek-account/.test(text))
 
 console.log(failures === 0 ? '\npatch 层检查通过' : `\n${failures} 个失败`)
 process.exit(failures === 0 ? 0 : 1)
