@@ -153,6 +153,23 @@ export function quotaTextOf(account: PlanAccount | undefined | null): string | u
 }
 
 /**
+ * 按分组/provider id 查账户：先精确命中；未命中时按 modlens 包装形态回退上游账户——
+ * 包装 provider（`modlens-<上游>`）用的就是上游自己的 key 和额度，chip / 触发按钮 /
+ * /model 命令面板共用这一条（含 dot 状态点，09-28 用户批注三项全选）。
+ * `deepseek-modlens` 是 modlens 的命名特例（上游 deepseek-official 不按
+ * `modlens-<上游>` 惯例拼），单独映射。上游没有账户行时返回 undefined——
+ * 显示端按 undefined 隐藏额度，不凭空造。
+ */
+export function lookupAccount(map: Record<string, PlanAccount | undefined>, id: unknown): PlanAccount | undefined {
+  var key = String(id ?? '')
+  var hit = map[key]
+  if (hit !== undefined) return hit
+  if (key === 'deepseek-modlens') return map['deepseek-official']
+  if (key.lastIndexOf('modlens-', 0) === 0) return map[key.slice(8)]
+  return undefined
+}
+
+/**
  * 窗口短名（卡片头部摘要与悬停详情共用）：5 小时窗口→5h，每周/订阅周期→7d，每月→30d，
  * 认不出的窗口名→Remain。
  *

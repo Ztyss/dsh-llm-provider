@@ -47,8 +47,6 @@
     { id: 'opencode-go', displayName: 'OpenCode Go', kind: 'quota', authConfigured: true, deletable: true,
       keyHint: 'sk-****abcd', windows: [ { window: '5 小时滚动窗口', percentLeft: 100 },
       { window: '每周窗口', percentLeft: 65 }, { window: '每月窗口', percentLeft: 8 } ] },
-    { id: 'modlens-opencode-go', displayName: 'OpenCode Go (modlens vision)', kind: 'unknown-provider',
-      authConfigured: true, windows: [] },
   ] }
   function reply(body) {
     return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve(body) } })

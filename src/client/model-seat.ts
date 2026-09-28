@@ -7,7 +7,7 @@
 import react from 'react'
 import { accountsById, findModel, loadModelCatalog, loadModelDetailMap, loadPlanStatus, lookupDetail, normalizeGroups, onPlanChange, selectionCell, submitSelection, unwrap, usePolledSnapshot } from './data.js'
 import { recordDiagnostic } from './diag.js'
-import { defaultEffortOf, dotClass, effortLabel, formatContext, fuzzyMatch, quotaShortOf, quotaTipOf, reasoningTextOf, toneColor, worstPercent } from './format.js'
+import { defaultEffortOf, dotClass, effortLabel, formatContext, fuzzyMatch, lookupAccount, quotaShortOf, quotaTipOf, reasoningTextOf, toneColor, worstPercent } from './format.js'
 import { caretSvg, checkSvg, chevronRightSvg } from './icons.js'
 import { t, tf } from './i18n.js'
 import type { CatalogGroup, CatalogModel, EffortChoice, FieldEvent, ModelDetail, ModelSelection, ModelSwitchSeatProps } from './types.js'
@@ -391,7 +391,8 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
   // 供应商那段的余量指示：跟模型面板里的 provider chip 同一套取数与配色——
   // 最紧窗口百分比（没窗口就钱包余额），点按 10%/30% 分红黄绿；悬浮显示各窗口明细。
   // 当前 provider 的账户还没拿到（或这个 provider 查不了）时不显示，不影响别的内容。
-  var currentAccount = selection === undefined || selection === null ? undefined : accounts[selection.provider]
+  // modlens 包装 provider（modlens-<上游> / deepseek-modlens）回退上游账户取额度。
+  var currentAccount = selection === undefined || selection === null ? undefined : lookupAccount(accounts, selection.provider)
   var currentQuotaText = quotaShortOf(currentAccount)
   var triggerQuota = currentAccount === undefined
     ? null
@@ -484,7 +485,9 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
     ]
     for (var ck = 0; ck < groups.length; ck += 1) {
       ;(function (g) {
-        var acc = accounts[g.id]
+        // modlens 包装组回退上游账户（09-28 用户批注）：chip 的 dot/额度/颜色与原
+        // provider 一致；上游没有账户行时 acc 为 undefined，按无额度显示。
+        var acc = lookupAccount(accounts, g.id)
         var quotaText = quotaShortOf(acc)
         chips.push(
           react.createElement(
@@ -499,7 +502,7 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
             },
             react.createElement('span', { className: dotClass(acc) }),
             g.id,
-            quotaText === undefined
+            acc === undefined || quotaText === undefined
               ? null
               : react.createElement('span', { style: { color: toneColor(worstPercent(acc)) } }, ' ' + quotaText),
           ),
