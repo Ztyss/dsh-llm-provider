@@ -15,7 +15,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const patchPath = join(root, 'cordis.patch.yml')
 const checkOnly = process.argv.includes('--check')
 
-const { piAiGuardExpression, llmPiAiDisabledExpression } = await import(pathToFileURL(join(root, 'lib', 'patch-condition.js')).href)
+const { piAiGuardExpression, llmPiAiDisabledExpression, deepseekBaseProvidersExpression } = await import(pathToFileURL(join(root, 'lib', 'patch-condition.js')).href)
 
 // 逐行表达式：内核 >= 0.1.7 放行原生 llm-pi-ai（volatile config 自己吃用户路由），
 // 其余三行维持「pi-ai 可加载才禁用」的接管语义。
@@ -27,6 +27,15 @@ const EXPRESSIONS = {
   'ui-settings-models': piAiGuardExpression(),
 }
 const IDS = Object.keys(EXPRESSIONS)
+
+// insert 行 config 值的条件表达式：deepseek 基础路由的 base 声明只在旧内核桥接
+// 接管时提供（判定与 llm-pi-ai 行禁用条件同一骨架生成，见 hostProbeExpression）。
+// 与 disabled 同理防漂移：patch 里那行必须逐字等于生成器输出。
+// prettier-ignore
+const CONFIG_EXPRESSIONS = {
+  'dsh-llm-provider': `providers: !!js ${deepseekBaseProvidersExpression()}`,
+}
+const CONFIG_IDS = Object.keys(CONFIG_EXPRESSIONS)
 
 const source = readFileSync(patchPath, 'utf8')
 let text = source
@@ -41,6 +50,21 @@ for (const id of IDS) {
     continue
   }
   const rendered = `${match[1]}  disabled: !!js ${EXPRESSIONS[id]}\n`
+  text = text.slice(0, match.index) + rendered + text.slice(match.index + match[0].length)
+}
+
+for (const id of CONFIG_IDS) {
+  // insert 块内的 `- id: <id>` 行下面找该行自己的 `providers: !!js ...`（同一块内，
+  // 到下一个缩进更浅的行之前），替换为生成器输出。找不到算漂移（不做从无到有插入，
+  // 插入位置涉及注释排版，留给人工）。
+  const blockRe = new RegExp(`((- id:\\s*${id}\\s*\\r?\\n)(?:[^\\n]*\\r?\\n)*?)(^ {8}providers: !!js [^\\n]*\\r?\\n)`, 'm')
+  const match = blockRe.exec(text)
+  if (match === null) {
+    drift.push(`patch 里 ${id} 块内找不到 providers: !!js 行`)
+    continue
+  }
+  const indent = ' '.repeat(8)
+  const rendered = `${match[1]}${indent}${CONFIG_EXPRESSIONS[id]}\n`
   text = text.slice(0, match.index) + rendered + text.slice(match.index + match[0].length)
 }
 

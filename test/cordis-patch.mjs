@@ -1,11 +1,12 @@
 // cordis.patch.yml 的防回归检查。
 //
 // 三件连坐的事：
-//   1. patch 禁用了内置 llm-deepseek。**DeepSeek 路由不再由本文件内置声明**（09-27 用户
-//      决策：0.1.7+ 官方已有登录态 deepseek-account；API-key 版由用户在「模型服务」自行
-//      添加）。此前插件 config 的 base 层会内置一条 deepseek 路由，用户删除后该路由按
-//      pi-ai 目录默认值「复活」整套官方模型，违背删除预期——所以现在反过来：patch 里
-//      **不允许**再出现 deepseek 基础声明，要走目录默认值得显式改这里的断言。
+//   1. patch 禁用了内置 llm-deepseek。DeepSeek 路由的 base 声明按内核分派：insert 行
+//      `config.providers` 是 `!!js` 条件表达式——旧内核桥接接管才提供完整路由（0.1.5 系
+//      用户 settings.yaml 常见 models-only 条目，apiKeyEnv/baseURL 靠这层字段级补全）；
+//      内核 >= 0.1.7 返回 {}（官方 deepseek-account 登录态，不复活官方模型——09-27 决策
+//      在其场景内维持）。YAML 字面层**不允许**再出现 deepseek 路由块（静态声明会在 0.1.7
+//      上复活官方模型，且无条件拖回已删除的路由）。
 //   2. 本插件接管的那几个官方行必须都在禁用名单里。少一个的后果不是报错而是"两套并存"：
 //      比如 ui-model-selection 没禁，官方就会再拉一份目录、再推一份 composer 置灰状态，
 //      跟我们的状态机打架，而且只表现为偶发的显示不一致，很难追。
@@ -59,10 +60,11 @@ check('每条条件禁用都带 try/catch（表达式抛错 = 插件树加载失
 check('表达式不依赖 require（求值作用域内没有 require，实测）',
   expressions.every((e) => !/\brequire\s*\(/.test(e)))
 
-// 09-27 用户决策：不内置 deepseek 基础路由（官方已有登录态 deepseek-account；此前的基础
-// 路由会在用户删除后按目录默认值复活整套官方模型，违背删除预期）。
-check('patch 不再内置 deepseek 基础路由（09-27 决策防复发）', !declaresRoute)
-check('patch 里也没有 deepseek 的 apiKeyEnv 声明', !/apiKeyEnv:\s*DEEPSEEK_API_KEY/.test(text))
+// deepseek base 声明：条件表达式提供（0.1.5 系桥接接管才带；0.1.7+ 返回 {}），
+// YAML 字面层禁止静态路由块（无条件复活问题）。
+check('insert 行的 providers 以 !!js 条件表达式提供', /providers:\s*!!js/.test(text))
+check('YAML 字面层没有 deepseek 基础路由块（只有表达式内嵌）', !declaresRoute)
+check('patch 里没有 YAML 形态的 apiKeyEnv: DEEPSEEK_API_KEY（只允许表达式 JSON 内嵌）', !/apiKeyEnv:\s*DEEPSEEK_API_KEY/.test(text))
 check('llm-deepseek 的禁用理由注释已更新（不与新决策矛盾）', /登录态的 deepseek-account/.test(text))
 
 console.log(failures === 0 ? '\npatch 层检查通过' : `\n${failures} 个失败`)

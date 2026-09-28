@@ -79,11 +79,48 @@ export function isNativeEraVersion(version: unknown): boolean {
  * 原生行自己吃用户的 llm-pi-ai.providers；旧内核维持「pi-ai 可加载才禁用」的桥接接管。
  */
 export function llmPiAiDisabledExpression(): string {
+  return hostProbeExpression('false', 'true', 'false')
+}
+
+/**
+ * deepseek 基础路由的条件 base 声明表达式（insert 行 `config.providers` 的值）。
+ *
+ * ac0dcb5 曾按 0.1.7 场景整体移除 base 声明，但 0.1.5 系上用户 settings.yaml 常见
+ * models-only 的 deepseek 条目——apiKeyEnv/api/baseURL 全靠插件 base 层字段级补全
+ * （dsh-settings mergeLayers 是递归深合并），移除即卡片死掉（未配置 key / 查询失败 /
+ * 没有凭据名，2026-09-28 实机回归）。修复：base 声明只在**桥接接管**时提供，判定与
+ * {@link llmPiAiDisabledExpression} 同源（同一探测骨架）——内核 >= 0.1.7 返回 `{}`，
+ * 官方 deepseek-account 登录态场景维持 ac0dcb5 决策；旧内核且 pi-ai 可加载返回完整
+ * 声明；桥接建不起来（pi-ai 缺失）时同样返回 `{}`（不声明，与 P0 兜底哲学一致）。
+ * 返回值是对象（config 值）；loader 对 config 里的 `!!js` 同样求值（实测：fiber 激活
+ * 走 internal/config waterfall → interpolate）。
+ */
+export function deepseekBaseProvidersExpression(): string {
+  const route = {
+    displayName: 'DeepSeek',
+    apiKeyEnv: 'DEEPSEEK_API_KEY',
+    api: 'openai-completions',
+    baseURL: 'https://api.deepseek.com',
+  }
+  return hostProbeExpression('{}', JSON.stringify({ deepseek: route }), '{}')
+}
+
+/**
+ * 宿主探测骨架：`llm-pi-ai` 行禁用条件与 {@link deepseekBaseProvidersExpression}
+ * 共用同一套判定（读宿主 `@deepseek-ai/dsh` 版本判定 0.1.7，再探测
+ * `@earendil-works/pi-ai` 可加载性），只有三个 return 点的值不同——两处语义必须
+ * 联动（桥接接管 ⇔ 提供 base），共用骨架就是防漂移的手段。
+ *
+ * @param nativeEraReturn - 内核 >= 0.1.7 时的返回值。
+ * @param bridgeReturn - 旧内核且 pi-ai 可加载（桥接接管）时的返回值。
+ * @param fallbackReturn - 其余一切情况（版本读不出 / pi-ai 缺失 / 探测抛错）的返回值。
+ */
+function hostProbeExpression(nativeEraReturn: string, bridgeReturn: string, fallbackReturn: string): string {
   return [
     '(()=>{',
     'try{',
     'const fs=process.getBuiltinModule?process.getBuiltinModule("node:fs"):null;',
-    'if(!fs||typeof fs.readFileSync!=="function"||typeof fs.existsSync!=="function")return false;',
+    `if(!fs||typeof fs.readFileSync!=="function"||typeof fs.existsSync!=="function")return ${fallbackReturn};`,
     'const sep=process.platform==="win32"?"\\\\":"/";',
     'const pkg="node_modules"+sep+"@deepseek-ai"+sep+"dsh"+sep+"package.json";',
     'const starts=[];',
@@ -101,7 +138,7 @@ export function llmPiAiDisabledExpression(): string {
     'try{const v=JSON.parse(fs.readFileSync(root,"utf8")).version;',
     'if(typeof v==="string"){const m=/^(\\d+)\\.(\\d+)\\.(\\d+)/.exec(v.trim());if(m)native=Number(m[1])>0||Number(m[2])>1||(Number(m[2])===1&&Number(m[3])>=7)',
     '}}catch{}',
-    'if(native)return false;',
+    `if(native)return ${nativeEraReturn};`,
     'break;',
     '}',
     '}',
@@ -115,12 +152,12 @@ export function llmPiAiDisabledExpression(): string {
     'if(cut<=0)break;',
     'dir=dir.slice(0,cut);',
     'const root=dir+sep+spec;',
-    'if(fs.existsSync(root+sep+"package.json")&&fs.existsSync(root+sep+"dist"+sep+"index.js"))return true',
+    `if(fs.existsSync(root+sep+"package.json")&&fs.existsSync(root+sep+"dist"+sep+"index.js"))return ${bridgeReturn}`,
     '}',
     '}',
-    'return false',
+    `return ${fallbackReturn}`,
     '}catch{',
-    'return false',
+    `return ${fallbackReturn}`,
     '}',
     '})()',
   ].join('')
