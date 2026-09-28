@@ -7,7 +7,7 @@ pi-ai 适配器（`llm-pi-ai`）、DeepSeek 适配器（`llm-deepseek`）、模�
 
 **中文** · [English](README.en.md)
 
-> 本仓库 fork 自 [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider)，此后独立维护演进。当前版本 [v0.2.4](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.4)（安装走 main 分支）。
+> 本仓库 fork 自 [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider)，此后独立维护演进。当前版本 [v0.2.5](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.5)（安装走 main 分支）。
 
 ## 安装
 
@@ -90,6 +90,8 @@ dsh web     # 需要重启：插件树在进程启动时组装
 - **整体接管**：官方模型选择器停用后，选择座位（当前模型状态）、`/model` 命令与模型目录
   状态机全部由本插件提供。
 - **`/model` 命令**：按供应商过滤、搜索模型，候选按供应商分组展示，每组显示额度/余额。
+- **modlens 包装组共用上游额度**：`modlens-<上游>` / `deepseek-modlens` 这类合成 provider
+  的 chip、输入框旁当前额度、`/model` 面板都按上游账户取数（dot 状态点与配色一并跟上游）。
 - **`available` 契约**：为 `/` 命令贡献实现官方必填的 `available(session)`——被寻址为子代理
   的会话不出现模型选择；契约是宿主裸调、一抛整批 `/` 候选陪葬，因此实现永不抛错，任何异常
   一律吞掉并放行。
