@@ -175,6 +175,53 @@ export function detailsOfProvider(
   return own
 }
 
+/**
+ * baseURL 归一化（比一比两条 API 地址是不是同一个端点）：host 大小写归一、去尾斜杠，
+ * 路径保留大小写（路径不同就是不同端点，不能误配）。
+ * 不是合法绝对 URL 返回 undefined——调用方按「没有可匹配的地址」处理。
+ */
+export function normalizeBaseUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  var trimmed = value.trim()
+  if (trimmed === '') return undefined
+  try {
+    var parsed = new URL(trimmed)
+    return parsed.protocol + '//' + parsed.host.toLowerCase() + parsed.pathname.replace(/\/+$/, '')
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * custom 路由的 pi-ai 目录候选（用户 09-28 需求）：路由 id 不在目录里时，按 baseURL
+ * 与目录里每条模型详情的 baseUrl **精确相等**映射到目录 provider，编辑模型清单时就能
+ * 看到它的全量模型（custom zai 看到 pi-ai zai 的清单）。目录路由自身（provider 等于
+ * 路由 id）不收录——那部分由 {@link detailsOfProvider} 负责，两路无交集。
+ * 详情索引是双键（provider/id + 裸 id 兜底），按 detailKeyOf 去重防同一条进两次。
+ */
+export function catalogCandidatesOf(
+  map: Record<string, ModelDetail> | undefined | null,
+  account: { id?: unknown; baseUrl?: unknown },
+): ModelDetail[] {
+  if (map === undefined || map === null) return []
+  var baseUrl = normalizeBaseUrl(account?.baseUrl)
+  var routeId = typeof account?.id === 'string' ? account.id : ''
+  if (baseUrl === undefined) return []
+  var out: ModelDetail[] = []
+  var seen: Record<string, boolean> = {}
+  for (var key in map) {
+    var detail = map[key]
+    if (detail === undefined || detail === null || typeof detail.id !== 'string' || detail.id === '') continue
+    if (typeof detail.provider !== 'string' || detail.provider === '' || detail.provider === routeId) continue
+    if (normalizeBaseUrl(detail.baseUrl) !== baseUrl) continue
+    var dedupe = detailKeyOf(detail.provider, detail.id)
+    if (seen[dedupe] === true) continue
+    seen[dedupe] = true
+    out.push(detail)
+  }
+  return out
+}
+
 /** 不可变地合并一组 key（几个 setState 都这么写，集中一处）。 */
 export function withKeys(prev: AnyRecord, patch: AnyRecord): AnyRecord {
   var next: AnyRecord = {}

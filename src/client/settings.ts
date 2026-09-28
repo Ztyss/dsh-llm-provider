@@ -23,6 +23,7 @@ import {
   statusUnavailable,
   withKey,
   withKeys,
+  catalogCandidatesOf,
 } from './data.js'
 import { dotClass, formatContext, fuzzyMatch, headlineChips, linkTextOf, relativeTime, resetCountdownText, shortName, toneColor, worstPercent } from './format.js'
 import { caretSvg, checkSvg } from './icons.js'
@@ -1644,12 +1645,19 @@ export function buildEditRows(
     })
   }
   // 1. 声明过的（含别名 id）优先占位；2. 当前生效目录；3. 目录里该 provider 的全量候选
+  //    第 3 步在 custom 路由上按 baseURL 追加映射到的目录 provider 候选（用户 09-28
+  //    需求：custom zai 编辑模型时也能看到 pi-ai zai 的清单）——同名声明行的元数据
+  //    以目录版为准（known/inPiAi/knownContextWindow 替换手填的过时字段），勾选状态
+  //    仍由 declared 决定；保存语义不变（勾选保存才写，写入仍走各自行的原分支）。
+  var candidates = catalogCandidatesOf(details, account)
+  var candidateById: AnyRecord = {}
+  for (var q = 0; q < candidates.length; q += 1) candidateById[candidates[q].id] = candidates[q]
   for (var d = 0; d < declared.length; d += 1) {
     var entry = declared[d]
     if (entry === null || typeof entry !== 'object') continue
     var entryId = typeof entry.id === 'string' ? entry.id : ''
     if (entryId === '') continue
-    var entryDetail = lookupDetail(details, account.id, entryId)
+    var entryDetail = lookupDetail(details, account.id, entryId) ?? (candidateById[entryId] as ModelDetail | undefined)
     add(entryId, entry.name !== undefined ? String(entry.name) : (entryDetail !== undefined && entryDetail.name !== undefined ? entryDetail.name : entryId), entryDetail, entry, false)
   }
   for (var c = 0; c < catalog.length; c += 1) {
@@ -1660,6 +1668,9 @@ export function buildEditRows(
   for (var o = 0; o < own.length; o += 1) {
     if (typeof own[o].id !== 'string') continue
     add(own[o].id as string, own[o].name === undefined ? String(own[o].id) : String(own[o].name), own[o], undefined, false)
+  }
+  for (var b = 0; b < candidates.length; b += 1) {
+    add(candidates[b].id, candidates[b].name, candidates[b], undefined, false)
   }
   return rows
 }

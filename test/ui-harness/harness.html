@@ -59,8 +59,18 @@
       contextWindow: 1000000, maxTokens: 384000, vision: true, video: false, reasoning: true,
       thinkingLevels: ['low', 'high', 'max'], source: 'declared' },
     { id: 'glm-5.3-flash', provider: 'zai-coding-cn', name: 'GLM-5.3-Flash', api: 'openai-completions',
+      baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
       contextWindow: 1000000, maxTokens: 131072, vision: true, video: false, reasoning: true,
       thinkingLevels: ['low'], source: 'pi-ai' },
+    // custom 路由（zai-coding-cn-ykw）按 baseURL 映射 pi-ai 目录候选的锚点条目（用户 09-28 需求）
+    { id: 'glm-5.3', provider: 'zai-coding-cn', name: 'GLM-5.3', api: 'openai-completions',
+      baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
+      contextWindow: 1000000, maxTokens: 131072, vision: false, video: false, reasoning: true,
+      thinkingLevels: ['low', 'high', 'max'], source: 'pi-ai' },
+    { id: 'glm-4.7', provider: 'zai-coding-cn', name: 'GLM-4.7', api: 'openai-completions',
+      baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
+      contextWindow: 200000, maxTokens: 131072, vision: false, video: false, reasoning: true,
+      thinkingLevels: ['low', 'high', 'max'], source: 'pi-ai' },
     { id: 'kimi-k3', provider: 'opencode-go', name: 'Kimi K3', api: 'openai-completions',
       contextWindow: 1048576, maxTokens: 131072, vision: true, video: false, reasoning: true,
       thinkingLevels: [], source: 'pi-ai' },
@@ -128,6 +138,14 @@
         error: 'API key 有效，但该 workspace 没有订阅 OpenCode Go（HTTP 403）',
         credentialWarning: 'GLM_API_KEY 与 ZAI_API_KEY 配了同一把 key',
         note: '账户不可用（余额不足或已欠费）' },
+      // custom zai 路由（用户 09-28 需求）：id 不在 pi-ai 目录、baseURL 与 zai-coding-cn
+      // 同端点、models 手填一条——编辑模型时按 baseURL 看到 pi-ai zai 的目录候选
+      { id: 'zai-coding-cn-ykw', displayName: 'Zai Coding Cn Ykw', kind: 'quota', authConfigured: true, api: 'openai-completions',
+        apiKeyEnv: 'ZAI_CODING_CN_YKW_API_KEY', baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
+        keyHint: 'ykw****wxyz', deletable: true, fetchedAt: new Date().toISOString(),
+        models: [{ id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', contextWindow: 500000, input: ['text'] }],
+        windows: [ { window: '5 小时滚动窗口', percentLeft: 73, resetAt: new Date(Date.now() + 54 * 60e3).toISOString() },
+                   { window: '每月窗口', percentLeft: 66, resetAt: new Date(Date.now() + 44 * 864e5).toISOString() } ] },
     ],
   }
   var CATALOG = {
@@ -145,6 +163,11 @@
       // 物化，目录里没有 reasoning 能力（与用户现场一致）；保存修复后目录才会带出档位
       { provider: 'stepfun-test', name: 'StepFun Test', models: [
         { id: 'step-5-preview', name: 'step-5-preview', contextWindow: 1000000 },
+      ] },
+      // custom 路由组（真实环境由 session/modelCatalog 给手填 models 建组；编辑器候选
+      // 走 /provider/models 的 baseURL 映射，见 test/catalog-candidates.mjs）
+      { provider: 'zai-coding-cn-ykw', name: 'Zai Coding Cn Ykw', models: [
+        { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', contextWindow: 500000 },
       ] },
     ],
     default: { provider: 'opencode-go', model: 'deepseek-flash' },
