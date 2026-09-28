@@ -73,7 +73,8 @@ export default {
     }
 
     return account(id, displayName, 'quota', {
-      baseUrl: origin,
+      // baseUrl 如实透传路由配置（origin 剥路径，见 glm.ts 同款注释）
+      baseUrl,
       windows,
       ...(windows.length === 0 ? { note: '响应里没有可解析的套餐额度（可能未订阅编程套餐）' } : {}),
     })

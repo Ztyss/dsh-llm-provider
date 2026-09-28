@@ -68,7 +68,8 @@ export default {
     const tier = typeof plan['tier'] === 'string' ? plan['tier'] : ''
     const accountStatus = typeof data['account_status'] === 'string' ? data['account_status'] : ''
     return account(id, displayName, 'quota', {
-      baseUrl: originOf(baseUrl) ?? baseUrl,
+      // baseUrl 如实透传路由配置（origin 剥路径，见 glm.ts 同款注释）
+      baseUrl,
       membership: [tier, accountStatus].filter((s) => s !== '').join(' · '),
       windows,
       ...(windows.length === 0 ? { note: '响应里没有可解析的额度窗口' } : {}),

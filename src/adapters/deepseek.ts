@@ -23,7 +23,8 @@ const adapter: BillingAdapter = {
     const record = asRecord(body)
     const infos: unknown[] = Array.isArray(record['balance_infos']) ? record['balance_infos'] : []
     return account(id, displayName, 'balance', {
-      baseUrl: origin,
+      // baseUrl 如实透传路由配置（origin 剥路径，见 glm.ts 同款注释）
+      baseUrl,
       balances: infos.map((raw) => {
         const info = asRecord(raw)
         return {

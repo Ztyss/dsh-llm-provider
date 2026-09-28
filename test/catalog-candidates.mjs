@@ -95,6 +95,10 @@ check('无 baseUrl 的账户返回空', catalogCandidatesOf(details, { id: 'x' }
 check('details 为 null 不炸，返回空', catalogCandidatesOf(null, customAccount).length === 0)
 check('目录路由自身不重复收录（provider 过滤）',
   catalogCandidatesOf(details, { id: 'zai-coding-cn', baseUrl: ZAI_CN }).length === 0)
+// 账户 baseUrl 被降级成 origin（丢路径）时必须匹配失败——精确相等是用户 09-28 批注选的
+// 语义，host 级放宽会把不同产品线误配到同一个目录清单；历史上 glm/deepseek/minimax/
+// zenmux 适配器曾把账户行 baseUrl 降级成 URL.origin，导致本功能在真实环境静默失效。
+check('账户 baseUrl 丢路径（origin 降级形态）不放宽匹配', catalogCandidatesOf(details, { id: 'x', baseUrl: 'https://open.bigmodel.cn' }).length === 0)
 
 // ---- 3. buildEditRows 集成：编辑 custom provider 看到目录清单 ----
 const rows = buildEditRows(customAccount, [], details)

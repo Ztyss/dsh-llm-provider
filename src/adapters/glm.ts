@@ -81,7 +81,9 @@ export default {
 
     const level = data['level']
     return account(id, displayName, 'quota', {
-      baseUrl: origin,
+      // 账户行的 baseUrl 如实透传路由配置（origin 只是查询端点，剥了路径——下发它会让
+      // 目录候选的 baseURL 精确匹配静默失效，也污染导出 YAML 的 baseURL 行）
+      baseUrl,
       ...(typeof level === 'string' ? { membership: level } : {}),
       windows: windows.length > 0 ? windows : mcp,
       ...(windows.length === 0 && mcp.length > 0 ? { note: '只拿到 MCP 月度窗口，Coding Plan 额度窗口未返回' } : {}),
