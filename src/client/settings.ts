@@ -1657,7 +1657,11 @@ export function buildEditRows(
     if (entry === null || typeof entry !== 'object') continue
     var entryId = typeof entry.id === 'string' ? entry.id : ''
     if (entryId === '') continue
-    var entryDetail = lookupDetail(details, account.id, entryId) ?? (candidateById[entryId] as ModelDetail | undefined)
+    // 同名行取数**目录版优先**：宿主 /provider/models 的增强链给 custom 路由自己的
+    // 声明模型也产详情（provider=路由 id、无 source），qualified 键先命中会让
+    // inPiAi 恒 false、行内编辑恒开（实机回归）——候选（目录版，source='pi-ai'）
+    // 存在时以它为准，目录没有该 id 才落回自家详情。
+    var entryDetail = (candidateById[entryId] as ModelDetail | undefined) ?? lookupDetail(details, account.id, entryId)
     add(entryId, entry.name !== undefined ? String(entry.name) : (entryDetail !== undefined && entryDetail.name !== undefined ? entryDetail.name : entryId), entryDetail, entry, false)
   }
   for (var c = 0; c < catalog.length; c += 1) {

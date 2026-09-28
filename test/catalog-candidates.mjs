@@ -78,6 +78,10 @@ const details = {
   'zai-coding-cn/glm-4.7': { id: 'glm-4.7', provider: 'zai-coding-cn', name: 'GLM-4.7', baseUrl: ZAI_CN, source: 'pi-ai', vision: false, thinkingLevels: ['low', 'high', 'max'], contextWindow: 200000 },
   'zai/glm-4.7': { id: 'glm-4.7', provider: 'zai', name: 'GLM-4.7', baseUrl: 'https://api.z.ai/api/coding/paas/v4', source: 'pi-ai', vision: false, thinkingLevels: [], contextWindow: 200000 },
   'deepseek/deepseek-flash': { id: 'deepseek-flash', provider: 'deepseek', name: 'DeepSeek Flash', baseUrl: 'https://api.deepseek.com', source: 'pi-ai', vision: true, thinkingLevels: [], contextWindow: 1000000 },
+  // 宿主 /provider/models 增强链给 custom 路由自己的声明模型也产详情（provider=路由
+  // id、无 source）——qualified 键会先于裸 id 命中，同名行取数必须目录版优先，否则
+  // inPiAi 恒 false、行内编辑恒开（2026-09-28 实机回归：手填行仍显示可编辑状态）。
+  'zai-coding-cn-ykw/glm-5.3-flash': { id: 'glm-5.3-flash', provider: 'zai-coding-cn-ykw', name: 'GLM-5.3-Flash', contextWindow: 500000, vision: false, thinkingLevels: [] },
 }
 const customAccount = {
   id: 'zai-coding-cn-ykw',

@@ -71,6 +71,10 @@
       baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
       contextWindow: 200000, maxTokens: 131072, vision: false, video: false, reasoning: true,
       thinkingLevels: ['low', 'high', 'max'], source: 'pi-ai' },
+    // custom 路由自己的声明模型详情（宿主增强链产，provider=路由 id、无 source）——
+    // 同名行取数必须目录版优先，否则 inPiAi 恒 false、行内编辑恒开（实机回归）
+    { id: 'glm-5.3-flash', provider: 'zai-coding-cn-ykw', name: 'GLM-5.3-Flash', api: 'openai-completions',
+      contextWindow: 500000, vision: false, video: false, reasoning: true, thinkingLevels: ['low'] },
     { id: 'kimi-k3', provider: 'opencode-go', name: 'Kimi K3', api: 'openai-completions',
       contextWindow: 1048576, maxTokens: 131072, vision: true, video: false, reasoning: true,
       thinkingLevels: [], source: 'pi-ai' },

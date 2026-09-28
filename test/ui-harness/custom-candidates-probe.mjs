@@ -128,6 +128,12 @@ check('目录候选行 glm-5.3 出现且未勾', byId['glm-5.3'] !== undefined &
 check('目录候选行 glm-4.7 出现且未勾', byId['glm-4.7'] !== undefined && byId['glm-4.7'].checked === false)
 check('同名手填行 glm-5.3-flash 仍勾着', byId['glm-5.3-flash'] !== undefined && byId['glm-5.3-flash'].checked === true)
 check('同名行以目录版为准（inPiAi=true → 无 ✕ 删除钮）', byId['glm-5.3-flash'] !== undefined && byId['glm-5.3-flash'].del === false)
+const idEditable = await cdp.eval(`(function(){
+  var els = document.querySelectorAll('.pv_meRow .pv_mId')
+  for (var i = 0; i < els.length; i += 1) if (els[i].textContent === 'glm-5.3-flash') return els[i].className.indexOf('pv_mIdEdit') !== -1
+  return null
+})()`)
+check('同名行 ID 不可点进行内编辑（目录收录参数以上游为准，宿主自家详情不挡）', idEditable === false, String(idEditable))
 check('同名行能力徽标按目录（视觉+推理）', byId['glm-5.3-flash'] !== undefined && /视觉/.test(byId['glm-5.3-flash'].caps) && /推理/.test(byId['glm-5.3-flash'].caps),
   JSON.stringify(byId['glm-5.3-flash']?.caps))
 check('行数 = 手填 1 + 目录候选 2', rows.length === 3, String(rows.length))
