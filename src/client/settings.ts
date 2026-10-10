@@ -1651,7 +1651,10 @@ export function buildEditRows(
   //    仍由 declared 决定；保存语义不变（勾选保存才写，写入仍走各自行的原分支）。
   var candidates = catalogCandidatesOf(details, account)
   var candidateById: AnyRecord = {}
-  for (var q = 0; q < candidates.length; q += 1) candidateById[candidates[q].id] = candidates[q]
+  for (var q = 0; q < candidates.length; q += 1) {
+    if (typeof candidates[q].id !== 'string') continue
+    candidateById[candidates[q].id as string] = candidates[q]
+  }
   for (var d = 0; d < declared.length; d += 1) {
     var entry = declared[d]
     if (entry === null || typeof entry !== 'object') continue
@@ -1674,7 +1677,8 @@ export function buildEditRows(
     add(own[o].id as string, own[o].name === undefined ? String(own[o].id) : String(own[o].name), own[o], undefined, false)
   }
   for (var b = 0; b < candidates.length; b += 1) {
-    add(candidates[b].id, candidates[b].name, candidates[b], undefined, false)
+    if (typeof candidates[b].id !== 'string') continue
+    add(candidates[b].id as string, candidates[b].name === undefined ? String(candidates[b].id) : String(candidates[b].name), candidates[b], undefined, false)
   }
   return rows
 }
@@ -1722,6 +1726,15 @@ function ModelListEditor(props: {
   var setForm = formState[1] as (updater: (prev: typeof form) => typeof form) => void
   var emptyForm = function () { return { open: false, id: '', name: '', ctx: '', max: '', vision: false, video: false, reasoning: false } }
 
+  /**
+   * 表单校验失败：写进表单自己的消息槽（原位替换之前的测试结果，同一行同一样式），
+   * 不落编辑器底部的小字行——与行内编辑面板的 panelTest 同一套范式（用户 10-10 批注）。
+   */
+  function formFail(message: string) {
+    setTestModel({ phase: 'fail', message: '✗ ' + message })
+    scrollTestResultIntoView()
+  }
+
   function patch(id: string, next: AnyRecord) {
     setRows(function (prev) {
       return prev.map(function (row) {
@@ -1739,18 +1752,18 @@ function ModelListEditor(props: {
    *  填进行里随时可改；填了但不是正整数才拦。 */
   function addFromForm() {
     var id = form.id.trim()
-    if (id === '') { setError('先填模型 ID'); return }
+    if (id === '') { formFail('先填模型 ID'); return }
     var exists = false
     for (var i = 0; i < rows.length; i += 1) if (rows[i].id === id) exists = true
-    if (exists) { setError('「' + id + '」已经在清单里了'); return }
-    if (lookupDetail(props.details, account.id, id) !== undefined) { setError('「' + id + '」已在 pi-ai 目录里，直接在清单里勾选即可'); return }
+    if (exists) { formFail('「' + id + '」已经在清单里了'); return }
+    if (lookupDetail(props.details, account.id, id) !== undefined) { formFail('「' + id + '」已在 pi-ai 目录里，直接在清单里勾选即可'); return }
     var defaults = resolveAddDefaults(rows, id, props.details)
     var ctxRaw = form.ctx.trim() === '' ? defaults.ctx : form.ctx.trim()
     var maxRaw = form.max.trim() === '' ? defaults.max : form.max.trim()
     var ctxNum = Number(ctxRaw)
-    if (!isFinite(ctxNum) || Math.floor(ctxNum) !== ctxNum || ctxNum <= 0) { setError('上下文窗口要填正整数'); return }
+    if (!isFinite(ctxNum) || Math.floor(ctxNum) !== ctxNum || ctxNum <= 0) { formFail('上下文窗口要填正整数'); return }
     var maxNum = Number(maxRaw)
-    if (!isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) { setError('最大输出要填正整数'); return }
+    if (!isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) { formFail('最大输出要填正整数'); return }
     var name = form.name.trim()
     setRows(function (prev) {
       return prev.concat([{
@@ -1775,6 +1788,8 @@ function ModelListEditor(props: {
     })
     setForm(emptyForm)
     setError(null)
+    // 测试消息一并重置：表单关了消息行会跟着消失，但不重置的话下次开表单会闪回旧报错
+    setTestModel({ phase: 'idle', message: '' })
   }
 
   /**
@@ -1784,7 +1799,7 @@ function ModelListEditor(props: {
    */
   function testAddModel() {
     var id = form.id.trim()
-    if (id === '') { setError('先填模型 ID'); return }
+    if (id === '') { formFail('先填模型 ID'); return }
     testModelConn(id, setTestModel)
   }
 
@@ -2162,7 +2177,7 @@ function ModelListEditor(props: {
     ),
     testModel.message === ''
       ? null
-      : react.createElement('div', { className: 'pv_line', key: 'f-test' }, testModel.message),
+      : react.createElement('div', { className: 'pv_line pv_meTestLine' + (testModel.phase === 'fail' ? ' plan_badText' : ''), key: 'f-test' }, testModel.message),
   )
 
   return react.createElement(
