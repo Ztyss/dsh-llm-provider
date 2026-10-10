@@ -6,7 +6,7 @@
 //
 // 同时用**真实 loader 的 evaluate** 验证表达式在本机返回布尔值且不抛错——
 // 表达式抛错会让整棵插件树加载失败，所以「不抛错」是硬要求。
-import { readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -76,7 +76,15 @@ function makeFakeHost(version, withPiAi) {
 }
 
 try {
-  const { evaluate } = await import('file:///D:/Software/DSH%20Desktop/resources/app/node_modules/@deepseek-ai/cordis-plugin-loader/lib/index.js')
+  // 宿主 checkout 位置会挪（DSH Desktop → DSH NEXT）：候选清单式解析，命中即用；
+  // 一处都没有仍算规格失败（见下方 catch——loader 缺失不该静默跳过）。
+  const LOADER_CANDIDATES = [
+    'D:/Software/DSH NEXT/resources/app/node_modules/@deepseek-ai/cordis-plugin-loader/lib/index.js',
+    'D:/Software/DSH Desktop/resources/app/node_modules/@deepseek-ai/cordis-plugin-loader/lib/index.js',
+  ]
+  const loaderPath = LOADER_CANDIDATES.find((candidate) => existsSync(candidate))
+  if (loaderPath === undefined) throw new Error('已知宿主 checkout 里都找不到 cordis-plugin-loader：' + LOADER_CANDIDATES.join(' ; '))
+  const { evaluate } = await import(pathToFileURL(loaderPath).href)
   let value
   let threw
   try {
