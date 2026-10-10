@@ -7,6 +7,7 @@
 // 同时用**真实 loader 的 evaluate** 验证表达式在本机返回布尔值且不抛错——
 // 表达式抛错会让整棵插件树加载失败，所以「不抛错」是硬要求。
 import { existsSync, readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -76,15 +77,28 @@ function makeFakeHost(version, withPiAi) {
 }
 
 try {
-  // 宿主 checkout 位置会挪（DSH Desktop → DSH NEXT）：候选清单式解析，命中即用；
-  // 一处都没有仍算规格失败（见下方 catch——loader 缺失不该静默跳过）。
-  const LOADER_CANDIDATES = [
-    'D:/Software/DSH NEXT/resources/app/node_modules/@deepseek-ai/cordis-plugin-loader/lib/index.js',
-    'D:/Software/DSH Desktop/resources/app/node_modules/@deepseek-ai/cordis-plugin-loader/lib/index.js',
-  ]
-  const loaderPath = LOADER_CANDIDATES.find((candidate) => existsSync(candidate))
-  if (loaderPath === undefined) throw new Error('已知宿主 checkout 里都找不到 cordis-plugin-loader：' + LOADER_CANDIDATES.join(' ; '))
-  const { evaluate } = await import(pathToFileURL(loaderPath).href)
+  // 真实 loader 定位（不写死机器路径，用户批注 10-10：不同机器路径都不同）：
+  //   1. DSH_CHECKOUT 环境变量指定的宿主 checkout（想测本机真跑的那份时用）；
+  //   2. 本仓库 devDependencies 安装的 @deepseek-ai/cordis-plugin-loader（npm install
+  //      即得，任意机器/CI 可用；版本由 lockfile 管理）。
+  // 两处都没有算规格失败（见下方 catch——loader 缺失不该静默跳过）。
+  const require_ = createRequire(import.meta.url)
+  function resolveLoaderPath() {
+    const fromEnv = process.env.DSH_CHECKOUT
+    if (typeof fromEnv === 'string' && fromEnv !== '') {
+      const candidate = join(fromEnv, 'node_modules', '@deepseek-ai', 'cordis-plugin-loader', 'lib', 'index.js')
+      if (existsSync(candidate)) return candidate
+      throw new Error('DSH_CHECKOUT 里找不到 cordis-plugin-loader：' + candidate)
+    }
+    try {
+      // 裸包名解析（main 即 lib/index.js；exports 地图不放行 ./lib/* 子路径，
+      // 按子路径 resolve 会 ERR_PACKAGE_PATH_NOT_EXPORTED）。
+      return require_.resolve('@deepseek-ai/cordis-plugin-loader')
+    } catch {
+      throw new Error('依赖里没有 cordis-plugin-loader：npm install 后重试，或设 DSH_CHECKOUT 指向宿主 checkout')
+    }
+  }
+  const { evaluate } = await import(pathToFileURL(resolveLoaderPath()).href)
   let value
   let threw
   try {
