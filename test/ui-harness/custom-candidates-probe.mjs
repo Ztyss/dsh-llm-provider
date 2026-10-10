@@ -136,7 +136,8 @@ const idEditable = await cdp.eval(`(function(){
 check('同名行 ID 不可点进行内编辑（目录收录参数以上游为准，宿主自家详情不挡）', idEditable === false, String(idEditable))
 check('同名行能力徽标按目录（视觉+推理）', byId['glm-5.3-flash'] !== undefined && /视觉/.test(byId['glm-5.3-flash'].caps) && /推理/.test(byId['glm-5.3-flash'].caps),
   JSON.stringify(byId['glm-5.3-flash']?.caps))
-check('行数 = 手填 1 + 目录候选 2', rows.length === 3, String(rows.length))
+// 夹具后来为幽灵行探针预置了第二条声明 glm-legacy-custom（目录未收录）：手填 2 + 目录候选 2
+check('行数 = 手填 2 + 目录候选 2', rows.length === 4, String(rows.length))
 
 const shot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true })
 const file = join(outDir, 'custom-candidates-editor.png')

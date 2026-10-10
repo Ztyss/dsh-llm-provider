@@ -1720,9 +1720,15 @@ function ModelListEditor(props: {
     }
   }
   var account = props.account
-  var rowsState = react.useState(function () { return buildEditRows(account, props.catalog, props.details) })
-  var rows = rowsState[0] as ModelEditRow[]
-  var setRows = rowsState[1] as (updater: (prev: ModelEditRow[]) => ModelEditRow[]) => void
+  // 行集「草稿制渲染」（用户 10-10 报的 #1/#2）：没动过草稿时每次渲染都从当前
+  // props 重算——保存后 plan / 目录 / 详情三层异步刷新陆续落地，行集跟着自动修正
+  //（加的模型补上勾选、删的模型消失）；用户一动手（勾选 / ✕ / 行内编辑 / 添加）
+  // 转草稿冻结，不被异步刷新打断。此前「挂载时算一次」的实现里，编辑器抢在刷新
+  // 落地前打开就会把陈旧行集粘住：保存的模型显示未勾选、删除的模型仍在清单。
+  var draftState = react.useState(null)
+  var draft = draftState[0] as ModelEditRow[] | null
+  var setDraft = draftState[1] as (next: ModelEditRow[]) => void
+  var rows = draft === null ? buildEditRows(account, props.catalog, props.details) : draft
   var busyState = react.useState(false)
   var busy = busyState[0] as boolean
   var setBusy = busyState[1] as (next: boolean) => void
@@ -1750,16 +1756,12 @@ function ModelListEditor(props: {
   }
 
   function patch(id: string, next: AnyRecord) {
-    setRows(function (prev) {
-      return prev.map(function (row) {
-        return row.id === id ? withKeys(row as unknown as AnyRecord, next) as unknown as ModelEditRow : row
-      })
-    })
+    setDraft(rows.map(function (row) {
+      return row.id === id ? withKeys(row as unknown as AnyRecord, next) as unknown as ModelEditRow : row
+    }))
   }
   function remove(id: string) {
-    setRows(function (prev) {
-      return prev.filter(function (row) { return row.id !== id })
-    })
+    setDraft(rows.filter(function (row) { return row.id !== id }))
   }
   /** 表单「添加」：校验通过就追加一行自定义条目（默认勾上，保存后才生效）。
    *  上下文/最大输出留空 = 自动按清单里已知模型的最大值填默认（没有已知值则回退保守值），
@@ -1779,27 +1781,25 @@ function ModelListEditor(props: {
     var maxNum = Number(maxRaw)
     if (!isFinite(maxNum) || Math.floor(maxNum) !== maxNum || maxNum <= 0) { formFail('最大输出要填正整数'); return }
     var name = form.name.trim()
-    setRows(function (prev) {
-      return prev.concat([{
-        id: id,
-        name: name !== '' ? name : id,
-        enabled: true,
-        contextWindow: String(ctxNum),
-        maxTokens: String(maxNum),
-        vision: form.vision === true,
-        video: form.video === true,
-        known: false,
-        inPiAi: false,
-        knownContextWindow: undefined,
-        knownMaxTokens: undefined,
-        knownReasoning: false,
-        originVision: form.vision === true,
-        originVideo: form.video === true,
-        declared: undefined,
-        added: true,
-        reasoning: form.reasoning === true,
-      }])
-    })
+    setDraft(rows.concat([{
+      id: id,
+      name: name !== '' ? name : id,
+      enabled: true,
+      contextWindow: String(ctxNum),
+      maxTokens: String(maxNum),
+      vision: form.vision === true,
+      video: form.video === true,
+      known: false,
+      inPiAi: false,
+      knownContextWindow: undefined,
+      knownMaxTokens: undefined,
+      knownReasoning: false,
+      originVision: form.vision === true,
+      originVideo: form.video === true,
+      declared: undefined,
+      added: true,
+      reasoning: form.reasoning === true,
+    }]))
     setForm(emptyForm)
     setError(null)
     // 测试消息一并重置：表单关了消息行会跟着消失，但不重置的话下次开表单会闪回旧报错
@@ -1891,21 +1891,17 @@ function ModelListEditor(props: {
    */
   function toggleDraft(row: ModelEditRow, checked: boolean) {
     if (busy === true) return
-    setRows(function (prev) {
-      return prev.map(function (r) {
-        return r.id === row.id ? withKeys(r as unknown as AnyRecord, { enabled: checked }) as unknown as ModelEditRow : r
-      })
-    })
+    setDraft(rows.map(function (r) {
+      return r.id === row.id ? withKeys(r as unknown as AnyRecord, { enabled: checked }) as unknown as ModelEditRow : r
+    }))
   }
 
   /** 一键全选 / 全不选（表头复选框）。 */
   function toggleAll(enabled: boolean) {
     if (busy === true) return
-    setRows(function (prev) {
-      return prev.map(function (r) {
-        return r.enabled === enabled ? r : withKeys(r as unknown as AnyRecord, { enabled: enabled }) as unknown as ModelEditRow
-      })
-    })
+    setDraft(rows.map(function (r) {
+      return r.enabled === enabled ? r : withKeys(r as unknown as AnyRecord, { enabled: enabled }) as unknown as ModelEditRow
+    }))
   }
 
   function submit(models: DeclaredModel[], done: string) {

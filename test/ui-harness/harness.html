@@ -228,7 +228,10 @@
     }
   } catch (e) { /* 没有查询参数 */ }
   function reply(body) {
-    return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve(body) } })
+    // 快照语义（竞速探针，10-10）：深拷贝回包。共享可变对象会让 mock 的就地修改
+    // （set-models 写 PLAN/CATALOG）瞬间穿透客户端已持有的旧状态——异步刷新竞速
+    // 类行为在 harness 里永不成立。真 fetch 每次都是独立解析副本，这里对齐。
+    return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve(JSON.parse(JSON.stringify(body))) } })
   }
   function delayed(body, ms) {
     if (!(ms > 0)) return reply(body)
@@ -247,12 +250,19 @@
     if (path.indexOf('/api/session/modelCatalog') === 0) return reply({ result: { ok: true, value: CATALOG } })
     if (path.indexOf('/provider/set-models') === 0) {
       window.__lastSetModels = body
-      // 真实语义（幽灵行探针，10-10）：宿主写 settings 后，/plan/status 回的路由声明
-      // 就是新清单。mock 就地改 PLAN，模拟宿主真相；/provider/models 保持静态——
-      // 那正是不重挂载就不会重拉详情索引的实机条件。
+      // 真实语义（幽灵行/竞速探针，10-10）：宿主写 settings 后，/plan/status 回的路由
+      // 声明与 session/modelCatalog 的组模型都是新清单。mock 就地改 PLAN 与 CATALOG；
+      // /provider/models 保持静态——那正是不重挂载就不会重拉详情索引的实机条件。
       if (body && Array.isArray(body.models)) {
         for (var ai = 0; ai < PLAN.accounts.length; ai += 1) {
           if (PLAN.accounts[ai].id === body.providerId) PLAN.accounts[ai].models = body.models
+        }
+        for (var gi = 0; gi < CATALOG.groups.length; gi += 1) {
+          if (CATALOG.groups[gi].provider === body.providerId) {
+            CATALOG.groups[gi].models = body.models.map(function (m) {
+              return { id: m.id, name: m.name !== undefined ? m.name : m.id, contextWindow: m.contextWindow }
+            })
+          }
         }
       }
       return reply({ ok: true, mode: body && body.models === null ? 'catalog' : 'declared' })

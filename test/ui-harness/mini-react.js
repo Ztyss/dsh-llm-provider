@@ -14,15 +14,22 @@
  * hooks 仍按「树上的位置」保存（路径稳定即可跨重渲染保持状态），setState 触发整树重渲染，
  * effect 在渲染后按 deps 变化执行。路径规则与 v1 一致：元素子节点 path+'/'+i，
  * 数组项 path+'[]'+i，组件输出为其自身节点位置。
+ *
+ * v3：卸载语义对齐真 react——渲染期记录被访问的实例路径，渲染后清扫本次没访问到的
+ * 实例（= 已卸载组件的状态槽）。此前状态槽按路径永生，卸载/重挂后 useState 残留
+ * 旧值，凡「重挂时重建派生状态」的组件行为在垫片下全数失真（幽灵行排查实录：
+ * 编辑器重开渲染的是上一会话的草稿行集，DOM 层复现不了真机，2026-10-10）。
  */
 (function () {
   var instances = new Map()
+  var visitedPaths = null
   var current = null
   var renderRootFn = null
   var pendingEffects = []
   var renderScheduled = false
 
   function instanceAt(path) {
+    if (visitedPaths !== null) visitedPaths.add(path)
     var found = instances.get(path)
     if (found === undefined) {
       found = { hooks: [], index: 0, effects: [], path: path }
@@ -321,7 +328,16 @@
     var rootRec = null
     function render() {
       var node = { type: Component, props: {}, children: [] }
-      rootRec = reconcile(node, rootRec, 'root', 0, container)
+      visitedPaths = new Set()
+      try {
+        rootRec = reconcile(node, rootRec, 'root', 0, container)
+        // 卸载清扫：本次渲染没访问到的实例 = 已卸载组件，状态槽一并删除（真 react 语义）
+        for (var key of Array.from(instances.keys())) {
+          if (visitedPaths.has(key) !== true) instances.delete(key)
+        }
+      } finally {
+        visitedPaths = null
+      }
       orderChildren(container, rootRec === null ? [] : [rootRec])
       flushEffects()
       if (window.__afterRender !== undefined) window.__afterRender()
