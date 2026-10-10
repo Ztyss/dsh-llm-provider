@@ -30,6 +30,7 @@ export { mergeBridgeProviders, readBaseProviders, readUserProviders, volatilePro
 import { enrichModelDetails, loadModelDetails, withAdapterModels, withDeclaredModels, type AdapterModelInfo, type ModelDetail } from './model-details.js'
 import { checkAndUpdate } from './updater.js'
 import { labelOf, providerRoutes, websiteOf, type ProviderRoute } from './routes.js'
+import { resolveTestEndpoint } from './pi-ai-names.js'
 import { presetsWithMeta } from './provider-presets.js'
 import { findAdapter } from './adapters/registry.js'
 import { findSharedCredentials } from './credential-check.js'
@@ -793,8 +794,9 @@ export function apply(ctx: PluginContext, config: unknown): void {
 
   // 「测试」：向这个模型 id 真发一条最小对话请求（max_tokens:1，"ping"），验证连通性。
   // 用户明确要求：不是查模型清单有没有这个 id（清单在 ≠ 真能出活），而是实连——
-  // 端点 + 凭据 + 模型 id 三样一起验证，回包耗时一并报告。凭据不出宿主；
-  // 官方默认端点的路由（没写 baseURL）没有可直接请求的地址，如实回报不硬猜。
+  // 端点 + 凭据 + 模型 id 三样一起验证，回包耗时一并报告。凭据不出宿主。
+  // 端点解析（用户 10-10 批注）：显式 baseURL 照用；没写就回退 pi-ai 工厂的官方默认
+  // 端点（目录 id 才有）；两者都没有（目录外 id 等）不硬猜，如实回报。
   // 请求失败不抛 5xx：测试结果本身就是要展示给用户的内容（HTTP 状态 + 响应片段）。
   ctx.effect(
     () => webServer.register({
@@ -806,17 +808,18 @@ export function apply(ctx: PluginContext, config: unknown): void {
           json(res, 200, { ok: false, error: '缺少 modelId' })
           return
         }
-        const base = typeof route.baseURL === 'string' ? route.baseURL.replace(/\/+$/, '') : ''
-        if (base === '') {
-          json(res, 200, { ok: false, error: '这条路由用的是官方默认端点（未写 baseURL），没有可直接请求的地址' })
+        const endpoint = resolveTestEndpoint(route)
+        if (endpoint === undefined) {
+          json(res, 200, { ok: false, error: '这条路由没有可请求的地址：未写 baseURL，目录里也没有它的官方默认端点' })
           return
         }
+        const base = endpoint.base
         const credential = await resolveKey(route.apiKeyEnv)
         if (!credential.configured || typeof credential.key !== 'string' || credential.key === '') {
           json(res, 200, { ok: false, error: '凭据没有配置，无法测试' })
           return
         }
-        const isAnthropic = route.api === 'anthropic-messages'
+        const isAnthropic = endpoint.isAnthropic
         const url = isAnthropic ? base + '/v1/messages' : base + '/chat/completions'
         const headers: Record<string, string> = isAnthropic
           ? { 'x-api-key': credential.key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }
