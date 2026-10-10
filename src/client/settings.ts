@@ -24,6 +24,7 @@ import {
   withKey,
   withKeys,
   catalogCandidatesOf,
+  pruneDeclaredDetails,
 } from './data.js'
 import { dotClass, formatContext, fuzzyMatch, headlineChips, linkTextOf, relativeTime, resetCountdownText, shortName, toneColor, worstPercent } from './format.js'
 import { caretSvg, checkSvg } from './icons.js'
@@ -1705,6 +1706,19 @@ function ModelListEditor(props: {
   onSaved: (message: string, models: DeclaredModel[]) => void
   onClose: () => void
 }) {
+  // 探针仪表（ui-harness 专用）：window.__lpDebug=true 时把编辑器入参摘要挂到
+  // window.__lpEditorProbe。harness 的 react 垫片 useState 不随重挂重置（状态层
+  // 行为与真机 React 分叉），幽灵行这类「重挂重建行集」的回归探针只能断言状态层
+  // 后置条件——没有这扇窗探针看不见 detailsById。生产环境不开 __lpDebug，零开销。
+  if (typeof window !== 'undefined' && (window as unknown as AnyRecord).__lpDebug === true) {
+    ;(window as unknown as AnyRecord).__lpEditorProbe = {
+      accountId: props.account.id,
+      declaredIds: Array.isArray(props.account.models) ? props.account.models.map(function (m: DeclaredModel) { return m.id }).join(',') : '?',
+      catalogIds: props.catalog.map(function (m: CatalogModel) { return m.id }).join(','),
+      routeDetailKeys: Object.keys(props.details ?? {}).filter(function (k: string) { return k.indexOf(props.account.id + '/') === 0 }).join(','),
+      detailTotal: Object.keys(props.details ?? {}).length,
+    }
+  }
   var account = props.account
   var rowsState = react.useState(function () { return buildEditRows(account, props.catalog, props.details) })
   var rows = rowsState[0] as ModelEditRow[]
@@ -3339,8 +3353,16 @@ export function ProviderSettingsSection() {
                 // 详情按 qualified 键写（lookupDetail 先查它）；目录里不存在的 id 补进去。
                 // source 只在无来源/已是 declared 时标记，绝不把 pi-ai/adapter 详情降级成 declared。
                 setDetailsById(function (prev: AnyRecord) {
-                  var next: AnyRecord = {}
-                  for (var key in prev) next[key] = prev[key]
+                  // 先剪再合（用户 10-10 报的幽灵行）：被删条目的路由名下 declared 系键
+                  // 就地蒸发，否则重开编辑器被 own-details 分支重新加回行（重进卡片
+                  // 重挂载重拉才消失）。adapter / pi-ai 系详情由剪除函数自己保住。
+                  var keptIds: string[] = []
+                  for (var k = 0; k < models.length; k += 1) keptIds.push(models[k].id)
+                  var next: AnyRecord = pruneDeclaredDetails(
+                    prev as unknown as Record<string, ModelDetail>,
+                    account.id,
+                    keptIds,
+                  ) as unknown as AnyRecord
                   for (var i = 0; i < models.length; i += 1) {
                     var entry = models[i]
                     var qualified = detailKeyOf(account.id, entry.id)

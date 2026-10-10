@@ -176,6 +176,54 @@ export function detailsOfProvider(
 }
 
 /**
+ * 保存清单后的详情索引剪除（用户 10-10 报的幽灵行）。
+ *
+ * detailsById 只在挂载时拉一次（effect 依赖 []），onSaved 的本地覆盖只合并不删除——
+ * 被删条目的 `路由id/模型id` 键留在索引里，重开编辑器被 detailsOfProvider
+ * （own-details 分支）重新加回行；重进 provider 卡片（重挂载重拉）幽灵才消失。
+ * 保存时就地剪掉，语义：
+ *   - 只剪该路由名下、新清单里没有的 declared 系键（source='declared'/undefined）；
+ *     provider 字段一并对上（undefined 时按老宿主形状信任键前缀）；
+ *   - adapter（发现的）与 pi-ai（目录的）详情不动——重挂载重拉后它们还会回来，
+ *     本地剪了反而与重挂载态不一致；
+ *   - 裸 id 兜底键只在指向被删详情**本体**时一并清（先到先得的裸键可能属于别家）。
+ * 纯函数：返回新对象，不改入参。
+ */
+export function pruneDeclaredDetails(
+  map: Record<string, ModelDetail>,
+  routeId: string,
+  keptIds: readonly string[],
+): Record<string, ModelDetail> {
+  var keep: Record<string, boolean> = {}
+  for (var i = 0; i < keptIds.length; i += 1) keep[keptIds[i]] = true
+  var prefix = routeId + '/'
+  // 第一遍：剪限定键，收集被删详情本体（第二遍判裸键引用，顺序无关）
+  var doomed = new Set<unknown>()
+  var survivors: Record<string, ModelDetail> = {}
+  for (var key of Object.keys(map)) {
+    var detail = map[key]
+    var provider = detail !== null && typeof detail === 'object' ? detail.provider : undefined
+    var source = detail !== null && typeof detail === 'object' ? detail.source : undefined
+    if (key.slice(0, prefix.length) === prefix) {
+      var id = key.slice(prefix.length)
+      var owned = provider === routeId || provider === undefined
+      if (keep[id] !== true && owned && (source === undefined || source === 'declared')) {
+        if (detail !== null && typeof detail === 'object') doomed.add(detail)
+        continue
+      }
+    }
+    survivors[key] = detail
+  }
+  // 第二遍：指向被删详情本体的裸键一并清；指向别家对象的不动
+  var next: Record<string, ModelDetail> = {}
+  for (var key2 of Object.keys(survivors)) {
+    if (doomed.has(survivors[key2]) === true) continue
+    next[key2] = survivors[key2]
+  }
+  return next
+}
+
+/**
  * baseURL 归一化（比一比两条 API 地址是不是同一个端点）：host 大小写归一、去尾斜杠，
  * 路径保留大小写（路径不同就是不同端点，不能误配）。
  * 不是合法绝对 URL 返回 undefined——调用方按「没有可匹配的地址」处理。

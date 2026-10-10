@@ -75,6 +75,10 @@
     // 同名行取数必须目录版优先，否则 inPiAi 恒 false、行内编辑恒开（实机回归）
     { id: 'glm-5.3-flash', provider: 'zai-coding-cn-ykw', name: 'GLM-5.3-Flash', api: 'openai-completions',
       contextWindow: 500000, vision: false, video: false, reasoning: true, thinkingLevels: ['low'] },
+    // 幽灵行探针（10-10）的病灶条目：已声明 + 服务端 route-own 详情 + 目录未收录（有 ✕）。
+    // 详情索引只在挂载拉一次（本夹具静态 = 实机条件），删除保存后旧代码会留着这个键。
+    { id: 'glm-legacy-custom', provider: 'zai-coding-cn-ykw', name: 'GLM Legacy Custom', api: 'openai-completions',
+      contextWindow: 400000, vision: false, video: false, reasoning: false },
     { id: 'kimi-k3', provider: 'opencode-go', name: 'Kimi K3', api: 'openai-completions',
       contextWindow: 1048576, maxTokens: 131072, vision: true, video: false, reasoning: true,
       thinkingLevels: [], source: 'pi-ai' },
@@ -147,7 +151,10 @@
       { id: 'zai-coding-cn-ykw', displayName: 'Zai Coding Cn Ykw', kind: 'quota', authConfigured: true, api: 'openai-completions',
         apiKeyEnv: 'ZAI_CODING_CN_YKW_API_KEY', baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
         keyHint: 'ykw****wxyz', deletable: true, fetchedAt: new Date().toISOString(),
-        models: [{ id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', contextWindow: 500000, input: ['text'] }],
+        models: [
+          { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', contextWindow: 500000, input: ['text'] },
+          { id: 'glm-legacy-custom', name: 'GLM Legacy Custom', contextWindow: 400000, input: ['text'] },
+        ],
         windows: [ { window: '5 小时滚动窗口', percentLeft: 73, resetAt: new Date(Date.now() + 54 * 60e3).toISOString() },
                    { window: '每月窗口', percentLeft: 66, resetAt: new Date(Date.now() + 44 * 864e5).toISOString() } ] },
     ],
@@ -172,6 +179,7 @@
       // 走 /provider/models 的 baseURL 映射，见 test/catalog-candidates.mjs）
       { provider: 'zai-coding-cn-ykw', name: 'Zai Coding Cn Ykw', models: [
         { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', contextWindow: 500000 },
+        { id: 'glm-legacy-custom', name: 'GLM Legacy Custom', contextWindow: 400000 },
       ] },
     ],
     default: { provider: 'opencode-go', model: 'deepseek-flash' },
@@ -239,6 +247,14 @@
     if (path.indexOf('/api/session/modelCatalog') === 0) return reply({ result: { ok: true, value: CATALOG } })
     if (path.indexOf('/provider/set-models') === 0) {
       window.__lastSetModels = body
+      // 真实语义（幽灵行探针，10-10）：宿主写 settings 后，/plan/status 回的路由声明
+      // 就是新清单。mock 就地改 PLAN，模拟宿主真相；/provider/models 保持静态——
+      // 那正是不重挂载就不会重拉详情索引的实机条件。
+      if (body && Array.isArray(body.models)) {
+        for (var ai = 0; ai < PLAN.accounts.length; ai += 1) {
+          if (PLAN.accounts[ai].id === body.providerId) PLAN.accounts[ai].models = body.models
+        }
+      }
       return reply({ ok: true, mode: body && body.models === null ? 'catalog' : 'declared' })
     }
     if (path.indexOf('/provider/test-model') === 0) {
@@ -285,6 +301,8 @@
   }
 
   // ---- 用假 __ModuleLoader__ 接住插件工厂 ----
+  // 探针仪表开关：组件侧只在 window.__lpDebug=true 时挂 __lpEditorProbe（生产零开销）
+  window.__lpDebug = true
   var captured = null
   window.__ModuleLoader__ = { load: function (config) { captured = config } }
   var script = document.createElement('script')
@@ -321,6 +339,8 @@
         sessions: sessionsStub,
       }
       mod.apply(ctx)
+      // 纯函数调试口（探针/临时脚本可直接在页面里调 buildEditRows 等）
+      window.__lib = mod
       window.__sections = sections
       window.__afterRender = function () { window.__renderTick = (window.__renderTick || 0) + 1 }
       window.__render = window.__mount(sections.provider, document.getElementById('root'))
