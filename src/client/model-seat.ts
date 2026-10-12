@@ -290,6 +290,14 @@ export function ModelSwitchSeat(props: ModelSwitchSeatProps) {
           setAccounts(accountsById(payload))
         })
         .catch(function () { /* 额度拿不到就不显示指示器 */ })
+      // 详情索引同样每次打开重拉（宿主 60s 缓存兜住开销）：能力徽标/上下文标注的
+      // 数据源含声明合成条目——设置页新增自定义模型后，挂载期拉的那份旧图不会自己
+      // 更新，不重拉就永远没有徽标（用户 10-12 报：清单页有标识、选择器没有）。
+      loadModelDetailMap()
+        .then(function (map) {
+          setDetailsById(map)
+        })
+        .catch(function () { /* 拿不到就沿用旧图 */ })
       return function () {
         document.removeEventListener('pointerdown', onPointerDown)
         document.removeEventListener('keydown', onKeyDown)

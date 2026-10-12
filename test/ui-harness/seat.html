@@ -49,7 +49,18 @@
       { window: '每周窗口', percentLeft: 65 }, { window: '每月窗口', percentLeft: 8 } ] },
   ] }
   function reply(body) {
-    return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve(body) } })
+    // 快照语义（与 harness.html 同因）：深拷贝回包，mock 的就地修改不穿透客户端旧状态
+    return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve(JSON.parse(JSON.stringify(body))) } })
+  }
+  // 探针注入钩子（选择器徽标探针，10-12）：模拟「设置页新增自定义模型后保存」——
+  // 详情图与目录组同时多出声明条目；客户端挂载期的旧图不会自己更新。
+  window.__injectDeclaredDetail = function (detail, groupProvider) {
+    MODELS.push(detail)
+    for (var i = 0; i < CATALOG.groups.length; i += 1) {
+      if (CATALOG.groups[i].provider === groupProvider) {
+        CATALOG.groups[i].models.push({ id: detail.id, name: detail.name !== undefined ? detail.name : detail.id })
+      }
+    }
   }
   window.fetch = function (url, options) {
     var path = String(url)
