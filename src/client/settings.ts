@@ -3056,6 +3056,12 @@ export function ProviderSettingsSection() {
         return skeleton
       })()
   var modelsByProvider: Record<string, CatalogModel[]> = {}
+  // 探针仪表（ui-harness 专用，同 __lpEditorProbe 门）：保存链路的乐观更新诊断
+  if (typeof window !== 'undefined' && (window as unknown as AnyRecord).__lpDebug === true) {
+    ;(window as unknown as AnyRecord).__lpAccountsProbe = (plan !== null && Array.isArray(plan.accounts))
+      ? plan.accounts.map(function (a: PlanAccount) { return a.id + ':' + (Array.isArray(a.models) ? a.models.map(function (m: DeclaredModel) { return m.id }).join('|') : '-') }).join(' ; ')
+      : null
+  }
   for (var gi = 0; gi < catalogGroups.length; gi += 1) {
     modelsByProvider[catalogGroups[gi].id] = catalogGroups[gi].models
   }
@@ -3405,6 +3411,20 @@ export function ProviderSettingsSection() {
                     }
                     return { id: group.id, name: group.name, models: merged } as AnyRecord
                   })
+                })
+                // plan 快照同步乐观更新（用户 10-12 报）：保存后立即把新清单写进本地
+                // plan——编辑器重开不必等宿主秒级慢刷新（/plan/status 强制刷新要实查
+                // 全部配额接口）。此前只有 details/目录做了本地覆盖，declared 等慢刷新，
+                // 竞速窗口内重开就会短暂显示陈旧形态（加的未勾选 / 删的仍在）再自动纠正；
+                // 乐观更新后三层本地状态即时一致，慢刷新到达只是确认同值。
+                setPlan(function (prev: AnyRecord) {
+                  if (prev === null || prev === undefined || !Array.isArray(prev.accounts)) return prev
+                  return {
+                    ...prev,
+                    accounts: prev.accounts.map(function (row: AnyRecord) {
+                      return row.id === account.id ? { ...row, models: models } : row
+                    }),
+                  }
                 })
                 // 清单变了：重拉余额/路由元信息 + 模型目录 + 预设
                 onProviderAdded()

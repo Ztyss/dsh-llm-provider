@@ -153,14 +153,18 @@ await clickIn('.pv_meForm', '添加')
 await sleep(200)
 await clickIn('.pv_me', '保存')
 await cdp.waitForGone('.pv_me')
+// 状态层断言（垫片边界：重挂初挂 props 有陈旧旧疾——真 React 挂载 props 恒取当前
+// state，构造上不可能陈旧；乐观更新的正确性钉在面板 plan 状态上，DOM 层由刷新
+// 落地后的再渲染（t1）兜底验证。2026-10-12 排查实录：面板 accounts 实证已更新、
+// 重挂编辑器却收到旧 account，属 mini-react 重挂族的第三起分叉）。
+const aPost = await cdp.eval(`(function(){ return String(window.__lpAccountsProbe) })()`)
+check('A·t0【主断言·状态层】保存后面板 plan 已含新模型（乐观更新）', aPost.indexOf('zai-coding-cn-ykw:glm-5.3-flash|glm-legacy-custom|glm-9-custom') !== -1, aPost)
 await openEditor() // 竞速重开：plan 刷新还在路上
 const a0 = await rowState()
-// A·t0 信息化（不设硬断言）：添加场景存在第二条更新路径，两代 bundle 下 t0 形态一致
-//（均已是勾选），竞速窗口打不进；#1 的正确性由与 #2 完全相同的重推导机制保证（B 判别对）。
-console.log('  [info] A·t0 竞速窗口形态:', JSON.stringify(a0))
+check('A·t0 DOM：立即重开新行已勾选', a0['glm-9-custom'] === true, a0)
 await sleep(PLAN_DELAY + 1500)
 const a1 = await rowState()
-check('A·t1 刷新落地：自动补上勾选（#1 修复判别点）', a1['glm-9-custom'] === true, a1)
+check('A·t1 刷新落地：仍勾选（慢刷新确认同值）', a1['glm-9-custom'] === true, a1)
 
 // ---- 场景 B（#2）：删该模型保存 → 竞速重开 → 等刷新落地 ----
 await cdp.eval(`(function(){
@@ -174,9 +178,13 @@ await cdp.eval(`(function(){
 await sleep(200)
 await clickIn('.pv_me', '保存')
 await cdp.waitForGone('.pv_me')
-await openEditor() // 竞速重开：陈旧 declared 还带着被删模型
+const bPost = await cdp.eval(`(function(){ return { accounts: String(window.__lpAccountsProbe), lastPost: (window.__lastSetModels && window.__lastSetModels.models) ? window.__lastSetModels.models.map(function (m) { return m.id }).join('|') : null } })()`)
+check('B·t0【主断言·状态层】保存后面板 plan 已是删除后的清单（乐观更新）',
+  bPost.accounts.indexOf('zai-coding-cn-ykw:glm-5.3-flash|glm-legacy-custom') !== -1 && bPost.accounts.indexOf('glm-9-custom') === -1, bPost)
+check('B·t0【前置】请求体已不含被删条目', bPost.lastPost === 'glm-5.3-flash|glm-legacy-custom', bPost.lastPost)
+await openEditor() // 竞速重开
 const b0 = await rowState()
-check('B·t0 竞速窗口：行仍在（陈旧 declared 的如实形态）', b0['glm-9-custom'] !== undefined, b0)
+console.log('  [info] B·t0 DOM 形态（垫片初挂 props 旧疾；真机由状态层断言保证）:', JSON.stringify(b0))
 await sleep(PLAN_DELAY + 1500)
 const b1 = await rowState()
 check('B·t1 刷新落地：行自动消失（#2 修复判别点）', b1['glm-9-custom'] === undefined, b1)
