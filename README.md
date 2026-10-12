@@ -7,7 +7,7 @@ pi-ai 适配器（`llm-pi-ai`）、DeepSeek 适配器（`llm-deepseek`）、模�
 
 **中文** · [English](README.en.md)
 
-> 本仓库 fork 自 [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider)，此后独立维护演进。当前版本 [v0.2.5](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.5)（安装走 main 分支）。
+> 本仓库 fork 自 [imchangchang/dsh-llm-provider](https://github.com/imchangchang/dsh-llm-provider)，此后独立维护演进。当前版本 [v0.2.6](https://github.com/Ztyss/dsh-llm-provider/releases/tag/v0.2.6)（安装走 main 分支）。
 
 ## 安装
 
@@ -64,6 +64,11 @@ dsh web     # 需要重启：插件树在进程启动时组装
   custom zai）按 API 地址（baseURL 精确相等，host 大小写/尾斜杠归一）映射到同端点的目录
   provider，目录模型全部进候选清单；与手填同名的行以目录版元数据为准（能力徽章/窗口值），
   手填独有条目保留——不自动写入，勾选保存才落盘。
+- **模型测试连官方默认端点**：「测试」对没写 baseURL 的路由回退 pi-ai 工厂的官方默认端点
+  （目录 id 才有，如 zai-coding-cn → bigmodel coding 端点）；目录外 id 仍如实回报，不硬猜。
+- **保存即生效，无等待窗口**：新增 / 删除 / 勾选模型保存后，详情索引、目录条目与额度快照里的
+  路由声明三层本地状态同步更新——重开清单立即正确，不必等宿主慢刷新；被删条目的声明详情就地
+  剪除（发现的 / 目录的详情不受牵连）。竞速窗口（保存后秒级重开）由草稿制渲染兜底自动纠正。
 - **pi-ai 桥接页 toggle 化**：「启用最新版 pi-ai」开关 + 右侧状态行（当前版本+来源 /
   已是最新 / 已下载待重启 / 未过检验常驻原因）；拨 ON 后及每次启动检查时 2s 轮询等下载收尾。
 - **删除确认弹层**：代价清单 + 「导出配置（YAML）」备份（密钥不导出）。
@@ -92,6 +97,8 @@ dsh web     # 需要重启：插件树在进程启动时组装
 - **`/model` 命令**：按供应商过滤、搜索模型，候选按供应商分组展示，每组显示额度/余额。
 - **modlens 包装组共用上游额度**：`modlens-<上游>` / `deepseek-modlens` 这类合成 provider
   的 chip、输入框旁当前额度、`/model` 面板都按上游账户取数（dot 状态点与配色一并跟上游）。
+- **能力徽标跟随设置页**：选择器每次展开都重拉模型详情图——设置页新增的自定义模型
+  立即带视觉/推理徽标与上下文标注，不必整页刷新。
 - **`available` 契约**：为 `/` 命令贡献实现官方必填的 `available(session)`——被寻址为子代理
   的会话不出现模型选择；契约是宿主裸调、一抛整批 `/` 候选陪葬，因此实现永不抛错，任何异常
   一律吞掉并放行。
