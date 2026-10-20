@@ -963,6 +963,9 @@ export function probePiAi(requirements: readonly PiAiRequirement[], root: string
   const dir = join(bridgeDir, `.probe-${String(key).replace(/[^A-Za-z0-9._-]/g, '_')}`)
   const rewrites = piAiArchiveRewrites(root, requirements.map((entry) => entry.specifier))
   try {
+    // 探针目录本身必须先建出来：归档分支不建链，以前顺带建目录的那句 mkdirSync 被跳过，
+    // writeFileSync(probe.js) 直接 ENOENT——归档候选于是永远「体检没通过」。
+    mkdirSync(dir, { recursive: true })
     if (rewrites.size === 0) {
       const linkDir = join(dir, 'node_modules', '@earendil-works')
       mkdirSync(linkDir, { recursive: true })
@@ -971,9 +974,11 @@ export function probePiAi(requirements: readonly PiAiRequirement[], root: string
       const spec = linkSpec(linkDir, root)
       symlinkSync(spec.target, link, spec.type)
     }
-    // 具名需求验证导出存在；bare 需求（namespace/默认/副作用导入、export *）只要子路径能加载
+    // 具名需求验证导出存在；bare 需求（namespace/默认/副作用导入、export *）只要子路径能加载。
+    // 改写成 URL 的也要走 JSON.stringify：探针是**生成源码**，`from file:///…` 不是合法 ESM，
+    // 必须是 `from "file:///…"`（副本那边是替换已有字面量，才不需要加引号）。
     const lines = requirements.map(({ specifier, names }) => {
-      const target = rewrites.get(specifier) ?? JSON.stringify(specifier)
+      const target = JSON.stringify(rewrites.get(specifier) ?? specifier)
       return names.length > 0
         ? `import { ${names.join(', ')} } from ${target}`
         : `import ${target}`
