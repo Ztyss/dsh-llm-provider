@@ -128,6 +128,15 @@ key. Parsing tolerates hand edits, and a bad row never kills a lookup.
   Node ≥24.15 `rmSync` follows junctions and empties their targets, and in this layout there is
   no link left to follow. Invariant: **the installed package contains zero links** (enforced by
   `test/host-safety.mjs`).
+- **Archived dependencies resolve by URL, not by link**: once DSH NEXT ships the host as
+  `resources/app.asar`, the official bundle and its `@deepseek-ai/*` dependencies all live inside the
+  archive. A directory link (Windows junction / POSIX symlink) has its target resolved by the kernel's
+  object manager, and the kernel knows nothing about asar — so any link into the archive dangles and
+  startup dies with a single `Cannot find package '@deepseek-ai/dsh-launch-environment'`. When a package
+  root sits inside a `.asar`, the bridge therefore writes the specifier as the archive entry's `file://`
+  URL instead of linking: that is exactly how the host itself loads the official bundle, so the same
+  path resolves to the same module instance (no second `LlmError` / `cordis`). Only when the entry
+  cannot be resolved does it fall back to linking.
 - **The npm cache never sticks around**: during a download the npm cache lives in the OS temp dir
   and is deleted when the install finishes (success or failure); on startup a sweep removes any
   legacy `.npm-cache` left in the safe zone.
