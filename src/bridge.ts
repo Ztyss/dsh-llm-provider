@@ -505,12 +505,30 @@ export function piAiRequirements(source: string): PiAiRequirement[] {
   return [...bySpecifier.entries()].map(([specifier, names]) => ({ specifier, names: [...names] }))
 }
 
-/** 读桥接副本，返回它对 pi-ai 的 import 需求（updater 装完新版本也拿它体检）。 */
+/**
+ * bundle 对 pi-ai 的 import 需求（updater 装完新版本也拿它体检）。
+ *
+ * **必须读真源、不能读桥接副本**：副本可能已经被改写成 `file://` URL（归档里的依赖），
+ * 那时候 `piAiRequirements` 一条 pi-ai specifier 都匹配不到，会退化成
+ * 「需求为空 → 所有候选都标 unverified 直接放行」，体检名存实亡。真源读不到才退回副本。
+ */
 export function bridgeRequirements(): PiAiRequirement[] {
+  const source = bundleSource()
+  return source === undefined ? [] : piAiRequirements(source)
+}
+
+/** 官方 bundle 的源码：优先真源（{@link findSourceBundle}），读不到才退回桥接副本。 */
+function bundleSource(): string | undefined {
+  const src = findSourceBundle()
+  if (src !== undefined) {
+    try {
+      return readFileSync(src, 'utf8')
+    } catch { /* 非 Electron 进程里读不到归档：退回副本 */ }
+  }
   try {
-    return piAiRequirements(readFileSync(bridgeLib, 'utf8'))
+    return readFileSync(bridgeLib, 'utf8')
   } catch {
-    return []
+    return undefined
   }
 }
 
@@ -776,10 +794,13 @@ function entryTarget(value: unknown, subpath: string): string | undefined {
   const key = subpath === '.' ? '.' : './' + subpath.replace(/^\.\//, '')
   const exact: unknown = record[key]
   if (exact !== undefined) return conditionTarget(exact)
-  for (const [pattern, target] of Object.entries(record)) {
+  for (const [pattern, value] of Object.entries(record)) {
     if (!pattern.includes('*')) continue
     const star = patternStar(pattern, key)
     if (star === undefined) continue
+    // 模式键的值既可能是字符串，也可能是条件对象（真包的 `"./providers/*"` 就是
+    // `{ types, import }`）——先挑条件再替换 `*`，少了这一步整条模式键都会被跳过。
+    const target = conditionTarget(value)
     if (typeof target === 'string') return target.replace(/\*/g, star)
   }
   // 历史兜底：`exports` 是条件对象、没有 `.` 键时按条件对象解。
@@ -931,25 +952,32 @@ export function repairPiAiFromCopy(target: string, copy: string): number {
  * @param key - 候选标识，用于区分探针目录。
  */
 export function probePiAi(requirements: readonly PiAiRequirement[], root: string, key: string): ProbeResult {
-  // 候选目录不在就直接判死，**且绝不能建断链**：探针目录在 vendor/llm-bridge/ 下面，
-  // 断链会让 Node 继续往上找，一路找到主软链上那份能用的 pi-ai，把不合格的候选误判成通过。
+  // 候选目录不在就直接判死。归档里的候选**不建链**：链目标由内核解析、内核不认识 asar，
+  // 断链只会让 Node 继续往上找到别处一份能用的 pi-ai，把不合格的候选误判成通过
+  // （探针目录就在 bridge 下面，往上正好撞见链田那条链）。改成生成一份把 pi-ai specifier
+  // 写成归档 URL 的探针——验的就是桥接副本将来真正会走的那条路。
   if (!existsSync(root)) return { ok: false, error: '目录不存在' }
   // 需求没解析出来（bundle 换了打包格式）就没法验证：放行，但标 unverified——
   // 调用方（loadBridge / updater）据此知道这是「没体检」，不是「体检通过」。
   if (requirements.length === 0) return { ok: true, unverified: true }
   const dir = join(bridgeDir, `.probe-${String(key).replace(/[^A-Za-z0-9._-]/g, '_')}`)
+  const rewrites = piAiArchiveRewrites(root, requirements.map((entry) => entry.specifier))
   try {
-    const linkDir = join(dir, 'node_modules', '@earendil-works')
-    mkdirSync(linkDir, { recursive: true })
-    const link = join(linkDir, 'pi-ai')
-    removeLinkOrDir(link)
-    const spec = linkSpec(linkDir, root)
-    symlinkSync(spec.target, link, spec.type)
+    if (rewrites.size === 0) {
+      const linkDir = join(dir, 'node_modules', '@earendil-works')
+      mkdirSync(linkDir, { recursive: true })
+      const link = join(linkDir, 'pi-ai')
+      removeLinkOrDir(link)
+      const spec = linkSpec(linkDir, root)
+      symlinkSync(spec.target, link, spec.type)
+    }
     // 具名需求验证导出存在；bare 需求（namespace/默认/副作用导入、export *）只要子路径能加载
-    const lines = requirements.map(({ specifier, names }) =>
-      names.length > 0
-        ? `import { ${names.join(', ')} } from ${JSON.stringify(specifier)}`
-        : `import ${JSON.stringify(specifier)}`)
+    const lines = requirements.map(({ specifier, names }) => {
+      const target = rewrites.get(specifier) ?? JSON.stringify(specifier)
+      return names.length > 0
+        ? `import { ${names.join(', ')} } from ${target}`
+        : `import ${target}`
+    })
     lines.push('export const ok = true')
     writeFileSync(join(dir, 'probe.js'), lines.join('\n') + '\n')
     const require = createRequire(import.meta.url)
@@ -962,6 +990,27 @@ export function probePiAi(requirements: readonly PiAiRequirement[], root: string
     // 链本身，候选目录一个字节不动。
     removeTree(dir)
   }
+}
+
+/**
+ * 归档里的 pi-ai 候选：bundle 需要的那些 pi-ai 子路径各自对应的归档入口 URL。
+ *
+ * 与 {@link archiveEntryUrl} 同一套规则，只是把「包根」换成 pi-ai 包根本身。偏好拨 OFF
+ * （'dsh'）时中选的就是归档里 DSH 自带那份——它同样挂不了链，探针与桥接副本都得改写。
+ * @param root - 候选/中选的 pi-ai 包目录。
+ * @param specifiers - bundle 里 import 的 pi-ai specifier 清单。
+ * @returns specifier → URL；候选不在归档里、或某个子路径解不出入口时，该条不进表
+ *   （解不出说明这份 pi-ai 给不了 bundle 要的东西，交给调用方判不合格）。
+ */
+export function piAiArchiveRewrites(root: string, specifiers: Iterable<string>): Map<string, string> {
+  const rewrites = new Map<string, string>()
+  if (archiveBase(root) === undefined) return rewrites
+  for (const specifier of specifiers) {
+    if (!specifier.startsWith('@earendil-works/pi-ai')) continue
+    const url = archiveEntryUrl(root, specifier)
+    if (url !== undefined) rewrites.set(specifier, url)
+  }
+  return rewrites
 }
 
 /**
@@ -1080,7 +1129,7 @@ export function loadBridge(): BridgeLoadResult {
     //    目录不存在的档直接跳过，不算"体检没通过"：那是这一档没安装（可选档），不是兼容性
     //    问题。写进 rejected 的话，界面上会出现「跳过 兜底依赖：兼容性检查没通过」这种
     //    看着像故障、其实一切正常的行。
-    const requirements = piAiRequirements(readFileSync(bridgeLib, 'utf8'))
+    const requirements = bridgeRequirements()
     const rejected: RejectedCandidate[] = []
     const candidates: CandidateProbe[] = []
     let chosen: PiAiCandidate | undefined
@@ -1197,6 +1246,8 @@ ${restoreHint(host.integrity.version)}`
  * `Cannot find package '@deepseek-ai/dsh-launch-environment'`、整座桥退化。改成把副本里的
  * specifier 直接写成归档入口的绝对 URL：宿主自己就是这么加载官方 bundle 的，同一条路径
  * 解析出同一个模块实例，不会出现「一份代码两个 LlmError / cordis」。
+ * pi-ai 也一样：偏好拨 OFF（'dsh'）时中选的就是归档里 DSH 自带那份（实测探针：悬空 junction
+ * 下 import pi-ai 子路径直接 `Cannot find package '@earendil-works/pi-ai'`），同样改写。
  *
  * 一个指向没变的链不重建：避免每次启动都动一遍目录 mtime。目标不存在（悬空）则重建。
  * @param bundlePath - 官方 bundle 的入口文件（用来解析它依赖的包在哪）。
@@ -1228,18 +1279,28 @@ export function syncBridgeLinks(bundlePath: string, piAiRoot: string): number {
     } catch { /* 单条链建不起来不该让整次装载失败：体检会给出结论 */ }
   }
 
-  wire('@earendil-works/pi-ai', piAiRoot)
   let source = ''
   try {
     source = readFileSync(bundlePath, 'utf8')
   } catch {
     return links
   }
-  // 归档里的包走改写、不走链田（理由见上面的说明）。解不出入口的才退回挂链——
-  // 那种情况链会悬空，但至少错误形态与改动前一致，不会静默少一个依赖。
+  const specifiers = bundleSpecifiers(source)
   const rewrites = new Map<string, string>()
-  for (const specifier of bundleSpecifiers(source)) {
-    if (specifier.startsWith('@earendil-works/pi-ai')) continue // 上面已经指过了
+
+  // pi-ai：归档里改写、真目录挂链。改写时必须把链田上那条链摘掉——留着一条指向别处的
+  // 健康链，副本会静默用到另一个版本（开关拨回去时尤其危险）。
+  if (archiveBase(piAiRoot) === undefined) {
+    wire('@earendil-works/pi-ai', piAiRoot)
+  } else {
+    dropFarmLink(farm, '@earendil-works/pi-ai')
+    for (const [specifier, url] of piAiArchiveRewrites(piAiRoot, specifiers)) rewrites.set(specifier, url)
+  }
+
+  // 其余 bare specifier：归档里走改写、不走链田（理由见上面的说明）。解不出入口的才退回
+  // 挂链——那种情况链会悬空，但至少错误形态与改动前一致，不会静默少一个依赖。
+  for (const specifier of specifiers) {
+    if (specifier.startsWith('@earendil-works/pi-ai')) continue // 上面已经处理过了
     const root = resolvePackageRoot(bundlePath, specifier)
     const url = archiveEntryUrl(root, specifier)
     if (url !== undefined) {
@@ -1249,7 +1310,7 @@ export function syncBridgeLinks(bundlePath: string, piAiRoot: string): number {
     }
     wire(specifier, root)
   }
-  applyArchiveRewrites(rewrites)
+  applyArchiveRewrites(bundlePath, rewrites)
   return links
 }
 
@@ -1262,19 +1323,28 @@ function dropFarmLink(farm: string, specifier: string): void {
 /**
  * 把归档改写落到桥接副本上。
  *
+ * 副本**始终从真源重新推导**，不做「在现有内容上打补丁」：改写一旦把 specifier 换成 URL，
+ * 那份内容就再也回不到裸名了——ON→OFF→ON 来回拨开关时，补丁式改写会让副本一直留着上一轮
+ * 的 pi-ai URL，静默用错版本。从 `bundlePath` 重新推导，副本就成了
+ * 「真源 + 本轮改写集」的确定函数，两个方向都落得对。
+ *
  * 内容没变就不写：否则每次启动都会动一遍副本的 mtime，白费一次写盘。
- * 副本由 loadBridge 按源哈希刷新，这里只做「同一份源的再推导」，幂等。
+ * @param bundlePath - 官方 bundle 的入口文件（真源）。
+ * @param rewrites - 本轮要应用的 specifier → URL。
  */
-function applyArchiveRewrites(rewrites: ReadonlyMap<string, string>): void {
-  if (rewrites.size === 0) return
-  let source: string
+function applyArchiveRewrites(bundlePath: string, rewrites: ReadonlyMap<string, string>): void {
+  let pristine: string
   try {
-    source = readFileSync(bridgeLib, 'utf8')
+    pristine = readFileSync(bundlePath, 'utf8')
   } catch {
     return
   }
-  const next = rewriteSpecifiers(source, rewrites)
-  if (next !== source) writeFileSync(bridgeLib, next)
+  const next = rewrites.size === 0 ? pristine : rewriteSpecifiers(pristine, rewrites)
+  let current: string | undefined
+  try {
+    current = readFileSync(bridgeLib, 'utf8')
+  } catch { /* 副本还没有：照写 */ }
+  if (current !== next) writeFileSync(bridgeLib, next)
 }
 
 /**

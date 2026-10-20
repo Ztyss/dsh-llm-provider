@@ -112,17 +112,15 @@ dsh web     # 需要重启：插件树在进程启动时组装
 - **桥接工作区在包外安全区** `$DSH_HOME/llm-provider-bridge/`：插件包随时可能被整棵递归删
   （Node ≥24.15 的 `rmSync` 会顺 junction 清空目标），安全区方案下没有任何链接可供跟随。
   不变量：**安装插件包整包零链接**（`test/host-safety.mjs` 实证）。
-- **归档里的依赖走 URL、不走链接**：DSH NEXT 把宿主打成 `resources/app.asar` 后，官方 bundle 与它依赖的
-  `@deepseek-ai/*` 全在归档里。目录链接（Windows junction / POSIX symlink）的目标由内核的对象管理器
-  解析，而内核不认识 asar——链进归档必然悬空，启动时只剩一句
-  `Cannot find package '@deepseek-ai/dsh-launch-environment'`。所以包目录落在 `.asar` 里时不挂链，
+- **归档里的依赖走 URL、不走链接**：DSH NEXT 把宿主打成 `resources/app.asar` 后，官方 bundle、它依赖的
+  `@deepseek-ai/*`、以及 DSH 自带那份 pi-ai 全在归档里。目录链接（Windows junction / POSIX symlink）
+  的目标由内核的对象管理器解析，而内核不认识 asar——链进归档必然悬空，`existsSync` 直接 false，
+  启动时只剩一句 `Cannot find package '@deepseek-ai/dsh-launch-environment'`（pi-ai 则是
+  `Cannot find package '@earendil-works/pi-ai'`），整座桥退化。所以包目录落在 `.asar` 里时不挂链，
   改为把桥接副本里的 specifier 直接写成归档入口的 `file://` URL：宿主自己就是这么加载官方 bundle 的，
-  同一条路径解析出同一个模块实例（不会出现「一份代码两个 LlmError / cordis」）。入口解不出才退回挂链。
-- **npm cache 不常驻**：下载时的 npm cache 放系统临时目录、装完即删（成败都删）；启动时另有
-  一道兜底——清理安全区里遗留的 `.npm-cache`。
-- **官方条目条件禁用（fail-open）**：`cordis.patch.yml` 用 `!!js` 表达式——pi-ai 完好才禁用
-  官方四条目，缺失/残缺时保留它们，宿主照常启动。表达式由 `src/patch-condition.ts` 生成，
-  `scripts/sync-patch-condition.mjs --check` 防止与 patch 文件漂移。
+  同一条路径解析出同一个模块实例（不会出现「一份代码两个 LlmError / cordis」）。「启用最新版 pi-ai」
+  拨 ON / 拨 OFF 两条路都覆盖——OFF 时中选的就是归档里 DSH 自带那份；副本始终从真源按本轮改写集重新
+  推导，来回拨开关两个方向都落得对。入口解不出才退回挂链（错误形态与改动前一致）。
 
 ## 测试
 

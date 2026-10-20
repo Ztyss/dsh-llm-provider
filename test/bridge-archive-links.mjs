@@ -2,21 +2,27 @@
 //
 // 现场（2026-10-20，DSH NEXT 2.0.15-next）：宿主把 app 打成
 // `D:\ProgramFiles\DSH NEXT\resources\app.asar`，官方 llm-pi-ai bundle 与它依赖的
-// `@deepseek-ai/*` 全在归档里。syncBridgeLinks 原先给 bundle 的每个 bare specifier 挂一条
-// 目录链，目标就是 `.../app.asar/node_modules/@deepseek-ai/<包>`——而**链目标由内核的对象
-// 管理器解析，内核不认识 asar**，于是每条链都悬空：existsSync 直接 false，启动日志只剩一句
-// `Cannot find package '@deepseek-ai/dsh-launch-environment'`，整座桥退化成纯计费模式。
-//（同机探针实测：宿主自己 `import('file:///…app.asar/…/dsh-launch-environment/lib/index.js')`
-// 正常，`existsSync(junction → asar 内目录)` 为 false——所以是链的问题，不是归档读不到。）
+// `@deepseek-ai/*`、以及 DSH 自带那份 pi-ai 全在归档里。syncBridgeLinks 原先给每个 bare
+// specifier 挂一条目录链，目标就是 `.../app.asar/node_modules/...`——而**链目标由内核的对象
+// 管理器解析，内核不认识 asar**，于是每条链都悬空：existsSync 直接 false。
+// 同机探针实测（宿主进程内）：
+//   - `import('file:///…app.asar/…/dsh-launch-environment/lib/index.js')` 正常；
+//   - `existsSync(junction → asar 内目录)` 为 false；
+//   - 悬空 junction 下 import pi-ai 子路径直接 `Cannot find package '@earendil-works/pi-ai'`。
+// 所以是链的问题，不是归档读不到。
 //
-// 修法：归档里的包不挂链，把桥接副本里的 specifier 直接写成归档入口的 file:// URL。
-// 同一条路径在宿主进程里就是官方 bundle 自己加载那些包的那条路，模块实例因此是同一份。
+// 修法：包目录落在 `.asar` 里就不挂链，把桥接副本里的 specifier 直接写成归档入口的
+// file:// URL。同一条路径在宿主进程里就是官方 bundle 自己加载那些包的那条路，模块实例因此
+// 是同一份（不会出现「一份代码两个 LlmError / cordis」）。
 //
-// 本文件盯四件事：
+// 本文件盯七件事：
 //   1. archiveBase / rewriteSpecifiers 的路径与字符串判定（纯函数）；
 //   2. 归档 specifier 被改写成 URL，且链田上不留下悬空链（旧链要摘掉）；
 //   3. 非归档（真目录）specifier 仍然挂链——原有行为不能被这次改动改掉；
-//   4. 重复调用幂等：副本内容不再变。
+//   4. 重复调用幂等；
+//   5. 归档入口解不出时退回挂链，不静默少一个依赖；
+//   6. pi-ai 在归档里（偏好拨 OFF 的中选档）同样改写，且 ON→OFF→ON 往返落得对；
+//   7. pi-ai 需求永远读真源——副本被改写成 URL 后不能把体检拖成「无条件放行」。
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -32,7 +38,7 @@ function check(name, cond, extra) {
 const home = mkdtempSync(join(tmpdir(), 'dsh-archive-home-'))
 process.env.DSH_HOME = home
 
-const { archiveBase, archiveEntryUrl, rewriteSpecifiers, syncBridgeLinks, removeTree } = await import('../lib/bridge.js')
+const { archiveBase, archiveEntryUrl, bridgeRequirements, bundleSpecifiers, piAiArchiveRewrites, rewriteSpecifiers, syncBridgeLinks, removeTree } = await import('../lib/bridge.js')
 
 const sandbox = mkdtempSync(join(tmpdir(), 'dsh-archive-src-'))
 const archive = join(sandbox, 'app.asar')
@@ -43,14 +49,20 @@ function writeJson(path, value) {
   writeFileSync(path, JSON.stringify(value, null, 2))
 }
 
-// ---- 造假现场：一个归档里的 bundle + 两个归档依赖 + 一个真目录依赖 ----
+// ---- 造假现场 ----
 const bundleDir = join(archive, 'node_modules', '@deepseek-ai', 'dsh-llm-pi-ai', 'lib')
 mkdirSync(bundleDir, { recursive: true })
 const bundlePath = join(bundleDir, 'index.js')
+// pi-ai 的 specifier 用真 bundle 的那五条（providers/all + 三条 api/*.lazy + utils/overflow），
+// 覆盖 exports 的 `./providers/*`、`./api/*`、`./utils/*` 三种模式键
 const BUNDLE_SOURCE = [
   'import { launchEnvironmentOf } from "@deepseek-ai/dsh-launch-environment";',
   'import { LlmAdapter } from "@deepseek-ai/dsh-llm";',
-  'import { getAllBuiltinModels } from "@earendil-works/pi-ai/providers/all";',
+  'import { builtinModels, builtinProviders, getAllBuiltinModels, getBuiltinModels } from "@earendil-works/pi-ai/providers/all";',
+  'import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";',
+  'import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";',
+  'import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";',
+  'import { isContextOverflow } from "@earendil-works/pi-ai/utils/overflow";',
   'import { brandString } from "@deepseek-ai/dsh-brand";',
   'import { readFileSync } from "node:fs";',
   '// 数据里出现的包名不该被改写',
@@ -73,6 +85,30 @@ for (const name of ['dsh-launch-environment', 'dsh-llm']) {
   writeFileSync(join(pkg, 'lib', 'index.js'), `export const ${name.replace(/-/g, '_')} = 1\n`)
 }
 
+// 归档里的 pi-ai：偏好拨 OFF（'dsh'）时中选的就是它。exports 照真包抄——子路径全走模式键
+const archivedPiAi = join(archive, 'node_modules', '@earendil-works', 'pi-ai')
+writeJson(join(archivedPiAi, 'package.json'), {
+  name: '@earendil-works/pi-ai',
+  version: '1.2.0',
+  type: 'module',
+  exports: {
+    '.': { types: './dist/index.d.ts', import: './dist/index.js' },
+    './providers/*': { types: './dist/providers/*.d.ts', import: './dist/providers/*.js' },
+    './api/*': { types: './dist/api/*.d.ts', import: './dist/api/*.js' },
+    './utils/*': { types: './dist/utils/*.d.ts', import: './dist/utils/*.js' },
+  },
+})
+for (const file of [
+  'dist/providers/all.js',
+  'dist/api/anthropic-messages.lazy.js',
+  'dist/api/openai-completions.lazy.js',
+  'dist/api/openai-responses.lazy.js',
+  'dist/utils/overflow.js',
+]) {
+  mkdirSync(join(archivedPiAi, ...file.split('/').slice(0, -1)), { recursive: true })
+  writeFileSync(join(archivedPiAi, ...file.split('/')), 'export const stub = 1\n')
+}
+
 // 真目录里的一个包：这条必须照旧挂链（回归防线）
 const brandDir = join(realRoot, '@deepseek-ai', 'dsh-brand')
 writeJson(join(brandDir, 'package.json'), {
@@ -84,7 +120,7 @@ writeJson(join(brandDir, 'package.json'), {
 mkdirSync(join(brandDir, 'lib'), { recursive: true })
 writeFileSync(join(brandDir, 'lib', 'index.js'), 'export const brand = 1\n')
 
-// 中选的 pi-ai：一个真目录（带 node_modules，跟安全区下载档同形）
+// 开关拨 ON 时中选的 pi-ai：一个真目录（带 node_modules，跟安全区下载档同形）
 const piAiRoot = join(sandbox, 'pi-ai-1.3.0')
 writeJson(join(piAiRoot, 'package.json'), { name: '@earendil-works/pi-ai', version: '1.3.0', type: 'module' })
 mkdirSync(join(piAiRoot, 'node_modules'), { recursive: true })
@@ -104,12 +140,20 @@ check('node: 内置不被改写', rewritten.includes('from "node:fs"'))
 check('没进改写表的 specifier 原样留着', rewritten.includes('from "@deepseek-ai/dsh-llm";'))
 check('重复改写是恒等变换', rewriteSpecifiers(rewritten, rewrites) === rewritten)
 
-// ---- 3. 端到端：syncBridgeLinks ----
+// ---- 3. piAiArchiveRewrites：归档 pi-ai 的子路径解算 ----
+const piAiRewrites = piAiArchiveRewrites(archivedPiAi, bundleSpecifiers(BUNDLE_SOURCE))
+check('归档 pi-ai 五条子路径全解得出', piAiRewrites.size === 5, [...piAiRewrites.keys()].join(' '))
+check('providers/all 解到 dist/providers/all.js', piAiRewrites.get('@earendil-works/pi-ai/providers/all') === pathToFileURL(join(archivedPiAi, 'dist', 'providers', 'all.js')).href, piAiRewrites.get('@earendil-works/pi-ai/providers/all'))
+check('api/*.lazy 子路径解到对应文件', piAiRewrites.get('@earendil-works/pi-ai/api/openai-completions.lazy') === pathToFileURL(join(archivedPiAi, 'dist', 'api', 'openai-completions.lazy.js')).href)
+check('utils/overflow 解到 dist/utils/overflow.js', piAiRewrites.get('@earendil-works/pi-ai/utils/overflow') === pathToFileURL(join(archivedPiAi, 'dist', 'utils', 'overflow.js')).href)
+check('非归档 pi-ai 返回空表（走挂链）', piAiArchiveRewrites(piAiRoot, ['@earendil-works/pi-ai/providers/all']).size === 0)
+
+// ---- 4. 端到端：syncBridgeLinks（ON 档：pi-ai 是真目录）----
 // bridgeLib 由 loadBridge 按源哈希刷新，这里照它的做法先放一份副本
 const bridgeDir = join(home, 'llm-provider-bridge', 'llm-bridge')
 mkdirSync(join(bridgeDir, 'lib'), { recursive: true })
-writeFileSync(join(bridgeDir, 'lib', 'index.js'), BUNDLE_SOURCE)
 const copyPath = join(bridgeDir, 'lib', 'index.js')
+writeFileSync(copyPath, BUNDLE_SOURCE)
 
 // 旧版留下的悬空链：目标指向一个不存在的归档（真机上就是 app.asar 里的目录——
 // 目录在归档里存在、在文件系统上不存在，所以链一定悬空）。改成写之后必须摘掉。
@@ -124,30 +168,60 @@ syncBridgeLinks(bundlePath, piAiRoot)
 const after = readFileSync(copyPath, 'utf8')
 check('副本里 dsh-launch-environment 被改成归档 URL', after.includes(`from "${pathToFileURL(join(archive, 'node_modules', '@deepseek-ai', 'dsh-launch-environment', 'lib', 'index.js')).href}"`), after.split('\n')[0])
 check('副本里 dsh-llm 被改成归档 URL', after.includes(`from "${pathToFileURL(join(archive, 'node_modules', '@deepseek-ai', 'dsh-llm', 'lib', 'index.js')).href}"`))
-check('副本里 pi-ai 的 specifier 没被动（版本切换全靠链田）', after.includes('from "@earendil-works/pi-ai/providers/all";'))
+check('ON 档 pi-ai 的 specifier 没被动（版本切换全靠链田）', after.includes('from "@earendil-works/pi-ai/providers/all";'))
 check('副本里真目录依赖也没被改写（仍走链田）', after.includes('from "@deepseek-ai/dsh-brand";'))
-check('副本里 node: 内置没被动', after.includes('from "node:fs";'))
+check('副本里 node: 内置没被动', after.includes('from "node:fs"'))
 check('副本里数据字符串没被动', after.includes('const NOTE = "@deepseek-ai/dsh-launch-environment";'))
 
 check('悬空链被摘掉了', existsSync(staleLink) === false)
 check('真目录依赖照旧挂了链', existsSync(join(farm, '@deepseek-ai', 'dsh-brand')) && lstatSync(join(farm, '@deepseek-ai', 'dsh-brand')).isSymbolicLink())
-check('真目录依赖的链指向那份真目录', readlinkSync(join(farm, '@deepseek-ai', 'dsh-brand')) !== undefined)
 check('pi-ai 链指向中选那份', readlinkSync(join(farm, '@earendil-works', 'pi-ai')) !== undefined)
 
-// ---- 4. 幂等：再跑一次副本内容不变、链不重建 ----
+// ---- 5. 幂等：再跑一次副本内容不变 ----
 const stampBefore = readFileSync(copyPath, 'utf8')
 syncBridgeLinks(bundlePath, piAiRoot)
 check('重复调用副本内容不变', readFileSync(copyPath, 'utf8') === stampBefore)
 
-// ---- 5. 归档入口解不出时退回挂链（不静默少一个依赖）----
-const brokenArchive = join(sandbox, 'broken.asar')
-const brokenPkg = join(brokenArchive, 'node_modules', '@deepseek-ai', 'dsh-nothing')
-mkdirSync(join(brokenPkg), { recursive: true })
-writeJson(join(brokenPkg, 'package.json'), { name: '@deepseek-ai/dsh-nothing', version: '0.0.1' })
-const brokenSource = 'import x from "@deepseek-ai/dsh-nothing";\nexport const y = x\n'
-writeFileSync(copyPath, brokenSource)
+// ---- 6. OFF 档：pi-ai 在归档里 → 改写 + 摘链田 ----
+syncBridgeLinks(bundlePath, archivedPiAi)
+const off = readFileSync(copyPath, 'utf8')
+check('OFF 档 pi-ai providers/all 被改成归档 URL', off.includes(`from "${pathToFileURL(join(archivedPiAi, 'dist', 'providers', 'all.js')).href}"`), off.split('\n').find((l) => l.includes('pi-ai')) ?? '(none)')
+check('OFF 档三条 api/*.lazy 全被改写', ['anthropic-messages.lazy', 'openai-completions.lazy', 'openai-responses.lazy'].every((n) => off.includes(`from "${pathToFileURL(join(archivedPiAi, 'dist', 'api', `${n}.js`)).href}"`)))
+check('OFF 档 utils/overflow 被改写', off.includes(`from "${pathToFileURL(join(archivedPiAi, 'dist', 'utils', 'overflow.js')).href}"`))
+check('OFF 档 @deepseek-ai 依赖照旧改写', off.includes(`from "${pathToFileURL(join(archive, 'node_modules', '@deepseek-ai', 'dsh-llm', 'lib', 'index.js')).href}"`))
+check('OFF 档 pi-ai 链田被摘掉（不能留着指向别处的健康链）', existsSync(join(farm, '@earendil-works', 'pi-ai')) === false)
+
+// ---- 7. ON→OFF→ON 往返：副本必须回到裸 pi-ai specifier ----
+// 补丁式改写一旦把 specifier 换成 URL 就回不来了，所以副本要从真源重新推导
 syncBridgeLinks(bundlePath, piAiRoot)
-check('入口解不出时不改写（退回挂链）', readFileSync(copyPath, 'utf8') === brokenSource)
+const back = readFileSync(copyPath, 'utf8')
+check('拨回 ON 后 pi-ai specifier 恢复裸名', back.includes('from "@earendil-works/pi-ai/providers/all";'), back.split('\n').find((l) => l.includes('pi-ai')) ?? '(none)')
+check('拨回 ON 后五条 pi-ai specifier 全是裸名', !/from "file:[^"]*pi-ai/.test(back))
+check('拨回 ON 后 pi-ai 链田重新挂上', readlinkSync(join(farm, '@earendil-works', 'pi-ai')) !== undefined)
+check('拨回 ON 后副本与首次 ON 档逐字一致', back === stampBefore)
+
+// ---- 8. 归档入口解不出时退回挂链，且副本仍从真源推导 ----
+const brokenArchive = join(sandbox, 'broken.asar')
+const brokenBundleDir = join(brokenArchive, 'node_modules', '@deepseek-ai', 'dsh-llm-pi-ai', 'lib')
+mkdirSync(brokenBundleDir, { recursive: true })
+const brokenBundle = join(brokenBundleDir, 'index.js')
+writeFileSync(brokenBundle, 'import x from "@deepseek-ai/dsh-nothing";\nexport const y = x\n')
+const brokenPkg = join(brokenArchive, 'node_modules', '@deepseek-ai', 'dsh-nothing')
+mkdirSync(brokenPkg, { recursive: true })
+writeJson(join(brokenPkg, 'package.json'), { name: '@deepseek-ai/dsh-nothing', version: '0.0.1' })
+writeFileSync(copyPath, '// 被人写脏的内容，必须被真源覆盖回去\n')
+syncBridgeLinks(brokenBundle, piAiRoot)
+check('入口解不出时不改写，副本从真源推导', readFileSync(copyPath, 'utf8') === 'import x from "@deepseek-ai/dsh-nothing";\nexport const y = x\n', JSON.stringify(readFileSync(copyPath, 'utf8').slice(0, 60)))
+check('入口解不出的那条照旧挂链（错误形态与改动前一致）', lstatSync(join(farm, '@deepseek-ai', 'dsh-nothing')).isSymbolicLink())
+
+// ---- 9. pi-ai 需求读真源：副本被改写后体检不能失效 ----
+// findSourceBundle 的锚点之一是 $DSH_HOME/profiles/node_modules/_anchor.js，照着造一份真源
+const sourceBundleDir = join(home, 'profiles', 'node_modules', '@deepseek-ai', 'dsh-llm-pi-ai', 'lib')
+mkdirSync(sourceBundleDir, { recursive: true })
+writeJson(join(home, 'profiles', 'node_modules', '@deepseek-ai', 'dsh-llm-pi-ai', 'package.json'), { name: '@deepseek-ai/dsh-llm-pi-ai', version: '0.0.0' })
+writeFileSync(join(sourceBundleDir, 'index.js'), BUNDLE_SOURCE)
+syncBridgeLinks(bundlePath, archivedPiAi) // 副本此刻满是 file:// URL
+check('副本被改写后 bridgeRequirements 仍读得到 pi-ai 需求', bridgeRequirements().length === 5, JSON.stringify(bridgeRequirements().map((r) => r.specifier)))
 
 removeTree(home)
 removeTree(sandbox)
