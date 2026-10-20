@@ -27,7 +27,7 @@ import { createHash } from 'node:crypto'
 import { describeIntegrity, inspectPiAi, restoreHint } from './pi-ai-source.js'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { resolveDshHome } from './dsh-home.js'
 import { asRecord, readString, type AnyRecord } from './types.js'
 
@@ -757,13 +757,42 @@ export function piAiEntryMissing(root: string): boolean {
 
 /** 从 `exports` 里抠出 `.` 这条的入口文件：够 pi-ai 这种简单映射用。 */
 function exportsEntry(value: unknown): string | undefined {
-  if (typeof value === 'string') return value
+  return entryTarget(value, '.')
+}
+
+/**
+ * `exports` 里某个子路径的入口文件（相对包根的字符串）。
+ *
+ * 条件顺序偏向 ESM：桥接副本与探针都是 ESM，永远走 import 条件。模式键（`./*`、
+ * `./locale/*.json`）按 Node 的星号替换规则展开——官方 bundle 目前只 import 包根，
+ * 但 dsh-llm 这类包的 exports 里带子路径键，解得出子路径才不会误判成"没有入口"。
+ * @param value - package.json 的 `exports` 字段。
+ * @param subpath - 包内子路径，根导入传 `.`。
+ */
+function entryTarget(value: unknown, subpath: string): string | undefined {
+  if (typeof value === 'string') return subpath === '.' ? value : undefined
   if (value === null || typeof value !== 'object') return undefined
   const record = asRecord(value)
-  const dot: unknown = record['.'] ?? record
-  if (typeof dot === 'string') return dot
-  const inner = asRecord(dot)
-  for (const key of ['import', 'default', 'node', 'module']) {
+  const key = subpath === '.' ? '.' : './' + subpath.replace(/^\.\//, '')
+  const exact: unknown = record[key]
+  if (exact !== undefined) return conditionTarget(exact)
+  for (const [pattern, target] of Object.entries(record)) {
+    if (!pattern.includes('*')) continue
+    const star = patternStar(pattern, key)
+    if (star === undefined) continue
+    if (typeof target === 'string') return target.replace(/\*/g, star)
+  }
+  // 历史兜底：`exports` 是条件对象、没有 `.` 键时按条件对象解。
+  if (subpath === '.' && record['.'] === undefined) return conditionTarget(record)
+  return undefined
+}
+
+/** `exports` 某个键上的条件对象里挑一个入口。 */
+function conditionTarget(value: unknown): string | undefined {
+  if (typeof value === 'string') return value
+  if (value === null || typeof value !== 'object') return undefined
+  const inner = asRecord(value)
+  for (const key of ['import', 'default', 'node', 'module', 'require']) {
     const target = inner[key]
     if (typeof target === 'string') return target
     if (target !== null && typeof target === 'object') {
@@ -772,6 +801,100 @@ function exportsEntry(value: unknown): string | undefined {
     }
   }
   return undefined
+}
+
+/** 模式键匹配：`./locale/*.json` 匹配 `./locale/zh.json`，返回 `*` 对应的那段。 */
+function patternStar(pattern: string, key: string): string | undefined {
+  const anchor = pattern.indexOf('*')
+  if (anchor < 0) return undefined
+  const head = pattern.slice(0, anchor)
+  const tail = pattern.slice(anchor + 1)
+  if (!key.startsWith(head) || !key.endsWith(tail)) return undefined
+  const star = key.slice(head.length, key.length - tail.length)
+  return star.includes('/') ? undefined : star
+}
+
+/**
+ * 路径落在哪个 `.asar` 归档里（`.../app.asar/node_modules/x` → `.../app.asar`）。
+ * 不在归档里返回 undefined。
+ *
+ * 为什么需要它：Electron 的 asar 覆盖层只对**直接路径**生效——宿主自己从
+ * `app.asar/node_modules/@deepseek-ai/dsh-llm-pi-ai/lib/index.js` 加载官方 bundle，
+ * 它 import 的 `@deepseek-ai/*` sibling 包全靠这层解析。而目录链（Windows junction /
+ * POSIX symlink）的目标由内核的对象管理器解析，**内核不认识 asar**：链到
+ * `app.asar/...` 里面必然悬空，`existsSync` 直接 false，Node 只会报
+ * `Cannot find package '@deepseek-ai/dsh-launch-environment'`。
+ * 所以修法不是把包搬出归档（那会让桥接副本拿到另一份 LlmError / cordis），
+ * 而是让副本按归档路径直接 import。
+ */
+export function archiveBase(path: string): string | undefined {
+  const parts = path.split(/[\\/]+/)
+  let cut = 0
+  for (const part of parts) {
+    cut += part.length + 1
+    if (/\.asar$/i.test(part)) return path.slice(0, Math.min(cut - 1, path.length))
+  }
+  return undefined
+}
+
+/** specifier 去掉包名后剩下的子路径（根导入返回 `.`）。 */
+function specifierSubpath(specifier: string): string {
+  const rest = specifier.split('/').slice(specifier.startsWith('@') ? 2 : 1).join('/')
+  return rest === '' ? '.' : rest
+}
+
+/** 包里某个子路径的入口文件绝对路径；解不出返回 undefined。 */
+function packageEntryFile(root: string, subpath: string): string | undefined {
+  let pkg: AnyRecord
+  try {
+    pkg = asRecord(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')))
+  } catch {
+    return undefined
+  }
+  const target = entryTarget(pkg['exports'], subpath)
+    ?? (subpath === '.' ? readString(pkg['main']) : undefined)
+    ?? (subpath === '.' ? 'index.js' : undefined)
+  if (target === undefined) return undefined
+  const file = resolve(root, target)
+  return existsSync(file) ? file : undefined
+}
+
+/**
+ * 归档里的包：给出它入口文件的 file:// URL，供桥接副本直接 import。
+ *
+ * 不在归档里 / 入口解不出 / 入口文件不在 → undefined，调用方照旧挂链。
+ * @param root - 包目录（{@link resolvePackageRoot} 的结果）。
+ * @param specifier - bundle 里的 bare specifier。
+ */
+export function archiveEntryUrl(root: string | undefined, specifier: string): string | undefined {
+  if (root === undefined || root === '') return undefined
+  if (archiveBase(root) === undefined) return undefined
+  const file = packageEntryFile(root, specifierSubpath(specifier))
+  return file === undefined ? undefined : pathToFileURL(file).href
+}
+
+/** specifier 里的正则元字符转义。 */
+function escapeForRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * 把源码里的 bare specifier 换成绝对 URL。
+ *
+ * 只改 import/export/from 后面紧跟的字符串字面量：同一个包名也可能以普通字符串出现在
+ * 数据里（错误消息、路由表、日志），那种一律不动。已经改过的再跑一遍是恒等变换
+ * （URL 不等于 specifier，匹配不上），所以重复调用安全。
+ * @param source - 要改的源码。
+ * @param rewrites - specifier → 绝对 URL。
+ */
+export function rewriteSpecifiers(source: string, rewrites: ReadonlyMap<string, string>): string {
+  let out = source
+  for (const [specifier, url] of rewrites) {
+    if (specifier === '' || url === '') continue
+    const pattern = new RegExp(`((?:\\bfrom|\\bimport|\\bexport)\\s*\\(?\\s*)(["'])${escapeForRegExp(specifier)}\\2`, 'g')
+    out = out.replace(pattern, (_match, head: string) => `${head}"${url}"`)
+  }
+  return out
 }
 
 /**
@@ -1068,6 +1191,13 @@ ${restoreHint(host.integrity.version)}`
  * `~/.dsh/` 下再导入，直接报 `Cannot find package 'typebox'`——Node 按链解析完之后的
  * **真实路径**去找依赖，所以 pi-ai 必须留在 dsh 安装树里。
  *
+ * **归档里的包不挂链，改写成 file:// URL**（DSH NEXT 把 app 打成 app.asar 之后的必修项）：
+ * 链目标由内核的对象管理器解析，而内核不认识 asar——链进 `app.asar/...` 必然悬空，
+ * `existsSync` 直接 false，启动时只剩一句
+ * `Cannot find package '@deepseek-ai/dsh-launch-environment'`、整座桥退化。改成把副本里的
+ * specifier 直接写成归档入口的绝对 URL：宿主自己就是这么加载官方 bundle 的，同一条路径
+ * 解析出同一个模块实例，不会出现「一份代码两个 LlmError / cordis」。
+ *
  * 一个指向没变的链不重建：避免每次启动都动一遍目录 mtime。目标不存在（悬空）则重建。
  * @param bundlePath - 官方 bundle 的入口文件（用来解析它依赖的包在哪）。
  * @param piAiRoot - 中选的 pi-ai 包目录。
@@ -1105,11 +1235,46 @@ export function syncBridgeLinks(bundlePath: string, piAiRoot: string): number {
   } catch {
     return links
   }
+  // 归档里的包走改写、不走链田（理由见上面的说明）。解不出入口的才退回挂链——
+  // 那种情况链会悬空，但至少错误形态与改动前一致，不会静默少一个依赖。
+  const rewrites = new Map<string, string>()
   for (const specifier of bundleSpecifiers(source)) {
     if (specifier.startsWith('@earendil-works/pi-ai')) continue // 上面已经指过了
-    wire(specifier, resolvePackageRoot(bundlePath, specifier))
+    const root = resolvePackageRoot(bundlePath, specifier)
+    const url = archiveEntryUrl(root, specifier)
+    if (url !== undefined) {
+      rewrites.set(specifier, url)
+      dropFarmLink(farm, specifier) // 上一轮可能在这儿留了悬空链
+      continue
+    }
+    wire(specifier, root)
   }
+  applyArchiveRewrites(rewrites)
   return links
+}
+
+/** 摘掉链田上某个 specifier 的旧链：改写之后这条链不该存在，留着只会悬空。 */
+function dropFarmLink(farm: string, specifier: string): void {
+  const linkPath = join(farm, ...specifier.split('/'))
+  if (!removeDirectoryLink(linkPath)) removeLinkOrDir(linkPath)
+}
+
+/**
+ * 把归档改写落到桥接副本上。
+ *
+ * 内容没变就不写：否则每次启动都会动一遍副本的 mtime，白费一次写盘。
+ * 副本由 loadBridge 按源哈希刷新，这里只做「同一份源的再推导」，幂等。
+ */
+function applyArchiveRewrites(rewrites: ReadonlyMap<string, string>): void {
+  if (rewrites.size === 0) return
+  let source: string
+  try {
+    source = readFileSync(bridgeLib, 'utf8')
+  } catch {
+    return
+  }
+  const next = rewriteSpecifiers(source, rewrites)
+  if (next !== source) writeFileSync(bridgeLib, next)
 }
 
 /**
