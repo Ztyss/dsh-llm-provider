@@ -38,7 +38,7 @@ function check(name, cond, extra) {
 const home = mkdtempSync(join(tmpdir(), 'dsh-archive-home-'))
 process.env.DSH_HOME = home
 
-const { archiveBase, archiveEntryUrl, bridgeRequirements, bundleSpecifiers, piAiArchiveRewrites, rewriteSpecifiers, syncBridgeLinks, removeTree } = await import('../lib/bridge.js')
+const { archiveBase, archiveEntryUrl, bridgeRequirements, bundleSpecifiers, piAiArchiveRewrites, piAiRequirements, probePiAi, rewriteSpecifiers, syncBridgeLinks, removeTree } = await import('../lib/bridge.js')
 
 const sandbox = mkdtempSync(join(tmpdir(), 'dsh-archive-src-'))
 const archive = join(sandbox, 'app.asar')
@@ -85,6 +85,11 @@ for (const name of ['dsh-launch-environment', 'dsh-llm']) {
   writeFileSync(join(pkg, 'lib', 'index.js'), `export const ${name.replace(/-/g, '_')} = 1\n`)
 }
 
+// bundle 实际 import 的 pi-ai 子路径，以及给探针 require 的存根导出
+const PI_AI_DIST_FILES = ['dist/providers/all.js', 'dist/api/anthropic-messages.lazy.js', 'dist/api/openai-completions.lazy.js', 'dist/api/openai-responses.lazy.js', 'dist/utils/overflow.js']
+const PI_AI_STUB = 'export const builtinModels = 1, builtinProviders = 2, getAllBuiltinModels = 3, getBuiltinModels = 4\n'
+  + 'export const anthropicMessagesApi = 5, openAICompletionsApi = 6, openAIResponsesApi = 7, isContextOverflow = 8\n'
+
 // 归档里的 pi-ai：偏好拨 OFF（'dsh'）时中选的就是它。exports 照真包抄——子路径全走模式键
 const archivedPiAi = join(archive, 'node_modules', '@earendil-works', 'pi-ai')
 writeJson(join(archivedPiAi, 'package.json'), {
@@ -98,15 +103,9 @@ writeJson(join(archivedPiAi, 'package.json'), {
     './utils/*': { types: './dist/utils/*.d.ts', import: './dist/utils/*.js' },
   },
 })
-for (const file of [
-  'dist/providers/all.js',
-  'dist/api/anthropic-messages.lazy.js',
-  'dist/api/openai-completions.lazy.js',
-  'dist/api/openai-responses.lazy.js',
-  'dist/utils/overflow.js',
-]) {
+for (const file of PI_AI_DIST_FILES) {
   mkdirSync(join(archivedPiAi, ...file.split('/').slice(0, -1)), { recursive: true })
-  writeFileSync(join(archivedPiAi, ...file.split('/')), 'export const stub = 1\n')
+  writeFileSync(join(archivedPiAi, ...file.split('/')), PI_AI_STUB)
 }
 
 // 真目录里的一个包：这条必须照旧挂链（回归防线）
@@ -120,9 +119,24 @@ writeJson(join(brandDir, 'package.json'), {
 mkdirSync(join(brandDir, 'lib'), { recursive: true })
 writeFileSync(join(brandDir, 'lib', 'index.js'), 'export const brand = 1\n')
 
-// 开关拨 ON 时中选的 pi-ai：一个真目录（带 node_modules，跟安全区下载档同形）
+// 开关拨 ON 时中选的 pi-ai：一个真目录（带 node_modules，跟安全区下载档同形）。
+// exports 与 dist 存根照归档那份给——探针会真的 require 它，缺一个子路径就解析不到。
 const piAiRoot = join(sandbox, 'pi-ai-1.3.0')
-writeJson(join(piAiRoot, 'package.json'), { name: '@earendil-works/pi-ai', version: '1.3.0', type: 'module' })
+writeJson(join(piAiRoot, 'package.json'), {
+  name: '@earendil-works/pi-ai',
+  version: '1.3.0',
+  type: 'module',
+  exports: {
+    '.': { types: './dist/index.d.ts', import: './dist/index.js' },
+    './providers/*': { types: './dist/providers/*.d.ts', import: './dist/providers/*.js' },
+    './api/*': { types: './dist/api/*.d.ts', import: './dist/api/*.js' },
+    './utils/*': { types: './dist/utils/*.d.ts', import: './dist/utils/*.js' },
+  },
+})
+for (const file of PI_AI_DIST_FILES) {
+  mkdirSync(join(piAiRoot, ...file.split('/').slice(0, -1)), { recursive: true })
+  writeFileSync(join(piAiRoot, ...file.split('/')), PI_AI_STUB)
+}
 mkdirSync(join(piAiRoot, 'node_modules'), { recursive: true })
 
 // ---- 1. 纯函数：归档边界 ----
@@ -222,6 +236,15 @@ writeJson(join(home, 'profiles', 'node_modules', '@deepseek-ai', 'dsh-llm-pi-ai'
 writeFileSync(join(sourceBundleDir, 'index.js'), BUNDLE_SOURCE)
 syncBridgeLinks(bundlePath, archivedPiAi) // 副本此刻满是 file:// URL
 check('副本被改写后 bridgeRequirements 仍读得到 pi-ai 需求', bridgeRequirements().length === 5, JSON.stringify(bridgeRequirements().map((r) => r.specifier)))
+
+// ---- 10. 归档候选的探针：目录必须先建出来 ----
+// 曾经把 mkdirSync 躲在「建链」分支里，归档分支不建链 → 探针目录没建出来 →
+// writeFileSync(probe.js) 直接 ENOENT → 归档候选永远「体检没通过」，OFF 档整条死掉。
+const archivedProbe = probePiAi(piAiRequirements(BUNDLE_SOURCE), archivedPiAi, 'dsh')
+check('归档候选的探针建得起来且通过（不 ENOENT）', archivedProbe.ok === true, archivedProbe.error)
+const realProbe = probePiAi(piAiRequirements(BUNDLE_SOURCE), piAiRoot, 'safe-1.3.0')
+check('真目录候选的探针照旧通过（挂链路径没被改坏）', realProbe.ok === true, realProbe.error)
+check('探针用完即拆，不在安全区留 .probe-*', existsSync(join(bridgeDir, '.probe-dsh')) === false && existsSync(join(bridgeDir, '.probe-safe-1.3.0')) === false)
 
 removeTree(home)
 removeTree(sandbox)
