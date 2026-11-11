@@ -42,12 +42,30 @@ if (typeof accountRowFromBalance !== 'function') {
   check('ready → kind balance、id 固定',
     ready !== undefined && ready.kind === 'balance' && ready.id === OFFICIAL_ACCOUNT_ID && ready.id === 'deepseek-account',
     JSON.stringify(ready))
-  check('ready → 余额按币种格式化', ready !== undefined
-    && Array.isArray(ready.balances) && ready.balances.length === 1
-    && ready.balances[0].label === 'CNY' && ready.balances[0].value === '¥45.20',
+  check('ready → 余额合计充值+赠金', ready !== undefined
+    && Array.isArray(ready.balances) && ready.balances.length === 2
+    && ready.balances[0].label === 'CNY' && ready.balances[0].value === '¥55.10',
   JSON.stringify(ready && ready.balances))
-  check('ready → 赠送钱包不进余额行', ready !== undefined && ready.balances.length === 1)
+  check('ready → 赠金单列明细行', ready !== undefined
+    && ready.balances[1].label === 'CNY 赠金' && ready.balances[1].value === '¥9.90',
+  JSON.stringify(ready && ready.balances))
   check('ready → 不可删除（没有路由可删）', ready !== undefined && ready.deletable === false)
+
+  const noGift = accountRowFromBalance(
+    { status: 'ready', value: [{ currency: 'CNY', balance: '88.80' }], bonusWallets: [] },
+    AT, undefined,
+  )
+  check('仅充值无赠金 → 单行、不追加明细', noGift !== undefined
+    && noGift.balances.length === 1 && noGift.balances[0].value === '¥88.80',
+  JSON.stringify(noGift && noGift.balances))
+
+  const giftOnly = accountRowFromBalance(
+    { status: 'ready', value: [], bonusWallets: [{ currency: 'USD', balance: '0.50' }] },
+    AT, undefined,
+  )
+  check('仅赠金 → 合计即赠金、带明细行', giftOnly !== undefined
+    && giftOnly.balances.length === 2 && giftOnly.balances[0].value === '$0.50' && giftOnly.balances[1].label === 'USD 赠金',
+  JSON.stringify(giftOnly && giftOnly.balances))
 
   const usd = accountRowFromBalance({ status: 'ready', value: [{ currency: 'USD', balance: '7' }] }, AT, undefined)
   check('USD 余额格式化', usd !== undefined && usd.balances.length === 1 && usd.balances[0].value === '$7.00', JSON.stringify(usd && usd.balances))
@@ -55,9 +73,9 @@ if (typeof accountRowFromBalance !== 'function') {
   const empty = accountRowFromBalance({ status: 'ready', value: [] }, AT, undefined)
   check('ready 空钱包 → 行在、余额空', empty !== undefined && empty.kind === 'balance' && empty.balances.length === 0)
 
-  // 脏数据不抛：钱包字段缺失时给出占位而不是把整个快照炸掉
+  // 脏数据不抛：钱包字段缺失时跳过该钱包而不是把整个快照炸掉
   const weird = accountRowFromBalance({ status: 'ready', value: [{}] }, AT, undefined)
-  check('钱包字段缺失不抛、有占位', weird !== undefined && weird.balances.length === 1 && typeof weird.balances[0].value === 'string', JSON.stringify(weird))
+  check('钱包字段缺失不抛（跳过该钱包）', weird !== undefined && weird.balances.length === 0, JSON.stringify(weird))
 }
 
 // ---- 2. 范围口径：pickerOnly（不出「模型服务」卡片，只喂选择器 chip）----

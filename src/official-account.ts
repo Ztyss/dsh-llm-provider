@@ -8,7 +8,7 @@
  * （与 kernel-compat 同一模式：不 import index.js，避免模块加载期拖起桥接）。
  */
 import { asRecord } from './types.js'
-import { account as accountSkeleton, formatAmount, type AccountStatus } from './adapters/shared.js'
+import { account as accountSkeleton, formatAmount, num, type AccountStatus } from './adapters/shared.js'
 
 /** 官方账号在额度快照里的固定 id；模型选择器的分组 id 与它一致。 */
 export const OFFICIAL_ACCOUNT_ID = 'deepseek-account'
@@ -19,8 +19,9 @@ export const OFFICIAL_ACCOUNT_ID = 'deepseek-account'
  * 三种入参形态（官方 typert schema，dsh-api-account-controller#account/getBalance）：
  *   - `null` = 未登录 → undefined，快照自然没有这一行（chip 维持无数字的现状）；
  *   - `{status:'failed'}` = 平台查询失败（平台侧网络/协议，非凭据问题）→ 行 + error 文案；
- *   - `{status:'ready', value: wallet[]}` = 普通钱包余额 → kind 'balance'，按币种格式化。
- *     赠送钱包（bonusWallets）不进 chip：那是活动赠额，官方账号页有专门展示。
+ *   - `{status:'ready', value: wallet[], bonusWallets: wallet[]}` = 充值 + 赠送钱包 →
+ *     kind 'balance'：每币种一条合计（充值+赠金），chip 取 balances[0] 即含赠金的总额；
+ *     该币种有赠金时再追一条「币种 赠金」明细行，悬停提示里可见拆分。
  *
  * 所有行带 `pickerOnly: true`：这条额度只喂模型选择器的 provider chip，
  * 「模型服务」页不出卡片——账号的登录态在官方账号页管理，重复一张余额卡没有动作可做
@@ -36,13 +37,27 @@ export function accountRowFromBalance(result: unknown, fetchedAt: string, usageU
       error: '账号平台查询失败（非凭据问题，稍后可重试）',
     })
   }
-  const wallets = Array.isArray(record['value']) ? record['value'] : []
+  const totalsOf = (list: unknown) => {
+    const totals = new Map<string, number>()
+    for (const raw of Array.isArray(list) ? list : []) {
+      const wallet = asRecord(raw)
+      const currency = String(wallet['currency'] ?? 'CNY')
+      const amount = num(wallet['balance'])
+      if (amount === undefined) continue
+      totals.set(currency, (totals.get(currency) ?? 0) + amount)
+    }
+    return totals
+  }
+  const normal = totalsOf(record['value'])
+  const bonus = totalsOf(record['bonusWallets'])
+  const balances: AccountStatus['balances'] = []
+  for (const currency of new Set([...normal.keys(), ...bonus.keys()])) {
+    const gift = bonus.get(currency) ?? 0
+    balances.push({ label: currency, value: formatAmount((normal.get(currency) ?? 0) + gift, currency) })
+    if (gift > 0) balances.push({ label: `${currency} 赠金`, value: formatAmount(gift, currency) })
+  }
   return accountSkeleton(OFFICIAL_ACCOUNT_ID, 'DeepSeek Account', 'balance', {
     ...shared,
-    balances: wallets.map((raw) => {
-      const wallet = asRecord(raw)
-      const currency = wallet['currency']
-      return { label: String(currency ?? 'CNY'), value: formatAmount(wallet['balance'], currency) }
-    }),
+    balances,
   })
 }
