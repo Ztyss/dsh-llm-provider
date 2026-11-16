@@ -183,6 +183,28 @@ const widths = await cdp.eval(`(function(){
   return { head: f(head), row: f(row) }
 })()`)
 check('表头与数据行同宽对齐', widths.head !== null && widths.row !== null && Math.abs(widths.head - widths.row) <= 1, widths)
+// 列模板逐列一致 + 表头底色与容器一致（「标题栏和模型清单一致」批注的回归钉子）：
+// 表头吸顶靠不透明底遮滚过的行，底色必须跟列表容器同色，否则灰面板里横一条白杠
+const consistency = await cdp.eval(`(function(){
+  var head = document.querySelector('.pv_availHead')
+  var row = document.querySelector('.pv_availRow')
+  var list = document.querySelector('.pv_availList')
+  if (head === null || row === null || list === null) return { ok: false, why: 'missing' }
+  var hs = getComputedStyle(head), rs = getComputedStyle(row), ls = getComputedStyle(list)
+  return {
+    sameCols: hs.gridTemplateColumns === rs.gridTemplateColumns,
+    headCols: hs.gridTemplateColumns,
+    rowCols: rs.gridTemplateColumns,
+    sameBg: hs.backgroundColor === ls.backgroundColor,
+    headBg: hs.backgroundColor,
+    listBg: ls.backgroundColor,
+    sticky: hs.position === 'sticky',
+  }
+})()`)
+check('表头与数据行列模板逐列一致（勾选/ID/能力/上下文/最大输出/标记）', consistency.sameCols === true,
+  { head: consistency.headCols, row: consistency.rowCols })
+check('表头吸顶保留且底色与列表容器一致（不出白杠）', consistency.sticky === true && consistency.sameBg === true,
+  { head: consistency.headBg, list: consistency.listBg })
 check('全选在表头第一格', await cdp.eval(`(function(){
   var head = document.querySelector('.pv_availHead')
   if (head === null) return false
