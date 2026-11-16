@@ -263,6 +263,23 @@ export function capabilitiesKnown(detail: ModelDetail | undefined): boolean {
   return detail.vision !== undefined || detail.video !== undefined || detail.reasoning !== undefined
 }
 
+/**
+ * 详情卡的「pi-ai 目录未收录」提示该不该出。
+ *
+ * 判据是**事实**（这条详情的来源不是 pi-ai 目录），不是「哪一层最后写了它」：
+ * 宿主 `/provider/models` 的链路里，`mergeRouteModels` 先为「路由里有、目录里没有」的模型
+ * 合成一条详情且**不标 source**（undefined），随后的 `withDeclaredModels` 见键已存在就跳过，
+ * 不补 'declared' 标记。只认 `source === 'declared'` 的话：编辑保存后立刻 hover 有提示
+ * （客户端乐观更新标了 declared），重进模型服务页提示就消失（用户 11-16 报的真实故障）。
+ *
+ * 适配器自报（`source === 'adapter'`，合成 provider 那类）不算：能力是适配器口径，
+ * 不是用户写的路由声明，不该说「来自这条路由的声明」。
+ */
+export function catalogUnlisted(detail: ModelDetail | undefined): boolean {
+  if (detail === undefined || detail === null) return false
+  return detail.source !== 'pi-ai' && detail.source !== 'adapter'
+}
+
 /** 详情索引里取一条：键是 provider + id（见 data.ts 的 detailKeyOf，跨 provider 重名靠它分开）。 */
 function detailOf(detailsById: Record<string, ModelDetail> | undefined | null, provider: string, modelId: string) {
   if (detailsById === undefined || detailsById === null) return undefined
@@ -367,7 +384,7 @@ export function modelTip(model: CatalogModel, account: PlanAccount, detail: Mode
       : (detail.reasoning === true
         ? (Array.isArray(detail.thinkingLevels) && detail.thinkingLevels.length > 0 ? detail.thinkingLevels.join('、') : t('cap.auto'))
         : t('cap.off')), 'tk'))
-  if (detail.source === 'declared') {
+  if (catalogUnlisted(detail)) {
     rows.push(react.createElement('div', { className: 'pv_tipDim', key: 'src' }, t('cap.sourceDeclared')))
   }
   } else {
