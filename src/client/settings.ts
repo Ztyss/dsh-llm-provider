@@ -1297,7 +1297,7 @@ function modelEditRow(
  * 导出供离线测试钉住（精确匹配 / 最小档 / 常数回退 / 非法值忽略）。
  */
 export function resolveAddDefaults(
-  rows: ModelEditRow[],
+  rows: readonly ModelEditRow[],
   modelId: string,
   details: Record<string, ModelDetail> | undefined | null,
 ): { ctx: string; max: string } {
