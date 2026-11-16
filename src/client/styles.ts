@@ -473,8 +473,14 @@ var css =
   // 与 pv_meHeadRow/pv_meRow 同一套做法，改列宽必须两处一起改
   '.pv_availBar{display:flex;align-items:center;gap:8px}' +
   '.pv_availBar .pv_field{min-width:0;flex:1}' +
-  '.pv_availList{display:flex;flex-direction:column;max-height:264px;overflow:auto;' +
+  // 列表容器定高（min 180px ≈ 表头 + 5 行 / max 264px 超出内滚）：加载中与就绪共用同一个
+  // 容器，两次渲染高度一致——否则点开面板先画矮「空壳」、数据回来才长出列表，页面跟着重排
+  // 就是一闪（用户 11-16 报的点击闪烁）
+  '.pv_availList{display:flex;flex-direction:column;min-height:180px;max-height:264px;overflow:auto;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:10px}' +
+  // 加载中占位：撑满容器并居中（flex:1 + 自身居中），与就绪态的行区占同样版面
+  '.pv_availLoading{flex:1;display:flex;align-items:center;justify-content:center;' +
+  'font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}' +
   '.pv_availHead{display:grid;grid-template-columns:12px minmax(90px,1fr) 104px 56px 56px 64px;' +
   'gap:6px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;' +
   'color:var(--dsw-alias-label-tertiary);position:sticky;top:0;z-index:1;' +
@@ -491,7 +497,7 @@ var css =
   '.pv_availCaps{display:flex;justify-content:flex-start;flex-wrap:wrap;gap:4px}' +
   '.pv_availNum{text-align:left;color:var(--dsw-alias-label-tertiary)}' +
   '.pv_availTag{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);text-align:right}' +
-  '.pv_availStatus{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}' +
+  '.pv_availStatus{font-size:12px;line-height:18px;min-height:18px;color:var(--dsw-alias-label-tertiary)}' +
   // ---- 本地版新增：思考档位池（与「能力」行同构，chips 一行多个自动换行，用户批注）----
   '.pv_meEffPool{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0;flex:1}' +
   '.pv_meCap.pv_meEffOn{border-color:var(--dsw-alias-border-l1,rgba(0,0,0,.24));' +
