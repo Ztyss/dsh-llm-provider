@@ -2136,7 +2136,7 @@ function ModelListEditor(props: {
     return react.createElement(
       'div',
       { className: 'pv_meEditPanel', key: 'panel-' + row.id },
-      react.createElement('div', { className: 'pv_meFormTitle' }, '编辑模型参数（只改草稿，点「保存」落盘）'),
+      react.createElement('div', { className: 'pv_meFormTitle' }, '编辑模型参数（点「保存」落盘）'),
       // 模型 ID 也可改（用户批注）：ID 是草稿行的键，改名 = patch 覆盖 id 字段 + editId 跟随，
       // 保存时 set-models 写的就是新键。查重范围含目录内条目，避免保存后被官方校验整体打回。
       panelField('模型 ID', row.id, function (next) {
@@ -2223,9 +2223,16 @@ function ModelListEditor(props: {
   for (var r = 0; r < rows.length; r += 1) {
     var rowItem = rows[r]
     rows_.push(modelEditRow(rowItem, patch, remove, toggleDraft, busy, editId === rowItem.id, function (id: string) {
+      var opening = editId !== id
       setEditId(function (prev: string | null) { return prev === id ? null : id })
       // 切换展开行时把上一行的测试结果一并收掉
       setPanelTest({ phase: 'idle', message: '' })
+      // 展开行内编辑面板时收起两个浮出面板（「添加模型」表单 / 「可用模型」）：
+      // 编辑面互斥，避免三个面板叠在同一屏里抢注意力（用户 11-16 批注）
+      if (opening) {
+        setForm(emptyForm)
+        setAvail(emptyAvail())
+      }
     }))
     if (editId === rowItem.id && rowItem.inPiAi !== true) rows_.push(rowEditPanel(rowItem))
   }
@@ -2276,7 +2283,7 @@ function ModelListEditor(props: {
   var formEl = form.open !== true ? null : react.createElement(
     'div',
     { className: 'pv_meForm' },
-    react.createElement('div', { className: 'pv_meFormTitle' }, '新增自定义模型（保存后才生效）'),
+    react.createElement('div', { className: 'pv_meFormTitle' }, '新增自定义模型（点「保存」落盘）'),
     formRow('模型 ID', formField('目录里没有的自定义 ID', form.id, 'id'), 'f-id'),
     formRow('显示名', formField('留空则同模型 ID', form.name, 'name'), 'f-name'),
     formRow('上下文窗口', formField('留空自动按已知模型填', form.ctx, 'ctx', true), 'f-ctx'),
@@ -2387,26 +2394,13 @@ function ModelListEditor(props: {
     var allPicked = pickable > 0 && pickedCount === pickable
     var listNodes: unknown[] = []
     for (var r = 0; r < filtered.length; r += 1) listNodes.push(availRowNode(filtered[r]))
-    var statusLine: unknown = null
-    if (avail.phase === 'run') statusLine = react.createElement('div', { className: 'pv_availStatus', key: 'st-run' }, '正在从端点拉取…')
-    else if (avail.phase === 'fail') statusLine = react.createElement('div', { className: 'pv_availStatus plan_badText', key: 'st-fail' }, '✗ ' + avail.error)
-    else if (avail.phase === 'ok' && panelRows_.length === 0) statusLine = react.createElement('div', { className: 'pv_availStatus', key: 'st-empty' }, '端点没有返回任何模型')
-    else if (avail.phase === 'ok') statusLine = react.createElement('div', { className: 'pv_availStatus', key: 'st-ok' }, '端点共 ' + String(panelRows_.length) + ' 个模型，' + String(existsCount) + ' 个已在清单')
-    return react.createElement(
+    // 表头（全选 | 模型 ID | 能力 | 上下文 | 最大输出 | 标记）：与模型列表 pv_meHeadRow 同构，
+    // 逐列与 pv_availRow 共用同一套网格列宽（列宽写死在 styles.ts，两处必须同步改）。
+    // 全选的语义仍是「过滤后可添加的行」——过滤框收窄到上面的独立一行后，表头位置更贴列表。
+    var availHead = react.createElement(
       'div',
-      { className: 'pv_meForm pv_avail' },
-      react.createElement('div', { className: 'pv_meFormTitle' }, '可用模型（从端点拉取，勾选加入草稿，点「保存」落盘）'),
-      react.createElement('div', { className: 'pv_availBar' },
-        react.createElement('input', {
-          className: 'pv_field',
-          type: 'text',
-          placeholder: '按模型 ID 过滤',
-          value: avail.query,
-          onChange: function (event: FieldEvent) {
-            var next = event.target.value
-            setAvail(function (prev) { return withKeys(prev as unknown as AnyRecord, { query: next }) as typeof prev })
-          },
-        }),
+      { className: 'pv_availHead', key: 'head' },
+      react.createElement('span', { key: 'h-check' },
         react.createElement('input', {
           type: 'checkbox',
           className: 'pv_meCheck',
@@ -2424,10 +2418,36 @@ function ModelListEditor(props: {
             })
           },
         }),
-        react.createElement('span', { className: 'pv_availPickCount' }, '已选 ' + String(pickedCount)),
+      ),
+      react.createElement('span', { key: 'h-id', style: { fontFamily: 'inherit' } }, t('prov.modelId')),
+      react.createElement('span', { key: 'h-caps' }, t('prov.caps')),
+      react.createElement('span', { key: 'h-ctx' }, t('prov.ctx')),
+      react.createElement('span', { key: 'h-max' }, t('cap.maxTokens')),
+      react.createElement('span', { key: 'h-tag' }),
+    )
+    var statusLine: unknown = null
+    if (avail.phase === 'run') statusLine = react.createElement('div', { className: 'pv_availStatus', key: 'st-run' }, '正在从端点拉取…')
+    else if (avail.phase === 'fail') statusLine = react.createElement('div', { className: 'pv_availStatus plan_badText', key: 'st-fail' }, '✗ ' + avail.error)
+    else if (avail.phase === 'ok' && panelRows_.length === 0) statusLine = react.createElement('div', { className: 'pv_availStatus', key: 'st-empty' }, '端点没有返回任何模型')
+    else if (avail.phase === 'ok') statusLine = react.createElement('div', { className: 'pv_availStatus', key: 'st-ok' }, '端点共 ' + String(panelRows_.length) + ' 个模型，' + String(existsCount) + ' 个已在清单')
+    return react.createElement(
+      'div',
+      { className: 'pv_meForm pv_avail' },
+      react.createElement('div', { className: 'pv_meFormTitle' }, '可用模型（从端点拉取，点「保存」落盘）'),
+      react.createElement('div', { className: 'pv_availBar' },
+        react.createElement('input', {
+          className: 'pv_field',
+          type: 'text',
+          placeholder: '按模型 ID 过滤',
+          value: avail.query,
+          onChange: function (event: FieldEvent) {
+            var next = event.target.value
+            setAvail(function (prev) { return withKeys(prev as unknown as AnyRecord, { query: next }) as typeof prev })
+          },
+        }),
       ),
       avail.phase === 'ok'
-        ? react.createElement('div', { className: 'pv_availList' }, listNodes.length > 0 ? listNodes : react.createElement('div', { className: 'pv_availStatus', key: 'st-none' }, '没有匹配的模型'))
+        ? react.createElement('div', { className: 'pv_availList' }, listNodes.length > 0 ? [availHead].concat(listNodes) : react.createElement('div', { className: 'pv_availStatus', key: 'st-none' }, '没有匹配的模型'))
         : null,
       statusLine,
       react.createElement('div', { className: 'pv_meActs' },
