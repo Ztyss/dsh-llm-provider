@@ -473,33 +473,31 @@ var css =
   // 与 pv_meHeadRow/pv_meRow 同一套做法，改列宽必须两处一起改
   '.pv_availBar{display:flex;align-items:center;gap:8px}' +
   '.pv_availBar .pv_field{min-width:0;flex:1}' +
-  // 列表容器定高（min 180px ≈ 表头 + 5 行 / max 264px 超出内滚）：加载中与就绪共用同一个
-  // 容器，两次渲染高度一致——否则点开面板先画矮「空壳」、数据回来才长出列表，页面跟着重排
-  // 就是一闪（用户 11-16 报的点击闪烁）。容器给不透明白底（同 pv_meList 所在的卡面）：
-  // 表头吸顶要靠不透明底遮住滚过的行，底色跟容器一致才不会在灰面板里横出一条白杠
-  // （用户 11-16 批注「标题栏太丑，应和模型清单一致」）
-  '.pv_availList{display:flex;flex-direction:column;min-height:180px;max-height:264px;overflow:auto;' +
+  // 列表容器**固定高度 150px**（约表头 + 4 行；用户 11-16 批注「底部留空不好看，矮一点，
+  // 可以上下拉」）：定高同时钉死拉取中/就绪两态等高——防闪不靠 min/max 区间了；内容超出
+  // 就上下滚。容器给不透明白底（同 pv_meList 所在的卡面）：表头吸顶要靠不透明底遮住
+  // 滚过的行，底色跟容器一致才不会在灰面板里横出一条白杠
+  '.pv_availList{display:flex;flex-direction:column;height:150px;overflow:auto;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:10px;' +
   'background:var(--dsw-alias-bg-layer-1,#fff)}' +
   // 加载中占位：撑满容器并居中（flex:1 + 自身居中），与就绪态的行区占同样版面
   '.pv_availLoading{flex:1;display:flex;align-items:center;justify-content:center;' +
   'font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}' +
-  // 表头逐列照抄模型清单（pv_meHeadRow 的 12px/140px⁺/132px/64px/64px + 64px 标记列），
-  // 勾选/ID/能力/上下文/最大输出与上面编辑器列表同位；保留吸顶，底色同容器白
-  '.pv_availHead{display:grid;grid-template-columns:12px minmax(140px,1.6fr) 132px 64px 64px 64px;' +
+  // 表头（全选 | 模型 ID | 上下文 | 最大输出 | 标记）——能力列不进面板（用户批注）；
+  // 保留吸顶，底色同容器白
+  '.pv_availHead{display:grid;grid-template-columns:12px minmax(140px,1.6fr) 64px 64px 64px;' +
   'gap:6px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;' +
   'color:var(--dsw-alias-label-tertiary);position:sticky;top:0;z-index:1;' +
   'background:var(--dsw-alias-bg-layer-1,#fff);' +
   'border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}' +
   '.pv_availHead > span:first-child{display:flex;align-items:center;height:18px}' +
-  // 行网格与表头逐列一致：勾选 | 模型 ID（伸展省略号）| 能力徽标 | 上下文 | 最大输出 | 标记
-  '.pv_availRow{display:grid;grid-template-columns:12px minmax(140px,1.6fr) 132px 64px 64px 64px;' +
+  // 行网格与表头逐列一致：勾选 | 模型 ID（伸展省略号）| 上下文 | 最大输出 | 标记
+  '.pv_availRow{display:grid;grid-template-columns:12px minmax(140px,1.6fr) 64px 64px 64px;' +
   'gap:6px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;' +
   'border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.06))}' +
   '.pv_availRow:last-child{border-bottom:0}' +
   '.pv_availRowOff{opacity:.45}' +
   '.pv_availId{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}' +
-  '.pv_availCaps{display:flex;justify-content:flex-start;flex-wrap:wrap;gap:4px}' +
   '.pv_availNum{text-align:left;color:var(--dsw-alias-label-tertiary)}' +
   '.pv_availTag{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
   '.pv_availStatus{font-size:12px;line-height:18px;min-height:18px;color:var(--dsw-alias-label-tertiary)}' +
