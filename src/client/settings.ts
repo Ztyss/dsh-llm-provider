@@ -2442,11 +2442,24 @@ function ModelListEditor(props: {
       react.createElement('span', { key: 'h-max' }, t('cap.maxTokens')),
       react.createElement('span', { key: 'h-tag' }),
     )
-    var statusLine: unknown = null
-    if (avail.phase === 'run') statusLine = react.createElement('div', { className: 'pv_availStatus', key: 'st-run' }, '正在从端点拉取…')
-    else if (avail.phase === 'fail') statusLine = react.createElement('div', { className: 'pv_availStatus plan_badText', key: 'st-fail' }, '✗ ' + avail.error)
-    else if (avail.phase === 'ok' && panelRows_.length === 0) statusLine = react.createElement('div', { className: 'pv_availStatus', key: 'st-empty' }, '端点没有返回任何模型')
-    else if (avail.phase === 'ok') statusLine = react.createElement('div', { className: 'pv_availStatus', key: 'st-ok' }, '端点共 ' + String(panelRows_.length) + ' 个模型，' + String(existsCount) + ' 个已在清单')
+    // 状态行**恒定挂载**（拉取中也占位一行空文本）：高度恒定，否则拉取中→就绪时多出这一行，
+    // 面板整体仍会跳 18px（几何断言实测的差值）。
+    var statusText = ''
+    var statusBad = false
+    if (avail.phase === 'fail') { statusText = '✗ ' + avail.error; statusBad = true }
+    else if (avail.phase === 'ok' && panelRows_.length === 0) statusText = '端点没有返回任何模型'
+    else if (avail.phase === 'ok') statusText = '端点共 ' + String(panelRows_.length) + ' 个模型，' + String(existsCount) + ' 个已在清单'
+    var statusLine = react.createElement('div', { className: 'pv_availStatus' + (statusBad ? ' plan_badText' : ''), key: 'st' }, statusText)
+    // 列表容器**恒挂载**（用户 11-16 报的点击闪烁）：此前只在 phase==='ok' 时挂载，
+    // 点开面板先画「空壳」（矮），请求回来才长出列表容器（高），两次渲染之间面板整体
+    // 长高一截、页面滚动条跟着重排 → 视觉闪烁。现在加载中/就绪共用同一个容器，
+    // 高度由 CSS 的 min-height 钉死，数据回来只替换容器内内容，布局不动。
+    // 失败态不给容器（没有内容可放），错误行单独一行如实展示。
+    var listChildren: unknown = avail.phase === 'run'
+      ? react.createElement('div', { className: 'pv_availLoading', key: 'loading' }, '正在从端点拉取…')
+      : listNodes.length > 0
+        ? [availHead].concat(listNodes)
+        : react.createElement('div', { className: 'pv_availStatus', key: 'st-none' }, '没有匹配的模型')
     return react.createElement(
       'div',
       { className: 'pv_meForm pv_avail' },
@@ -2463,9 +2476,9 @@ function ModelListEditor(props: {
           },
         }),
       ),
-      avail.phase === 'ok'
-        ? react.createElement('div', { className: 'pv_availList' }, listNodes.length > 0 ? [availHead].concat(listNodes) : react.createElement('div', { className: 'pv_availStatus', key: 'st-none' }, '没有匹配的模型'))
-        : null,
+      avail.phase === 'fail'
+        ? null
+        : react.createElement('div', { className: 'pv_availList' }, listChildren),
       statusLine,
       react.createElement('div', { className: 'pv_meActs' },
         react.createElement('button', {
