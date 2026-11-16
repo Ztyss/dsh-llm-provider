@@ -2382,10 +2382,6 @@ function ModelListEditor(props: {
         },
       }),
       react.createElement('span', { className: 'pv_availId', title: item.id }, item.id),
-      react.createElement('span', { className: 'pv_availCaps' }, [
-        item.vision === true ? react.createElement('span', { key: 'v', className: 'pv_capMini pv_capVision', title: 'pi-ai 目录：支持图片输入' }, '视觉') : null,
-        item.reasoning === true ? react.createElement('span', { key: 'r', className: 'pv_capMini pv_capReason', title: 'pi-ai 目录：支持思维链' }, '推理') : null,
-      ]),
       react.createElement('span', { className: 'pv_availNum', title: '上下文窗口（预填值，添加后可改）' }, formatContext(parsePositiveInt(item.ctx)) ?? item.ctx),
       react.createElement('span', { className: 'pv_availNum', title: '最大输出（预填值，添加后可改）' }, formatContext(parsePositiveInt(item.max)) ?? item.max),
       react.createElement(
@@ -2411,9 +2407,10 @@ function ModelListEditor(props: {
     var allPicked = pickable > 0 && pickedCount === pickable
     var listNodes: unknown[] = []
     for (var r = 0; r < filtered.length; r += 1) listNodes.push(availRowNode(filtered[r]))
-    // 表头（全选 | 模型 ID | 能力 | 上下文 | 最大输出 | 标记）：与模型列表 pv_meHeadRow 同构，
-    // 逐列与 pv_availRow 共用同一套网格列宽（列宽写死在 styles.ts，两处必须同步改）。
-    // 全选的语义仍是「过滤后可添加的行」——过滤框收窄到上面的独立一行后，表头位置更贴列表。
+    // 表头（全选 | 模型 ID | 上下文 | 最大输出 | 标记）：能力列不进面板（用户 11-16 批注
+    // 「无需能力列」——预填逻辑照旧，添加后编辑器行里徽章照常带上）。逐列与 pv_availRow
+    // 共用同一套网格列宽（写死在 styles.ts，两处必须同步改）。全选的语义仍是
+    // 「过滤后可添加的行」——过滤框在上的独立一行，表头位置贴列表。
     var availHead = react.createElement(
       'div',
       { className: 'pv_availHead', key: 'head' },
@@ -2437,7 +2434,6 @@ function ModelListEditor(props: {
         }),
       ),
       react.createElement('span', { key: 'h-id', style: { fontFamily: 'inherit' } }, t('prov.modelId')),
-      react.createElement('span', { key: 'h-caps' }, t('prov.caps')),
       react.createElement('span', { key: 'h-ctx' }, t('prov.ctx')),
       react.createElement('span', { key: 'h-max' }, t('cap.maxTokens')),
       react.createElement('span', { key: 'h-tag' }),

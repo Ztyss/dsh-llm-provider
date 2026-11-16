@@ -172,6 +172,8 @@ const ready = await geom()
 check('就绪后出现数据行', ready.rows > 0, ready.rows)
 check('列表容器高度与拉取中逐像素一致（无跳动）', running.list !== null && ready.list !== null && Math.abs(ready.list - running.list) <= 1,
   { running: running.list, ready: ready.list })
+check('容器定高 150px 级——4 模型不留大段底部空白（用户 11-16 批注）',
+  ready.list !== null && ready.list >= 148 && ready.list <= 158, ready.list)
 check('面板整体高度与拉取中一致（页面不跟着重排）', running.panel !== null && ready.panel !== null && Math.abs(ready.panel - running.panel) <= 1,
   { running: running.panel, ready: ready.panel })
 
@@ -201,10 +203,16 @@ const consistency = await cdp.eval(`(function(){
     sticky: hs.position === 'sticky',
   }
 })()`)
-check('表头与数据行列模板逐列一致（勾选/ID/能力/上下文/最大输出/标记）', consistency.sameCols === true,
+check('表头与数据行列模板逐列一致（勾选/ID/上下文/最大输出/标记）', consistency.sameCols === true,
   { head: consistency.headCols, row: consistency.rowCols })
 check('表头吸顶保留且底色与列表容器一致（不出白杠）', consistency.sticky === true && consistency.sameBg === true,
   { head: consistency.headBg, list: consistency.listBg })
+check('能力列已移除（表头无「能力」标签、行内无徽标格）', await cdp.eval(`(function(){
+  var head = document.querySelector('.pv_availHead')
+  if (head === null) return false
+  if (head.textContent.indexOf('能力') !== -1) return false
+  return document.querySelector('.pv_availCaps') === null && document.querySelectorAll('.pv_availRow .pv_capMini').length === 0
+})()`) === true)
 check('全选在表头第一格', await cdp.eval(`(function(){
   var head = document.querySelector('.pv_availHead')
   if (head === null) return false
