@@ -2010,9 +2010,12 @@ function ModelListEditor(props: {
    */
   function openAvail() {
     setError(null)
-    // 两个浮出面板互斥（与「添加模型」表单）：打开一个关掉另一个
+    // 三个编辑面互斥（用户 11-16 批注「互斥是双向的」）：打开一个收掉另外两个——
+    // 「添加模型」表单与行内编辑面板（连它的测试结果一起收）
     setForm(emptyForm)
     setTestModel({ phase: 'idle', message: '' })
+    setEditId(null)
+    setPanelTest({ phase: 'idle', message: '' })
     setAvail({ open: true, phase: 'run', error: '', models: [], picked: {}, query: '' })
     postJson('/provider/available-models', { providerId: account.id })
       .then(function (res: AnyRecord) {
@@ -2266,7 +2269,7 @@ function ModelListEditor(props: {
       // 切换展开行时把上一行的测试结果一并收掉
       setPanelTest({ phase: 'idle', message: '' })
       // 展开行内编辑面板时收起两个浮出面板（「添加模型」表单 / 「可用模型」）：
-      // 编辑面互斥，避免三个面板叠在同一屏里抢注意力（用户 11-16 批注）
+      // 三个编辑面互斥且**双向**——开另两个时也会收掉这里（用户 11-16 批注）
       if (opening) {
         setForm(emptyForm)
         setAvail(emptyAvail())
@@ -2537,8 +2540,11 @@ function ModelListEditor(props: {
         title: '新增目录里没有的自定义模型：填 ID / 上下文 / 最大输出等参数',
         onClick: function () {
           setError(null)
-          // 两个浮出面板互斥：开表单收可用模型面板
+          // 三个编辑面互斥（用户 11-16 批注「互斥是双向的」）：开表单收可用模型面板
+          // 与行内编辑面板（连它的测试结果一起收）
           setAvail(emptyAvail())
+          setEditId(null)
+          setPanelTest({ phase: 'idle', message: '' })
           setForm(function (prev) { return withKeys(prev as unknown as AnyRecord, { open: true }) as typeof prev })
         },
       }, '添加模型'),
