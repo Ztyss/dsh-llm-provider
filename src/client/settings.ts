@@ -1685,6 +1685,109 @@ export function buildEditRows(
 }
 
 /**
+ * 「可用模型」面板（本地版新增）：端点清单 → 可勾选行的纯函数。
+ *
+ * 端点（GET /models）自报的清单是自定义/中转 provider 唯一可靠的模型来源——pi-ai 目录
+ * 里没有它们。这里把「拉回来的清单怎么变成面板行」钉成可离线测试的规则：
+ *   - 参数预填三级：端点元数据 > pi-ai 目录精确匹配/最小档（resolveAddDefaults）> 保守常数；
+ *   - 能力（视觉/推理）只信 pi-ai 目录详情（source==='pi-ai'）——端点清单不报能力，
+ *     自报的（如果有）也不可信（见 resolveAddDefaults 的批注：adapter 自报值出过事故）；
+ *   - 已在编辑器行集的 id 标 exists：面板置灰禁选并注「已在清单」，去重交给禁选。
+ * 重复 id 只留首个（保端点顺序）。
+ */
+export interface AvailableModelRow {
+  id: string
+  /** 已在编辑器行集（目录 / 声明 / 本会话添加都算）——面板里置灰禁选。 */
+  exists: boolean
+  ctx: string
+  max: string
+  vision: boolean
+  reasoning: boolean
+}
+
+export function availableModelRows(
+  models: ReadonlyArray<{ id?: unknown; contextWindow?: unknown; maxTokens?: unknown }>,
+  rows: readonly ModelEditRow[],
+  details: Record<string, ModelDetail> | undefined | null,
+): AvailableModelRow[] {
+  var out: AvailableModelRow[] = []
+  var seen: AnyRecord = {}
+  var rowIds: AnyRecord = {}
+  for (var i = 0; i < rows.length; i += 1) rowIds[rows[i].id] = true
+  for (var m = 0; m < models.length; m += 1) {
+    var model = models[m]
+    if (model === null || typeof model !== 'object') continue
+    var id = typeof model.id === 'string' ? model.id : ''
+    if (id === '' || seen[id] === true) continue
+    seen[id] = true
+    var defaults = resolveAddDefaults(rows, id, details)
+    var ctx = typeof model.contextWindow === 'number' && model.contextWindow > 0 ? String(model.contextWindow) : defaults.ctx
+    var max = typeof model.maxTokens === 'number' && model.maxTokens > 0 ? String(model.maxTokens) : defaults.max
+    var vision = false
+    var reasoning = false
+    if (details !== null && details !== undefined) {
+      for (var dk in details) {
+        var d = details[dk]
+        if (d === null || d === undefined || d.id !== id || d.source !== 'pi-ai') continue
+        if (d.vision === true) vision = true
+        if (d.reasoning === true) reasoning = true
+      }
+    }
+    out.push({ id: id, exists: rowIds[id] === true, ctx: ctx, max: max, vision: vision, reasoning: reasoning })
+  }
+  return out
+}
+
+/** 面板过滤：大小写不敏感的子串匹配（空串 = 全量）。 */
+export function filterAvailableModels(list: readonly AvailableModelRow[], query: string): AvailableModelRow[] {
+  var q = String(query ?? '').trim().toLowerCase()
+  var out: AvailableModelRow[] = []
+  for (var i = 0; i < list.length; i += 1) {
+    if (q === '' || list[i].id.toLowerCase().indexOf(q) !== -1) out.push(list[i])
+  }
+  return out
+}
+
+/**
+ * 「添加所选」：把勾选的面板行追加成编辑器行——与「添加模型」表单（addFromForm）
+ * 严格同构（added/enabled/inPiAi=false/known=false），因此自动获得 ✕ 删除与
+ * 行内编辑面板（改 ID/参数/能力/思考档位）。已在行集的 id 跳过（面板虽已禁选，
+ * 这里再兜一层）。只改草稿，点「保存」才落盘。
+ */
+export function addRowsFromAvailable(rows: readonly ModelEditRow[], picked: readonly AvailableModelRow[]): ModelEditRow[] {
+  var out: ModelEditRow[] = []
+  for (var i = 0; i < rows.length; i += 1) out.push(rows[i])
+  var rowIds: AnyRecord = {}
+  for (var r = 0; r < rows.length; r += 1) rowIds[rows[r].id] = true
+  for (var p = 0; p < picked.length; p += 1) {
+    var item = picked[p]
+    if (item === null || typeof item !== 'object') continue
+    if (typeof item.id !== 'string' || item.id === '' || rowIds[item.id] === true) continue
+    rowIds[item.id] = true
+    out.push({
+      id: item.id,
+      name: item.id,
+      enabled: true,
+      contextWindow: item.ctx,
+      maxTokens: item.max,
+      vision: item.vision === true,
+      video: false,
+      known: false,
+      inPiAi: false,
+      knownContextWindow: undefined,
+      knownMaxTokens: undefined,
+      knownReasoning: false,
+      originVision: item.vision === true,
+      originVideo: false,
+      declared: undefined,
+      added: true,
+      reasoning: item.reasoning === true,
+    })
+  }
+  return out
+}
+
+/**
  * 逐模型清单编辑器（本地版新增，实现 issue #1）。
  *
  * 官方 Models 页被本插件禁用（cordis.patch.yml），而它独有的「逐模型清单编辑」没有替代，

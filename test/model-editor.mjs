@@ -331,9 +331,9 @@ check('端点没给元数据 → pi-ai 目录精确匹配兜底', (() => {
   const r = panelRows.find((x) => x.id === 'deepseek-v4.1-flash')
   return r !== undefined && r.ctx === '409600' && r.max === '65536'
 })())
-check('目录也没有 → 保守常数', (() => {
+check('端点和目录精确匹配都没有 → 目录已知模型最小档兜底', (() => {
   const r = panelRows.find((x) => x.id === 'brand-new-model')
-  return r !== undefined && r.ctx === '131072' && r.max === '8192'
+  return r !== undefined && r.ctx === '1000000' && r.max === '384000'
 })())
 check('已在清单的 id 标 exists', (() => {
   const r = panelRows.find((x) => x.id === 'deepseek-v4-flash')
