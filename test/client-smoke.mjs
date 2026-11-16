@@ -625,7 +625,7 @@ rowsCheck('declared 来源的行能力列没有「声明」徽标（真徽章照
   declaredCapsText.indexOf('声明') === -1 && declaredCapsText.indexOf('推理') !== -1)
 
 const unknownDetail = { id: 'mystery', provider: 'some-gateway' }
-const tipText = (model, account, detail) => (typeof modelTip === 'function' ? flattenText(modelTip(model, account, detail)) : '')
+const tipText = (model, account, detail, details) => (typeof modelTip === 'function' ? flattenText(modelTip(model, account, detail, details)) : '')
 rowsCheck('能力未知时不打任何徽章（未知不能渲染成「无视觉」）',
   typeof capabilityBadges === 'function' && capabilityBadges(unknownDetail).length === 0
     && typeof capabilitiesKnown === 'function' && capabilitiesKnown(unknownDetail) === false)
@@ -661,6 +661,24 @@ rowsCheck('适配器自报（source=adapter）不写「来自路由声明」提�
 rowsCheck('提示文案用「未收录」措辞（用户 11-16 指定）',
   tipText({ id: 'declared-model', name: 'Declared Model' }, { id: 'opencode-go' }, declaredDetail)
     .indexOf('（pi-ai 目录未收录）') !== -1)
+// ---- 判据要按「模型 id 在目录任意家名下」算，不能只看本路由详情的 source（用户 11-16 报）----
+// 现场复刻：zai-coding-cn-st 是跟随 zai-coding-cn 的 custom 路由，模型在 pi-ai 目录里
+// （挂在 zai-coding-cn 名下）。宿主 mergeRouteModels 先为 (zai-coding-cn-st, glm-5.3-flash)
+// 合成**不带 source** 的详情，withDeclaredModels 见键已存在就跳过——只看本条 source 会把
+// 目录里的模型误报成「未收录」。目录里任何一家有同 id 的 pi-ai 条目就算已收录
+// （与 resolveAddDefaults ①「跨供应商同名就是官方参数」同一先例）。
+const zaiFollowDetails = {
+  'zai-coding-cn/glm-5.3-flash': { id: 'glm-5.3-flash', provider: 'zai-coding-cn', source: 'pi-ai', name: 'GLM-5.3-Flash', contextWindow: 1000000, maxTokens: 131072, vision: true, reasoning: true, thinkingLevels: ['low', 'high'] },
+  'zai-coding-cn-st/glm-5.3-flash': { id: 'glm-5.3-flash', provider: 'zai-coding-cn-st', name: 'GLM-5.3-Flash', contextWindow: 1000000, reasoning: true, thinkingLevels: [] },
+}
+rowsCheck('跟随目录的 custom 路由（zai-coding-cn-st）：同 id 在目录另一家名下 → 不写「未收录」',
+  tipText({ id: 'glm-5.3-flash', name: 'GLM-5.3-Flash' }, { id: 'zai-coding-cn-st' },
+    zaiFollowDetails['zai-coding-cn-st/glm-5.3-flash'], zaiFollowDetails)
+    .indexOf('pi-ai 目录未收录') === -1)
+rowsCheck('真目录外（deepseek-local 的 V4-Flash，全目录无此 id）→ 提示照旧显示',
+  tipText({ id: 'DeepSeek-V4-Flash', name: 'DeepSeek-V4-Flash' }, { id: 'deepseek-local' },
+    outsideCatalogDetail, zaiFollowDetails)
+    .indexOf('pi-ai 目录未收录') !== -1)
 
 // ---- 思考档位（用户批注：编辑器/添加表单要能自定义 reasoningEfforts，不用手写 yaml）----
 // 语义照官方 resolver：键 = 7 规范档、值 = 线值（off 可 null = 不发送）、≥1 非 off 档。

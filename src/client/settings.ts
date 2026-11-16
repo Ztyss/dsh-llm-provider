@@ -266,18 +266,34 @@ export function capabilitiesKnown(detail: ModelDetail | undefined): boolean {
 /**
  * 详情卡的「pi-ai 目录未收录」提示该不该出。
  *
- * 判据是**事实**（这条详情的来源不是 pi-ai 目录），不是「哪一层最后写了它」：
+ * 判据是**事实**（这个模型 id 在 pi-ai 目录里有没有），不是「哪一层最后写了这条详情」：
  * 宿主 `/provider/models` 的链路里，`mergeRouteModels` 先为「路由里有、目录里没有」的模型
  * 合成一条详情且**不标 source**（undefined），随后的 `withDeclaredModels` 见键已存在就跳过，
  * 不补 'declared' 标记。只认 `source === 'declared'` 的话：编辑保存后立刻 hover 有提示
  * （客户端乐观更新标了 declared），重进模型服务页提示就消失（用户 11-16 报的真实故障）。
  *
+ * 收录与否按**全目录同 id** 判（用户 11-16 报的 zai-coding-cn-st 误报）：跟随目录的 custom
+ * 路由（如 zai-coding-cn-st 跟 zai-coding-cn 同端点）模型明明在目录里，只是挂在另一家
+ * provider 名下、本路由的合成详情不带 source——目录里任何一家有 `source === 'pi-ai'` 的
+ * 同 id 条目就算已收录（与 resolveAddDefaults ①「跨供应商同名就是官方参数」同一先例）。
+ *
  * 适配器自报（`source === 'adapter'`，合成 provider 那类）不算：能力是适配器口径，
  * 不是用户写的路由声明，不该说「来自这条路由的声明」。
  */
-export function catalogUnlisted(detail: ModelDetail | undefined): boolean {
+export function catalogUnlisted(
+  detail: ModelDetail | undefined,
+  detailsById: Record<string, ModelDetail> | undefined | null,
+): boolean {
   if (detail === undefined || detail === null) return false
-  return detail.source !== 'pi-ai' && detail.source !== 'adapter'
+  if (detail.source === 'pi-ai' || detail.source === 'adapter') return false
+  if (detailsById !== undefined && detailsById !== null) {
+    for (var key in detailsById) {
+      var entry = detailsById[key]
+      if (entry === null || entry === undefined) continue
+      if (entry.id === detail.id && entry.source === 'pi-ai') return false
+    }
+  }
+  return true
 }
 
 /** 详情索引里取一条：键是 provider + id（见 data.ts 的 detailKeyOf，跨 provider 重名靠它分开）。 */
@@ -351,12 +367,17 @@ export function modelRow(model: CatalogModel, account: PlanAccount, detailsById:
     react.createElement('span', { className: 'pv_mCaps' }, caps),
     react.createElement('span', { className: 'pv_mCtx' }, ctx === undefined ? '' : ctx),
     react.createElement('span', { className: 'pv_mMax' }, max === undefined ? '' : max),
-    modelTip(model, account, detail),
+    modelTip(model, account, detail, detailsById),
   )
 }
 
 /** Cherry 式模型详情卡：服务商 / 模型 ID / 能力标记 / 上下文 / 最大输出 / 思维链。 */
-export function modelTip(model: CatalogModel, account: PlanAccount, detail: ModelDetail | undefined) {
+export function modelTip(
+  model: CatalogModel,
+  account: PlanAccount,
+  detail: ModelDetail | undefined,
+  detailsById: Record<string, ModelDetail> | undefined | null,
+) {
   var rows = [react.createElement('div', { className: 'pv_tipTitle', key: 't' }, model.name)]
   rows.push(tipLine(t('prov.provider'), shortName(account), 'p'))
   rows.push(tipLine(t('prov.modelId'), model.id, 'id'))
@@ -384,7 +405,7 @@ export function modelTip(model: CatalogModel, account: PlanAccount, detail: Mode
       : (detail.reasoning === true
         ? (Array.isArray(detail.thinkingLevels) && detail.thinkingLevels.length > 0 ? detail.thinkingLevels.join('、') : t('cap.auto'))
         : t('cap.off')), 'tk'))
-  if (catalogUnlisted(detail)) {
+  if (catalogUnlisted(detail, detailsById)) {
     rows.push(react.createElement('div', { className: 'pv_tipDim', key: 'src' }, t('cap.sourceDeclared')))
   }
   } else {
