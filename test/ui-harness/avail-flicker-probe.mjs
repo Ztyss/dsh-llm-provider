@@ -251,6 +251,86 @@ check('勾选后「添加所选（1）」按钮可点', await cdp.eval(`(functio
   return false
 })()`) === true)
 
+// ---- 三编辑面互斥是**双向**的（用户 11-16 批注）----
+// 路径：勾选态收起 → 添加一个自定义模型（行内编辑面板可开的行）→ 点它的 ID 开编辑面板 →
+// ①点「可用模型」：编辑面板收起、可用面板打开；②再点行 ID 开编辑面板 → 点「添加模型」：
+// 编辑面板收起、表单打开。
+await cdp.eval(`(function(){
+  var btn = null
+  var btns = document.querySelectorAll('.pv_me button')
+  for (var i = 0; i < btns.length; i += 1) if (btns[i].textContent === '收起') btn = btns[i]
+  if (btn !== null) btn.click()
+  return true
+})()`)
+await sleep(150)
+await cdp.eval(`(function(){
+  var btns = document.querySelectorAll('.pv_me button')
+  for (var i = 0; i < btns.length; i += 1) if (btns[i].textContent === '添加模型') { btns[i].click(); return true }
+  throw new Error('没有找到「添加模型」按钮')
+})()`)
+await cdp.waitFor('.pv_meForm input.pv_field')
+await cdp.eval(`(function(){
+  var el = document.querySelector('.pv_meForm input.pv_field')
+  var setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+  setter.call(el, 'glm-9-mutex')
+  el.dispatchEvent(new Event('change', { bubbles: true }))
+})()`)
+await sleep(150)
+await cdp.eval(`(function(){
+  var btns = document.querySelectorAll('.pv_meForm button')
+  for (var i = 0; i < btns.length; i += 1) if (btns[i].textContent === '添加') { btns[i].click(); return true }
+  throw new Error('表单里没有「添加」按钮')
+})()`)
+await sleep(200)
+
+// 点新行的 ID 开行内编辑面板（添加的行 inPiAi=false → ID 可点）
+await cdp.eval(`(function(){
+  var ids = document.querySelectorAll('.pv_meRow .pv_mId')
+  for (var i = 0; i < ids.length; i += 1) {
+    if (ids[i].textContent === 'glm-9-mutex') { ids[i].click(); return true }
+  }
+  throw new Error('没有找到新添加的行 glm-9-mutex')
+})()`)
+await cdp.waitFor('.pv_meEditPanel')
+check('点模型 ID 打开行内编辑面板', true)
+
+// ① 点「可用模型」→ 编辑面板收起、可用面板打开（双向互斥之一）
+await cdp.eval(`(function(){
+  var btns = document.querySelectorAll('.pv_me button')
+  for (var i = 0; i < btns.length; i += 1) if (btns[i].textContent === '可用模型') { btns[i].click(); return true }
+  throw new Error('没有找到「可用模型」按钮')
+})()`)
+await sleep(200)
+check('点「可用模型」→ 行内编辑面板收起', await cdp.eval(`document.querySelector('.pv_meEditPanel') === null`) === true)
+check('点「可用模型」→ 可用面板打开', await cdp.eval(`document.querySelector('.pv_meForm.pv_avail') !== null`) === true)
+
+// ② 再开编辑面板 → 点「添加模型」→ 编辑面板收起、表单打开（双向互斥之二）
+await cdp.eval(`(function(){
+  var btns = document.querySelectorAll('.pv_me button')
+  for (var i = 0; i < btns.length; i += 1) if (btns[i].textContent === '收起') { btns[i].click(); return true }
+  return true
+})()`)
+await sleep(150)
+await cdp.eval(`(function(){
+  var ids = document.querySelectorAll('.pv_meRow .pv_mId')
+  for (var i = 0; i < ids.length; i += 1) {
+    if (ids[i].textContent === 'glm-9-mutex') { ids[i].click(); return true }
+  }
+  throw new Error('没有找到行 glm-9-mutex')
+})()`)
+await cdp.waitFor('.pv_meEditPanel')
+await cdp.eval(`(function(){
+  var btns = document.querySelectorAll('.pv_me button')
+  for (var i = 0; i < btns.length; i += 1) if (btns[i].textContent === '添加模型') { btns[i].click(); return true }
+  throw new Error('没有找到「添加模型」按钮')
+})()`)
+await sleep(200)
+check('点「添加模型」→ 行内编辑面板收起', await cdp.eval(`document.querySelector('.pv_meEditPanel') === null`) === true)
+check('点「添加模型」→ 添加表单打开', await cdp.eval(`(function(){
+  var form = document.querySelector('.pv_meForm')
+  return form !== null && form.className.indexOf('pv_avail') === -1
+})()`) === true)
+
 const shot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true })
 writeFileSync(join(outDir, 'avail-panel.png'), Buffer.from(shot.data, 'base64'))
 console.log(`  截图 → ${join(outDir, 'avail-panel.png')}`)
