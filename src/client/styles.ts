@@ -452,11 +452,14 @@ var css =
   '.pv_meRow .pv_mCaps{width:auto;justify-content:flex-start;flex-wrap:wrap}' +
   // ✕ 列 24px：收窄按钮内边距，保证整个可点区域落在列内不被裁掉
   '.pv_meRow .pv_iconBtn{padding:2px 4px;line-height:16px}' +
-  '.pv_meCap{display:inline-flex;align-items:center;gap:4px;cursor:pointer;user-select:none;' +
-  'font-size:11px;line-height:16px;padding:0 7px;border-radius:999px;white-space:nowrap;' +
+  // 能力 / 思考档位的可点 chips：字号与行高向同面板的表单行（pv_line 13px / pv_meEditPanel 12px）
+  // 靠拢，复选框显式定尺寸——原生 checkbox 各平台渲染 11-13px 不等，放大后与整行文字才协调
+  // （用户 11-16 批注：模型页面里这两个按钮太小，和其它项不协调）
+  '.pv_meCap{display:inline-flex;align-items:center;gap:6px;cursor:pointer;user-select:none;' +
+  'font-size:12px;line-height:20px;padding:0 9px;border-radius:999px;white-space:nowrap;' +
   'color:var(--dsw-alias-label-tertiary)}' +
-  '.pv_meCap input{margin:0;cursor:pointer}' +
-  '.pv_capOff{opacity:.6;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1,rgba(0,0,0,.15))}' +
+  '.pv_meCap input{margin:0;cursor:pointer;width:13px;height:13px}' +
+  '.pv_capOff{opacity:.75;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1,rgba(0,0,0,.18))}' +
   // 「添加模型」表单：仿添加供应商面板（标签在左、输入在右的 pv_row 行 + 底部按钮行）
   // 度量与 pv_pcBody 对齐（13px 行 / 6px 间距 / 18px 内边距），输入随行宽伸展，不再限 320px
   '.pv_meForm{display:flex;flex-direction:column;gap:6px;padding:10px 18px;margin-top:0;margin-bottom:4px;' +
@@ -466,14 +469,20 @@ var css =
   '.pv_meForm .pv_field{min-width:0;flex:1}' +
   '.pv_meFormCaps{display:inline-flex;align-items:center;gap:6px}' +
   // ---- 本地版新增：「可用模型」面板（从端点拉取清单，勾选快速添加）----
-  // 过滤框 + 全选 + 已选计数一行；列表与 pv_meList 同款滚动容器，稍矮（面板里还有状态行）
+  // 过滤框独占一行；表头（含全选）与数据行共用同一套网格列宽，逐列严格对齐——
+  // 与 pv_meHeadRow/pv_meRow 同一套做法，改列宽必须两处一起改
   '.pv_availBar{display:flex;align-items:center;gap:8px}' +
   '.pv_availBar .pv_field{min-width:0;flex:1}' +
-  '.pv_availPickCount{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);white-space:nowrap}' +
   '.pv_availList{display:flex;flex-direction:column;max-height:264px;overflow:auto;' +
   'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:10px}' +
+  '.pv_availHead{display:grid;grid-template-columns:12px minmax(90px,1fr) 104px 56px 56px 64px;' +
+  'gap:6px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;' +
+  'color:var(--dsw-alias-label-tertiary);position:sticky;top:0;z-index:1;' +
+  'background:var(--dsw-alias-bg-layer-1,#fff);' +
+  'border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}' +
+  '.pv_availHead > span:first-child{display:flex;align-items:center;height:18px}' +
   // 行网格：勾选 | 模型 ID（伸展省略号）| 能力徽标 | 上下文 | 最大输出 | 标记
-  '.pv_availRow{display:grid;grid-template-columns:12px minmax(120px,1fr) auto 56px 56px 64px;' +
+  '.pv_availRow{display:grid;grid-template-columns:12px minmax(90px,1fr) 104px 56px 56px 64px;' +
   'gap:6px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;' +
   'border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.06))}' +
   '.pv_availRow:last-child{border-bottom:0}' +
