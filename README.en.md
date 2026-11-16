@@ -77,6 +77,16 @@ DSH-bundled copy — new pi-ai versions and model support arrive without waiting
   through the dedicated route `POST /provider/set-models` (server-side validation, native routes
   rejected), with the declared entry as the base — hand-written `reasoningEfforts` / `compat`
   survive; "Follow catalog (restore)" deletes the key and returns to the full catalog.
+- **Available models, straight from the endpoint**: the "Available models" button next to
+  "Add model" fetches the endpoint's model list (`POST /provider/available-models`; GET /models
+  for openai-style, GET /v1/models for anthropic; credentials never leave the host, and the list
+  is fetched even without one — local gateways often serve /models unauthenticated). Filter by id,
+  select-all, "Add selected" into the draft: parameters prefill from endpoint metadata
+  (context_length / max_completion_tokens field families, positive integers only, smallest of a
+  family) > pi-ai catalog exact match / smallest tier > conservative constants; capabilities trust
+  only the pi-ai catalog. Entries already in the list are greyed out as "already listed"; added
+  rows behave exactly like the add-model form's (✕ delete, inline parameter editing), and saving
+  is the same "Save" button.
 - **pi-ai bridge card, now a toggle**: the "Enable latest pi-ai" switch plus a status line
   (current version + source / already latest / downloaded, restart pending / failed verification
   with the reason, persistent); after flipping ON — and during each startup check — it polls

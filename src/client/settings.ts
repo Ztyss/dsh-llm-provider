@@ -2478,6 +2478,7 @@ function ModelListEditor(props: {
       react.createElement('button', {
         type: 'button',
         className: 'pv_action',
+        style: { marginLeft: '0' },
         disabled: busy,
         title: '从端点拉取可用模型清单（GET /models，凭据不出宿主），勾选快速添加到草稿',
         onClick: function () {
