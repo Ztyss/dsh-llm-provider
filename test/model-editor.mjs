@@ -42,8 +42,11 @@ new Function('window', 'document', 'fetch', 'setInterval', source)(
 const moduleExports = captured.factory((name) => (name === 'react' ? reactStub : {}))
 const {
   addModelRow,
+  addRowsFromAvailable,
+  availableModelRows,
   buildEditRows,
   buildModelEditor,
+  filterAvailableModels,
   isDefaultCatalogEquivalent,
   modelListPayload,
   patchModelRow,
@@ -51,7 +54,7 @@ const {
   resolveAddDefaults,
   validateModelRows,
 } = moduleExports
-for (const [name, fn] of Object.entries({ addModelRow, buildEditRows, buildModelEditor, isDefaultCatalogEquivalent, modelListPayload, patchModelRow, payloadFromRows, resolveAddDefaults, validateModelRows })) {
+for (const [name, fn] of Object.entries({ addModelRow, addRowsFromAvailable, availableModelRows, buildEditRows, buildModelEditor, filterAvailableModels, isDefaultCatalogEquivalent, modelListPayload, patchModelRow, payloadFromRows, resolveAddDefaults, validateModelRows })) {
   if (typeof fn !== 'function') {
     console.error(`lib/client.js 没有导出 ${name}（先 npm run build，并确认 src/client/index.ts 的导出名单）`)
     process.exit(2)
@@ -298,6 +301,78 @@ check('草稿优先：effortsDraft 覆盖预填（旧行为不变）', (() => {
   const p = payloadFromRows(rows3, { details: undefined, providerId: 'stepfun' }, () => {})
   const e = p !== undefined ? p[0] : undefined
   return e !== undefined && e.reasoningEfforts !== undefined && e.reasoningEfforts.minimal === 'minimal'
+})())
+// ---- 9. 可用模型面板：端点清单 → 可勾选行（预填三级 + 已在清单标记 + 能力只信目录）----
+const availDetails = {
+  'glm-5': { id: 'glm-5', provider: 'zai', name: 'GLM-5', contextWindow: 128000, maxTokens: 8192, reasoning: true, source: 'pi-ai' },
+  'deepseek-v4.1-flash': { id: 'deepseek-v4.1-flash', provider: 'opencode-go', contextWindow: 409600, maxTokens: 65536, source: 'pi-ai' },
+  'deepseek-v4-flash': { id: 'deepseek-v4-flash', provider: 'deepseek', name: 'DeepSeek V4 Flash', contextWindow: 1000000, maxTokens: 384000, source: 'pi-ai' },
+  'vision-exp': { id: 'vision-exp', provider: 'zai', name: 'Vision Exp', vision: true, source: 'pi-ai' },
+}
+const availRows = buildEditRows(
+  { id: 'deepseek-local', deletable: true, models: [{ id: 'deepseek-v4-flash', contextWindow: 1000000, maxTokens: 32768 }] },
+  catalog,
+  details,
+)
+const availList = [
+  { id: 'glm-5', contextWindow: 200000, maxTokens: 128000 }, // 端点元数据优先
+  { id: 'deepseek-v4.1-flash' },                              // 端点没给 → resolveAddDefaults 兜底
+  { id: 'brand-new-model' },                                  // 什么都不知道 → 保守常数
+  { id: 'deepseek-v4-flash' },                                // 已在编辑器行集 → exists
+  { id: 'vision-exp' },                                       // 目录 vision → 能力勾上
+  { id: 'glm-5', contextWindow: 999 },                        // 重复 id 去重（首个胜出）
+]
+const panelRows = availableModelRows(availList, availRows, availDetails)
+check('端点元数据优先进预填', (() => {
+  const r = panelRows.find((x) => x.id === 'glm-5')
+  return r !== undefined && r.ctx === '200000' && r.max === '128000'
+})())
+check('端点没给元数据 → pi-ai 目录精确匹配兜底', (() => {
+  const r = panelRows.find((x) => x.id === 'deepseek-v4.1-flash')
+  return r !== undefined && r.ctx === '409600' && r.max === '65536'
+})())
+check('端点和目录精确匹配都没有 → 目录已知模型最小档兜底', (() => {
+  const r = panelRows.find((x) => x.id === 'brand-new-model')
+  return r !== undefined && r.ctx === '1000000' && r.max === '384000'
+})())
+check('已在清单的 id 标 exists', (() => {
+  const r = panelRows.find((x) => x.id === 'deepseek-v4-flash')
+  return r !== undefined && r.exists === true
+})())
+check('能力只信 pi-ai 目录：reasoning / vision 如实带出', (() => {
+  const glm = panelRows.find((x) => x.id === 'glm-5')
+  const vis = panelRows.find((x) => x.id === 'vision-exp')
+  const fresh = panelRows.find((x) => x.id === 'brand-new-model')
+  return glm !== undefined && glm.reasoning === true && glm.vision === false
+    && vis !== undefined && vis.vision === true
+    && fresh !== undefined && fresh.vision === false && fresh.reasoning === false
+})())
+check('重复 id 去重且保持端点顺序', panelRows.length === 5 && panelRows[0].id === 'glm-5' && panelRows[4].id === 'vision-exp')
+check('过滤：子串、大小写不敏感、空串全量', (() => {
+  return filterAvailableModels(panelRows, 'GLM').length === 1
+    && filterAvailableModels(panelRows, 'deepseek-v4.1').length === 1
+    && filterAvailableModels(panelRows, '').length === 5
+})())
+const beforeAdd = availRows.map((r) => ({ ...r }))
+const addedRows = addRowsFromAvailable(availRows, [
+  panelRows.find((x) => x.id === 'glm-5'),
+  panelRows.find((x) => x.id === 'brand-new-model'),
+  panelRows.find((x) => x.id === 'deepseek-v4-flash'), // 已存在 → 跳过
+])
+check('添加所选：新行与「添加模型」表单同构（added/enabled/inPiAi=false）', (() => {
+  const glm = addedRows.find((r) => r.id === 'glm-5')
+  return glm !== undefined && glm.added === true && glm.enabled === true && glm.inPiAi === false
+    && glm.known === false && glm.contextWindow === '200000' && glm.maxTokens === '128000'
+    && glm.reasoning === true && glm.vision === false && glm.video === false
+    && glm.name === 'glm-5' && glm.declared === undefined
+})())
+check('添加所选：已存在 id 跳过，不重复添加', (() => {
+  return addedRows.filter((r) => r.id === 'deepseek-v4-flash').length === availRows.filter((r) => r.id === 'deepseek-v4-flash').length
+})())
+check('添加所选：新行可过清单校验（validateModelRows 无错）', validateModelRows(addedRows.map((r) => ({ ...r, served: true }))) === undefined)
+check('纯函数：不改入参', (() => {
+  const same = beforeAdd.length === availRows.length && beforeAdd.every((r, i) => JSON.stringify(r) === JSON.stringify(availRows[i]))
+  return same
 })())
 console.log(failures === 0 ? '\n逐模型清单编辑测试全部通过' : `\n${failures} 个失败`)
 process.exit(failures === 0 ? 0 : 1)

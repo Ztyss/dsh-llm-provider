@@ -465,6 +465,24 @@ var css =
   '.pv_meFormTitle{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}' +
   '.pv_meForm .pv_field{min-width:0;flex:1}' +
   '.pv_meFormCaps{display:inline-flex;align-items:center;gap:6px}' +
+  // ---- 本地版新增：「可用模型」面板（从端点拉取清单，勾选快速添加）----
+  // 过滤框 + 全选 + 已选计数一行；列表与 pv_meList 同款滚动容器，稍矮（面板里还有状态行）
+  '.pv_availBar{display:flex;align-items:center;gap:8px}' +
+  '.pv_availBar .pv_field{min-width:0;flex:1}' +
+  '.pv_availPickCount{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);white-space:nowrap}' +
+  '.pv_availList{display:flex;flex-direction:column;max-height:264px;overflow:auto;' +
+  'border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:10px}' +
+  // 行网格：勾选 | 模型 ID（伸展省略号）| 能力徽标 | 上下文 | 最大输出 | 标记
+  '.pv_availRow{display:grid;grid-template-columns:12px minmax(120px,1fr) auto 56px 56px 64px;' +
+  'gap:6px;align-items:center;padding:5px 8px;font-size:12px;line-height:18px;' +
+  'border-bottom:.5px solid var(--dsw-alias-border-l1,rgba(0,0,0,.06))}' +
+  '.pv_availRow:last-child{border-bottom:0}' +
+  '.pv_availRowOff{opacity:.45}' +
+  '.pv_availId{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}' +
+  '.pv_availCaps{display:flex;justify-content:flex-start;flex-wrap:wrap;gap:4px}' +
+  '.pv_availNum{text-align:left;color:var(--dsw-alias-label-tertiary)}' +
+  '.pv_availTag{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);text-align:right}' +
+  '.pv_availStatus{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}' +
   // ---- 本地版新增：思考档位池（与「能力」行同构，chips 一行多个自动换行，用户批注）----
   '.pv_meEffPool{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0;flex:1}' +
   '.pv_meCap.pv_meEffOn{border-color:var(--dsw-alias-border-l1,rgba(0,0,0,.24));' +

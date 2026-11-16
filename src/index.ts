@@ -20,6 +20,7 @@
  * 显式操作时（添加/删除 provider、拨 pi-ai 开关）。
  */
 import Schema from '@deepseek-ai/schemastery'
+import { fetchAvailableModels } from './available-models.js'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { activePiAiRoot, loadBridge, piAiNeedsRestart, readPiAiPreference, readVendorStatus, removeTree, safeInstalledVersions, safeRootDir, setPiAiPreference, vendorDir } from './bridge.js'
@@ -861,32 +862,41 @@ export function apply(ctx: PluginContext, config: unknown): void {
     'dsh-llm-provider: /provider/test-model route',
   )
 
-  /** 模型清单探测（清单校验回退用）：GET /models，取回 id 列表；拿不到返回 undefined。 */
+  /** 模型清单探测（清单校验回退用）：委托 {@link fetchAvailableModels}（解析规则钉在那边），只要 id 列表；拿不到返回 undefined。 */
   async function probeModelList(base: string, isAnthropic: boolean, key: string): Promise<{ ids: string[] } | undefined> {
-    const listUrl = isAnthropic ? base + '/v1/models' : base + '/models'
-    const listHeaders: Record<string, string> = isAnthropic
-      ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
-      : { Authorization: 'Bearer ' + key }
-    try {
-      const response = await fetch(listUrl, { headers: listHeaders, signal: AbortSignal.timeout(15_000) })
-      if (!response.ok) return undefined
-      const body = asRecord(await response.json())
-      const list = Array.isArray(body['data'])
-        ? body['data']
-        : Array.isArray(body['models'])
-          ? body['models']
-          : undefined
-      const ids: string[] = []
-      for (const item of Array.isArray(list) ? list : []) {
-        const record = asRecord(item)
-        const value = typeof item === 'string' ? item : readString(record['id']) ?? readString(record['name'])
-        if (value !== undefined && value !== '') ids.push(value)
-      }
-      return { ids }
-    } catch {
-      return undefined
-    }
+    const result = await fetchAvailableModels({ base, isAnthropic }, key)
+    if (!result.ok) return undefined
+    return { ids: result.models.map((model) => model.id) }
   }
+
+  // 「可用模型」面板的数据源：向端点拉模型清单（GET /models，anthropic 协议 /v1/models）。
+  // 与 test-model 的探测共用 fetchAvailableModels，但主取「端点能供什么」，元数据
+  // （窗口/输出，网关自报才给）一并解析带回。凭据没配置也拉（本地网关的 /models 常常
+  // 不鉴权），网关要 key 会回 401，如实回报。key 不出宿主。
+  ctx.effect(
+    () => webServer.register({
+      kind: 'exact',
+      path: '/provider/available-models',
+      handler: writeRoute(async (route, _parsed, res) => {
+        const endpoint = resolveTestEndpoint(route)
+        if (endpoint === undefined) {
+          json(res, 200, { ok: false, error: '这条路由没有可请求的地址：未写 baseURL，目录里也没有它的官方默认端点' })
+          return
+        }
+        const credential = await resolveKey(route.apiKeyEnv)
+        const key = credential.configured && typeof credential.key === 'string' && credential.key !== '' ? credential.key : undefined
+        const result = await fetchAvailableModels(endpoint, key)
+        if (!result.ok) {
+          logger?.info?.(`available-models ${route.id}：${result.error}`)
+          json(res, 200, { ok: false, error: result.error })
+          return
+        }
+        logger?.info?.(`available-models ${route.id}：${result.models.length} 个模型`)
+        json(res, 200, { ok: true, models: result.models })
+      }),
+    }),
+    'dsh-llm-provider: /provider/available-models route',
+  )
 
   // 可添加的供应商预设（Provider 标签页「+ 添加」的候选清单，含已配置标记）
   ctx.effect(
@@ -1010,7 +1020,7 @@ export function apply(ctx: PluginContext, config: unknown): void {
     }
   }
 
-  logger?.info?.('dsh-llm-provider active: GET /plan/status, GET /provider/status, POST /provider/pi-ai')
+  logger?.info?.('dsh-llm-provider active: GET /plan/status, GET /provider/status, POST /provider/pi-ai, POST /provider/available-models')
 }
 
 /**

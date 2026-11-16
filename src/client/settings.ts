@@ -1297,7 +1297,7 @@ function modelEditRow(
  * 导出供离线测试钉住（精确匹配 / 最小档 / 常数回退 / 非法值忽略）。
  */
 export function resolveAddDefaults(
-  rows: ModelEditRow[],
+  rows: readonly ModelEditRow[],
   modelId: string,
   details: Record<string, ModelDetail> | undefined | null,
 ): { ctx: string; max: string } {
@@ -1685,6 +1685,109 @@ export function buildEditRows(
 }
 
 /**
+ * 「可用模型」面板（本地版新增）：端点清单 → 可勾选行的纯函数。
+ *
+ * 端点（GET /models）自报的清单是自定义/中转 provider 唯一可靠的模型来源——pi-ai 目录
+ * 里没有它们。这里把「拉回来的清单怎么变成面板行」钉成可离线测试的规则：
+ *   - 参数预填三级：端点元数据 > pi-ai 目录精确匹配/最小档（resolveAddDefaults）> 保守常数；
+ *   - 能力（视觉/推理）只信 pi-ai 目录详情（source==='pi-ai'）——端点清单不报能力，
+ *     自报的（如果有）也不可信（见 resolveAddDefaults 的批注：adapter 自报值出过事故）；
+ *   - 已在编辑器行集的 id 标 exists：面板置灰禁选并注「已在清单」，去重交给禁选。
+ * 重复 id 只留首个（保端点顺序）。
+ */
+export interface AvailableModelRow {
+  id: string
+  /** 已在编辑器行集（目录 / 声明 / 本会话添加都算）——面板里置灰禁选。 */
+  exists: boolean
+  ctx: string
+  max: string
+  vision: boolean
+  reasoning: boolean
+}
+
+export function availableModelRows(
+  models: ReadonlyArray<{ id?: unknown; contextWindow?: unknown; maxTokens?: unknown }>,
+  rows: readonly ModelEditRow[],
+  details: Record<string, ModelDetail> | undefined | null,
+): AvailableModelRow[] {
+  var out: AvailableModelRow[] = []
+  var seen: AnyRecord = {}
+  var rowIds: AnyRecord = {}
+  for (var i = 0; i < rows.length; i += 1) rowIds[rows[i].id] = true
+  for (var m = 0; m < models.length; m += 1) {
+    var model = models[m]
+    if (model === null || typeof model !== 'object') continue
+    var id = typeof model.id === 'string' ? model.id : ''
+    if (id === '' || seen[id] === true) continue
+    seen[id] = true
+    var defaults = resolveAddDefaults(rows, id, details)
+    var ctx = typeof model.contextWindow === 'number' && model.contextWindow > 0 ? String(model.contextWindow) : defaults.ctx
+    var max = typeof model.maxTokens === 'number' && model.maxTokens > 0 ? String(model.maxTokens) : defaults.max
+    var vision = false
+    var reasoning = false
+    if (details !== null && details !== undefined) {
+      for (var dk in details) {
+        var d = details[dk]
+        if (d === null || d === undefined || d.id !== id || d.source !== 'pi-ai') continue
+        if (d.vision === true) vision = true
+        if (d.reasoning === true) reasoning = true
+      }
+    }
+    out.push({ id: id, exists: rowIds[id] === true, ctx: ctx, max: max, vision: vision, reasoning: reasoning })
+  }
+  return out
+}
+
+/** 面板过滤：大小写不敏感的子串匹配（空串 = 全量）。 */
+export function filterAvailableModels(list: readonly AvailableModelRow[], query: string): AvailableModelRow[] {
+  var q = String(query ?? '').trim().toLowerCase()
+  var out: AvailableModelRow[] = []
+  for (var i = 0; i < list.length; i += 1) {
+    if (q === '' || list[i].id.toLowerCase().indexOf(q) !== -1) out.push(list[i])
+  }
+  return out
+}
+
+/**
+ * 「添加所选」：把勾选的面板行追加成编辑器行——与「添加模型」表单（addFromForm）
+ * 严格同构（added/enabled/inPiAi=false/known=false），因此自动获得 ✕ 删除与
+ * 行内编辑面板（改 ID/参数/能力/思考档位）。已在行集的 id 跳过（面板虽已禁选，
+ * 这里再兜一层）。只改草稿，点「保存」才落盘。
+ */
+export function addRowsFromAvailable(rows: readonly ModelEditRow[], picked: readonly AvailableModelRow[]): ModelEditRow[] {
+  var out: ModelEditRow[] = []
+  for (var i = 0; i < rows.length; i += 1) out.push(rows[i])
+  var rowIds: AnyRecord = {}
+  for (var r = 0; r < rows.length; r += 1) rowIds[rows[r].id] = true
+  for (var p = 0; p < picked.length; p += 1) {
+    var item = picked[p]
+    if (item === null || typeof item !== 'object') continue
+    if (typeof item.id !== 'string' || item.id === '' || rowIds[item.id] === true) continue
+    rowIds[item.id] = true
+    out.push({
+      id: item.id,
+      name: item.id,
+      enabled: true,
+      contextWindow: item.ctx,
+      maxTokens: item.max,
+      vision: item.vision === true,
+      video: false,
+      known: false,
+      inPiAi: false,
+      knownContextWindow: undefined,
+      knownMaxTokens: undefined,
+      knownReasoning: false,
+      originVision: item.vision === true,
+      originVideo: false,
+      declared: undefined,
+      added: true,
+      reasoning: item.reasoning === true,
+    })
+  }
+  return out
+}
+
+/**
  * 逐模型清单编辑器（本地版新增，实现 issue #1）。
  *
  * 官方 Models 页被本插件禁用（cordis.patch.yml），而它独有的「逐模型清单编辑」没有替代，
@@ -1745,6 +1848,13 @@ function ModelListEditor(props: {
   var form = formState[0] as { open: boolean; id: string; name: string; ctx: string; max: string; vision: boolean; video: boolean; reasoning: boolean }
   var setForm = formState[1] as (updater: (prev: typeof form) => typeof form) => void
   var emptyForm = function () { return { open: false, id: '', name: '', ctx: '', max: '', vision: false, video: false, reasoning: false } }
+  // 「可用模型」面板：phase idle=收起 run=拉取中 ok=拿到清单 fail=失败。
+  // 每次打开都实时拉（清单很小、端点侧会变）；picked 按模型 id 记勾选，query 是过滤框。
+  type AvailPanelState = { open: boolean; phase: string; error: string; models: Array<{ id: string; contextWindow?: number; maxTokens?: number }>; picked: AnyRecord; query: string }
+  var availState = react.useState({ open: false, phase: 'idle', error: '', models: [], picked: {}, query: '' })
+  var avail = availState[0] as AvailPanelState
+  var setAvail = availState[1] as (next: AvailPanelState | ((prev: AvailPanelState) => AvailPanelState)) => void
+  var emptyAvail = function (): AvailPanelState { return { open: false, phase: 'idle', error: '', models: [], picked: {}, query: '' } }
 
   /**
    * 表单校验失败：写进表单自己的消息槽（原位替换之前的测试结果，同一行同一样式），
@@ -1854,6 +1964,43 @@ function ModelListEditor(props: {
         set({ phase: 'fail', message: '✗ ' + String(cause && cause.message ? cause.message : cause) })
         scrollTestResultIntoView()
       })
+  }
+
+  /**
+   * 「可用模型」面板的动作：打开即拉（POST /provider/available-models，key 不出宿主）。
+   * 凭据没配置也拉——本地网关的 /models 常常不鉴权；网关要 key 会回 401，如实展示。
+   */
+  function openAvail() {
+    setError(null)
+    // 两个浮出面板互斥（与「添加模型」表单）：打开一个关掉另一个
+    setForm(emptyForm)
+    setTestModel({ phase: 'idle', message: '' })
+    setAvail({ open: true, phase: 'run', error: '', models: [], picked: {}, query: '' })
+    postJson('/provider/available-models', { providerId: account.id })
+      .then(function (res: AnyRecord) {
+        if (res === null || res === undefined || res.ok !== true) {
+          setAvail(function (prev) { return withKeys(prev as unknown as AnyRecord, { phase: 'fail', error: String((res && res.error) || '未知错误') }) as typeof prev })
+          return
+        }
+        setAvail(function (prev) { return withKeys(prev as unknown as AnyRecord, { phase: 'ok', models: Array.isArray(res['models']) ? res['models'] : [], picked: {} }) as typeof prev })
+      })
+      .catch(function (cause: unknown) {
+        setAvail(function (prev) { return withKeys(prev as unknown as AnyRecord, { phase: 'fail', error: String(cause && (cause as AnyRecord).message ? (cause as AnyRecord).message : cause) }) as typeof prev })
+      })
+  }
+
+  /** 「添加所选」：勾选的面板行 → 草稿行（与「添加模型」表单同构，仍需点「保存」落盘）。 */
+  function addPicked() {
+    var panelRows_ = availableModelRows(avail.models, rows, props.details)
+    var pickedRows: AvailableModelRow[] = []
+    for (var i = 0; i < panelRows_.length; i += 1) {
+      if (panelRows_[i].exists === true || avail.picked[panelRows_[i].id] !== true) continue
+      pickedRows.push(panelRows_[i])
+    }
+    if (pickedRows.length === 0) return
+    setDraft(addRowsFromAvailable(rows, pickedRows))
+    setError(null)
+    setAvail(emptyAvail())
   }
 
   /**
@@ -2190,6 +2337,119 @@ function ModelListEditor(props: {
       : react.createElement('div', { className: 'pv_line pv_meTestLine' + (testModel.phase === 'fail' ? ' plan_badText' : ''), key: 'f-test' }, testModel.message),
   )
 
+  // 「可用模型」面板：拉取 → 过滤 → 勾选 → 添加所选。行集每次渲染都从 avail.models 与
+  // 当前草稿重算（exists 跟着草稿走：刚添加的 id 立即变「已在清单」）。
+  // 行渲染提成函数：onChange 闭包捕获**参数**（每次调用独立绑定），不能捕获循环里的
+  // var（所有行会共享最后一个 item——本文件历史代码就靠函数参数隔离每行状态）。
+  function availRowNode(item: AvailableModelRow): unknown {
+    var off = item.exists === true
+    return react.createElement(
+      'div',
+      { className: 'pv_availRow' + (off ? ' pv_availRowOff' : ''), key: item.id },
+      react.createElement('input', {
+        type: 'checkbox',
+        className: 'pv_meCheck',
+        checked: off ? false : avail.picked[item.id] === true,
+        disabled: busy || off,
+        title: off ? '这条已经在清单里' : '勾选后点「添加所选」加入草稿',
+        onChange: function (event: FieldEvent) {
+          var next = event.target.checked === true
+          setAvail(function (prev) { return withKeys(prev as unknown as AnyRecord, { picked: withKeys(prev.picked as AnyRecord, { [item.id]: next }) }) as typeof prev })
+        },
+      }),
+      react.createElement('span', { className: 'pv_availId', title: item.id }, item.id),
+      react.createElement('span', { className: 'pv_availCaps' }, [
+        item.vision === true ? react.createElement('span', { key: 'v', className: 'pv_capMini pv_capVision', title: 'pi-ai 目录：支持图片输入' }, '视觉') : null,
+        item.reasoning === true ? react.createElement('span', { key: 'r', className: 'pv_capMini pv_capReason', title: 'pi-ai 目录：支持思维链' }, '推理') : null,
+      ]),
+      react.createElement('span', { className: 'pv_availNum', title: '上下文窗口（预填值，添加后可改）' }, formatContext(parsePositiveInt(item.ctx)) ?? item.ctx),
+      react.createElement('span', { className: 'pv_availNum', title: '最大输出（预填值，添加后可改）' }, formatContext(parsePositiveInt(item.max)) ?? item.max),
+      react.createElement(
+        'span',
+        { className: 'pv_availTag' },
+        off ? '已在清单' : '',
+      ),
+    )
+  }
+  var availEl = avail.open !== true ? null : (function () {
+    var panelRows_ = availableModelRows(avail.models, rows, props.details)
+    var filtered = filterAvailableModels(panelRows_, avail.query)
+    // 全选只作用于「过滤后且不在清单里」的行；已勾选计数同口径
+    var pickable = 0
+    var pickedCount = 0
+    var existsCount = 0
+    for (var c = 0; c < panelRows_.length; c += 1) if (panelRows_[c].exists === true) existsCount += 1
+    for (var i = 0; i < filtered.length; i += 1) {
+      if (filtered[i].exists === true) continue
+      pickable += 1
+      if (avail.picked[filtered[i].id] === true) pickedCount += 1
+    }
+    var allPicked = pickable > 0 && pickedCount === pickable
+    var listNodes: unknown[] = []
+    for (var r = 0; r < filtered.length; r += 1) listNodes.push(availRowNode(filtered[r]))
+    var statusLine: unknown = null
+    if (avail.phase === 'run') statusLine = react.createElement('div', { className: 'pv_availStatus', key: 'st-run' }, '正在从端点拉取…')
+    else if (avail.phase === 'fail') statusLine = react.createElement('div', { className: 'pv_availStatus plan_badText', key: 'st-fail' }, '✗ ' + avail.error)
+    else if (avail.phase === 'ok' && panelRows_.length === 0) statusLine = react.createElement('div', { className: 'pv_availStatus', key: 'st-empty' }, '端点没有返回任何模型')
+    else if (avail.phase === 'ok') statusLine = react.createElement('div', { className: 'pv_availStatus', key: 'st-ok' }, '端点共 ' + String(panelRows_.length) + ' 个模型，' + String(existsCount) + ' 个已在清单')
+    return react.createElement(
+      'div',
+      { className: 'pv_meForm pv_avail' },
+      react.createElement('div', { className: 'pv_meFormTitle' }, '可用模型（从端点拉取，勾选加入草稿，点「保存」落盘）'),
+      react.createElement('div', { className: 'pv_availBar' },
+        react.createElement('input', {
+          className: 'pv_field',
+          type: 'text',
+          placeholder: '按模型 ID 过滤',
+          value: avail.query,
+          onChange: function (event: FieldEvent) {
+            var next = event.target.value
+            setAvail(function (prev) { return withKeys(prev as unknown as AnyRecord, { query: next }) as typeof prev })
+          },
+        }),
+        react.createElement('input', {
+          type: 'checkbox',
+          className: 'pv_meCheck',
+          checked: allPicked,
+          disabled: busy || pickable === 0,
+          title: allPicked ? '全不选（过滤后可添加的）' : '全选（过滤后可添加的）',
+          onChange: function () {
+            setAvail(function (prev) {
+              var nextPicked = withKeys(prev.picked as AnyRecord, {})
+              for (var k = 0; k < filtered.length; k += 1) {
+                if (filtered[k].exists === true) continue
+                nextPicked = withKeys(nextPicked, { [filtered[k].id]: allPicked !== true })
+              }
+              return withKeys(prev as unknown as AnyRecord, { picked: nextPicked }) as typeof prev
+            })
+          },
+        }),
+        react.createElement('span', { className: 'pv_availPickCount' }, '已选 ' + String(pickedCount)),
+      ),
+      avail.phase === 'ok'
+        ? react.createElement('div', { className: 'pv_availList' }, listNodes.length > 0 ? listNodes : react.createElement('div', { className: 'pv_availStatus', key: 'st-none' }, '没有匹配的模型'))
+        : null,
+      statusLine,
+      react.createElement('div', { className: 'pv_meActs' },
+        react.createElement('button', {
+          type: 'button',
+          className: 'pv_action',
+          style: { marginLeft: '0' },
+          disabled: busy || pickedCount === 0,
+          title: '把勾选的模型加入草稿（与「添加模型」同款行，可再编辑参数 / ✕ 删除）',
+          onClick: addPicked,
+        }, '添加所选（' + String(pickedCount) + '）'),
+        react.createElement('button', {
+          type: 'button',
+          className: 'pv_action',
+          style: { marginLeft: 'auto' },
+          disabled: busy,
+          onClick: function () { setAvail(emptyAvail()) },
+        }, '收起'),
+      ),
+    )
+  })()
+
   return react.createElement(
     'div',
     { className: 'pv_me' },
@@ -2210,9 +2470,22 @@ function ModelListEditor(props: {
         title: '新增目录里没有的自定义模型：填 ID / 上下文 / 最大输出等参数',
         onClick: function () {
           setError(null)
+          // 两个浮出面板互斥：开表单收可用模型面板
+          setAvail(emptyAvail())
           setForm(function (prev) { return withKeys(prev as unknown as AnyRecord, { open: true }) as typeof prev })
         },
       }, '添加模型'),
+      react.createElement('button', {
+        type: 'button',
+        className: 'pv_action',
+        style: { marginLeft: '0' },
+        disabled: busy,
+        title: '从端点拉取可用模型清单（GET /models，凭据不出宿主），勾选快速添加到草稿',
+        onClick: function () {
+          if (avail.open === true) { setAvail(emptyAvail()); return }
+          openAvail()
+        },
+      }, '可用模型'),
       react.createElement('button', {
         type: 'button',
         className: 'pv_action',
@@ -2228,6 +2501,7 @@ function ModelListEditor(props: {
       }, busy ? '保存中…' : '保存'),
     ),
     formEl,
+    availEl,
     error === null ? null : react.createElement('div', { className: 'plan_note plan_badText' }, error),
   )
 }
