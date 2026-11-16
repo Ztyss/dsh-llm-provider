@@ -53,7 +53,7 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     // 合并版：能力来自路由声明的标记（模型行小徽标 + 详情卡说明行）
     'cap.declared': '声明',
     'cap.declaredTip': 'pi-ai 目录里没有这个模型，能力按你在路由里声明的 input 显示',
-    'cap.sourceDeclared': '能力来自这条路由的声明（pi-ai 目录没收录这个模型 ID）',
+    'cap.sourceDeclared': '能力来自这条路由的声明（pi-ai 目录未收录）',
     'cap.off': '关闭',
     'cap.noMeta': '该模型没有本地元数据',
 
@@ -268,7 +268,7 @@ export var LOCAL_DICT: Record<'zh' | 'en', Record<string, string>> = {
     // merged: capability-from-route-declaration markers (mini badge + detail row)
     'cap.declared': 'Declared',
     'cap.declaredTip': 'Not in the pi-ai catalog; capabilities shown from your route input declaration',
-    'cap.sourceDeclared': 'Capabilities from this route declaration (id not in the pi-ai catalog)',
+    'cap.sourceDeclared': 'Capabilities from this route declaration (not in the pi-ai catalog)',
     'cap.off': 'Off',
     'cap.noMeta': 'No local metadata for this model',
 

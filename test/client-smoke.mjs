@@ -642,6 +642,26 @@ rowsCheck('明确不支持（reasoning:false）照旧写「关闭」，不写成
 rowsCheck('完全没详情时照旧说明没有本地元数据',
   tipText({ id: 'mystery', name: 'Mystery' }, { id: 'some-gateway' }, undefined).indexOf('该模型没有本地元数据') !== -1)
 
+// ---- 「pi-ai 目录未收录」提示要跟事实走，不能跟链路标记走（用户 11-16 报的真实故障）----
+// 现场复刻：deepseek-local 的 DeepSeek-V4-Flash 不在 pi-ai 目录里。编辑保存后客户端乐观更新把
+// 详情 source 标成 'declared' → 提示在；重进模型服务页，宿主 /provider/models 的 mergeRouteModels
+// 会先为它合成一条详情且**不标 source**（undefined），withDeclaredModels 见 key 已存在就跳过 →
+// source 既不是 'declared'，于是提示消失。判据必须是「目录未收录」这个事实。
+const outsideCatalogDetail = { id: 'DeepSeek-V4-Flash', provider: 'deepseek-local', name: 'DeepSeek-V4-Flash', reasoning: true, contextWindow: 131072, maxTokens: 8192, thinkingLevels: [] }
+rowsCheck('宿主合成详情（source 缺席）也注明 pi-ai 目录未收录：刷新后提示不再消失',
+  tipText({ id: 'DeepSeek-V4-Flash', name: 'DeepSeek-V4-Flash' }, { id: 'deepseek-local' }, outsideCatalogDetail)
+    .indexOf('pi-ai 目录未收录') !== -1)
+rowsCheck('目录收录（source=pi-ai）不写「未收录」提示',
+  tipText({ id: 'claude-opus-5', name: 'Claude Opus 5' }, { id: 'anthropic' },
+    { id: 'claude-opus-5', provider: 'anthropic', name: 'Claude Opus 5', source: 'pi-ai', vision: true, reasoning: true, contextWindow: 200000, thinkingLevels: [] })
+    .indexOf('pi-ai 目录未收录') === -1)
+rowsCheck('适配器自报（source=adapter）不写「来自路由声明」提示',
+  tipText({ id: 'm1', name: 'M1' }, { id: 'modlens-zai' }, { id: 'm1', provider: 'modlens-zai', source: 'adapter', reasoning: true })
+    .indexOf('pi-ai 目录未收录') === -1)
+rowsCheck('提示文案用「未收录」措辞（用户 11-16 指定）',
+  tipText({ id: 'declared-model', name: 'Declared Model' }, { id: 'opencode-go' }, declaredDetail)
+    .indexOf('（pi-ai 目录未收录）') !== -1)
+
 // ---- 思考档位（用户批注：编辑器/添加表单要能自定义 reasoningEfforts，不用手写 yaml）----
 // 语义照官方 resolver：键 = 7 规范档、值 = 线值（off 可 null = 不发送）、≥1 非 off 档。
 const { EFFORT_LEVELS, DEFAULT_EFFORT_LADDER, EFFORT_FAMILY_LADDERS, effortsDraftOf, prefillEffortsOf, effortsToDeclared } = moduleExports
