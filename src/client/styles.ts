@@ -327,7 +327,7 @@ var css =
   // 「测试/完成」按钮行压掉自身 margin-bottom：按钮到面板下沿 = 内边距 8px，
   // 与面板内上边距一致（用户批注：两者要一致）
   '.pv_meEditPanel .pv_meActs{margin-bottom:0}' +
-  '.pv_meEditPanel .pv_row{font-size:12px;line-height:20px}' +
+  '.pv_meEditPanel .pv_row{font-size:12px;line-height:20px;min-height:40px;box-sizing:border-box}' +
   '.pv_meEditPanel .pv_field{min-width:0;flex:1;max-width:320px}' +
   '.pv_mePanelCaps{display:inline-flex;align-items:center;gap:6px}' +
   // ---- 供应商可过滤下拉 ----
@@ -452,13 +452,13 @@ var css =
   '.pv_meRow .pv_mCaps{width:auto;justify-content:flex-start;flex-wrap:wrap}' +
   // ✕ 列 24px：收窄按钮内边距，保证整个可点区域落在列内不被裁掉
   '.pv_meRow .pv_iconBtn{padding:2px 4px;line-height:16px}' +
-  // 能力 / 思考档位的可点 chips：字号与行高向同面板的表单行（pv_line 13px / pv_meEditPanel 12px）
-  // 靠拢，复选框显式定尺寸——原生 checkbox 各平台渲染 11-13px 不等，放大后与整行文字才协调
-  // （用户 11-16 批注：模型页面里这两个按钮太小，和其它项不协调）
+  // 能力 / 思考档位的可点 chips：高度对齐表单行的视觉量级（输入框 34px，chips 26px 居中在
+  // 40px 行里），复选框显式定尺寸——原生 checkbox 各平台渲染不一，14×14 才读得清勾选态
+  // （用户 11-17 批注：思考档位的选择框明显偏小——13×13 的空框在 7 个窄 pill 里几乎看不见）
   '.pv_meCap{display:inline-flex;align-items:center;gap:6px;cursor:pointer;user-select:none;' +
-  'font-size:12px;line-height:20px;padding:0 9px;border-radius:999px;white-space:nowrap;' +
+  'font-size:12px;line-height:22px;min-height:26px;padding:0 10px;border-radius:999px;white-space:nowrap;' +
   'color:var(--dsw-alias-label-tertiary)}' +
-  '.pv_meCap input{margin:0;cursor:pointer;width:13px;height:13px}' +
+  '.pv_meCap input{margin:0;cursor:pointer;width:14px;height:14px}' +
   '.pv_capOff{opacity:.75;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1,rgba(0,0,0,.18))}' +
   // 「添加模型」表单：仿添加供应商面板（标签在左、输入在右的 pv_row 行 + 底部按钮行）
   // 度量与 pv_pcBody 对齐（13px 行 / 6px 间距 / 18px 内边距），输入随行宽伸展，不再限 320px
