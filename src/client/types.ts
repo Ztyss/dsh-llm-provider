@@ -89,6 +89,13 @@ export interface ModelEditRow {
   knownMaxTokens: number | undefined
   /** 目录元数据里的思维链标记（只读展示，编辑器不改它）。 */
   knownReasoning: boolean
+  /** provider 自己在 pi-ai 目录里有这条（source='pi-ai' 且 provider=路由 id）：官方路由
+   *  保存才允许裸 {id}（官方 resolver 按 (provider,id) 查得到目录）；custom 路由经 baseURL
+   *  映射到的候选行为 false，保存时须物化全套声明（2026-11-18 zai-coding-cn-wc 裸 id 事故）。 */
+  catalogOwn?: boolean
+  /** 目录条目的思考档位表（thinkingLevelMap 非 null 档）：物化 reasoningEfforts 的第一手
+   *  来源（比兄弟众数/家族表准确，与手写声明同构）。 */
+  catalogLevels?: string[]
   originVision: boolean
   originVideo: boolean
   /** 本来就在路由声明里的原始条目（保存时以它为底，保住 reasoningEfforts/compat 等字段）。 */

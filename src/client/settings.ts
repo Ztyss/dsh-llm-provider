@@ -1515,6 +1515,49 @@ export function effortsToDeclared(
 }
 
 /**
+ * custom 路由的目录候选行 → 自包含声明条目（2026-11-18 zai-coding-cn-wc 裸 id 事故）。
+ *
+ * 「目录收录只写裸 {id}」的前提是官方 resolver 能按 (provider,id) 查到 pi-ai 目录——官方
+ * 路由成立；custom 路由（如 zai-coding-cn-wc，目录里只有 zai-coding-cn）查不到，裸 id 被
+ * 物化成无参数非推理模型：清单无推理徽标、详情卡「能力未知」、选择器思考档位不可用。
+ * 这里把行上带出的目录元数据物化成完整声明：name/窗口/输出/input；reasoning=true 时档位表
+ * 用目录 thinkingLevelMap 的非 null 档（off:null + 各档 level:level，与手写 glm-5.3-flash
+ * 声明同构），目录没给档位再退兄弟众数/家族表（prefillEffortsOf）。
+ */
+function materializeCatalogRow(
+  row: ModelEditRow,
+  ctx: { details: Record<string, ModelDetail> | undefined | null; providerId: string },
+  fail: (message: string) => void,
+): DeclaredModel | undefined {
+  var entry: DeclaredModel = { id: row.id }
+  var name = typeof row.name === 'string' ? row.name.trim() : ''
+  if (name !== '' && name !== row.id) entry.name = name
+  if (typeof row.knownContextWindow === 'number' && Number.isInteger(row.knownContextWindow) && row.knownContextWindow > 0) entry.contextWindow = row.knownContextWindow
+  if (typeof row.knownMaxTokens === 'number' && Number.isInteger(row.knownMaxTokens) && row.knownMaxTokens > 0) entry.maxTokens = row.knownMaxTokens
+  // video 不写：官方校验的 input 模态只有 text/image（与自定义分支同一条约束）
+  var input = ['text']
+  if (row.vision === true) input.push('image')
+  entry.input = input
+  if (row.knownReasoning === true) {
+    entry.reasoning = true
+    var draft: Record<string, string> | undefined = undefined
+    if (Array.isArray(row.catalogLevels)) {
+      var ladder: Record<string, string> = { off: '' }
+      for (var i = 0; i < row.catalogLevels.length; i += 1) {
+        var level = row.catalogLevels[i]
+        if (level !== 'off' && EFFORT_LEVELS.indexOf(level) !== -1) ladder[level] = level
+      }
+      if (Object.keys(ladder).length > 1) draft = ladder
+    }
+    if (draft === undefined) draft = prefillEffortsOf(row.declared, ctx.details, ctx.providerId, row.id)
+    var effortOut = effortsToDeclared(draft, undefined)
+    if (effortOut.error !== undefined) { fail('「' + row.id + '」' + effortOut.error); return undefined }
+    entry.reasoningEfforts = effortOut.value
+  }
+  return entry
+}
+
+/**
  * 给定行列表 → settings 的 models 数组（模块级纯函数，供组件与单测共用）。
  *
  * 清单做「新增 / 移除 / 行内编辑」：
@@ -1538,6 +1581,15 @@ export function payloadFromRows(
     if (row.enabled !== true) continue
     if (row.declared !== undefined) {
       var declared: DeclaredModel = { ...row.declared, id: row.id }
+      // 存量自愈：旧版本在 custom 路由落盘的裸 id（只有 id 键）重存时物化全套——
+      // 「目录收录只写 {id}」对 custom 路由是坏的（见 materializeCatalogRow 批注）；
+      // 官方路由不动，手写过任何参数的声明也不动（尊重手写）。
+      if (row.catalogOwn !== true && row.inPiAi === true && Object.keys(row.declared).every(function (k) { return k === 'id' })) {
+        var healed = materializeCatalogRow(row, ctx, fail)
+        if (healed === undefined) return undefined
+        out.push(healed)
+        continue
+      }
       if (row.edited === true) {
         // 行内编辑过的参数覆盖回声明条目。留空的字段保留声明原值；填了但不是正整数要拦。
         var name = typeof row.name === 'string' ? row.name.trim() : ''
@@ -1599,7 +1651,14 @@ export function payloadFromRows(
       continue
     }
     if (row.known === true) {
-      out.push({ id: row.id })
+      // 裸 {id} 的合法性判据 catalogOwn：provider 自己在目录里有这条（官方 resolver 按
+      // (provider,id) 查得到）。custom 路由的候选行（baseURL 映射到别家目录）物化全套，
+      // 否则裸 id 被物化成无参数非推理模型（zai-coding-cn-wc 事故）；adapter/declared
+      // 兜底详情的行（known 但非目录元数据）维持原样裸 {id}。
+      if (row.catalogOwn === true || row.inPiAi !== true) { out.push({ id: row.id }); continue }
+      var materialized = materializeCatalogRow(row, ctx, fail)
+      if (materialized === undefined) return undefined
+      out.push(materialized)
       continue
     }
     var ctxText = row.contextWindow.trim()
@@ -1672,6 +1731,9 @@ export function buildEditRows(
       knownContextWindow: detail === undefined ? undefined : detail.contextWindow,
       knownMaxTokens: detail === undefined ? undefined : detail.maxTokens,
       knownReasoning: detail !== undefined && detail.reasoning === true,
+      // 裸 {id} 的合法性判据：provider 自己（而非 baseURL 映射到的别家）在目录里有这条
+      catalogOwn: detail !== undefined && detail.provider === account.id && detail.source === 'pi-ai',
+      catalogLevels: detail !== undefined && detail.source === 'pi-ai' && Array.isArray(detail.thinkingLevels) ? detail.thinkingLevels : undefined,
       // 声明条目里的 reasoning 要回填（用户批注：勾了推理保存后徽标消失）——
       // 行重建时不带它，勾选态和徽标就会跟着目录/适配器元数据走，声明等于白写
       reasoning: entry !== undefined && entry.reasoning !== undefined ? entry.reasoning === true : undefined,
