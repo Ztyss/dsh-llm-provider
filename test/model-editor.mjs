@@ -374,5 +374,51 @@ check('纯函数：不改入参', (() => {
   const same = beforeAdd.length === availRows.length && beforeAdd.every((r, i) => JSON.stringify(r) === JSON.stringify(availRows[i]))
   return same
 })())
+// ---- 10. custom 路由的目录候选行：物化全套声明（2026-11-18 zai-coding-cn-wc 裸 id 事故）----
+// 现场：custom 路由 baseURL 与目录 provider 完全一致 → catalogCandidatesOf 候选命中 →
+// 候选行 known/inPiAi=true。旧逻辑「目录收录的条目只写 {id}」假设官方 resolver 能按
+// (provider,id) 查 pi-ai 目录——官方路由成立；custom 路由（zai-coding-cn-wc ≠ 目录
+// provider zai-coding-cn）查不到，裸 id 被物化成无参数非推理模型：清单无推理徽标、
+// 详情卡「能力未知」、选择器思考档位不可用。修复判据 catalogOwn（provider 自己在目录里
+// 有 source='pi-ai' 的条目）：官方路由维持裸 {id}，custom 路由物化 name/窗口/输出/模态/
+// reasoning + 目录档位表（与手写 glm-5.3-flash 声明同构）；已落盘的存量裸 id 重存即自愈。
+const zaiBase = 'https://open.bigmodel.cn/api/coding/paas/v4'
+const wcDetails = {
+  'zai-coding-cn/glm-5.3': { id: 'glm-5.3', provider: 'zai-coding-cn', name: 'GLM-5.3', baseUrl: zaiBase, vision: false, video: false, reasoning: true, thinkingLevels: ['low', 'high', 'max'], contextWindow: 1000000, maxTokens: 131072, source: 'pi-ai' },
+  'zai-coding-cn/glm-air': { id: 'glm-air', provider: 'zai-coding-cn', name: 'GLM Air', baseUrl: zaiBase, vision: true, video: false, reasoning: false, thinkingLevels: [], contextWindow: 128000, maxTokens: 8192, source: 'pi-ai' },
+}
+const wcAccount = { id: 'zai-coding-cn-wc', baseUrl: zaiBase, deletable: true, models: [{ id: 'glm-5.3' }] }
+check('行携带 catalogOwn：官方路由目录条目 true、custom 路由候选行 false', (() => {
+  const official = buildEditRows({ id: 'deepseek', deletable: true, models: [{ id: 'deepseek-v4-flash' }] }, catalog, details).find((r) => r.id === 'deepseek-v4-flash')
+  const custom = buildEditRows(wcAccount, [], wcDetails).find((r) => r.id === 'glm-5.3')
+  return official?.catalogOwn === true && custom?.catalogOwn === false
+})())
+const wcPayload = payloadFromRows(buildEditRows(wcAccount, [], wcDetails), { details: wcDetails, providerId: 'zai-coding-cn-wc' }, () => {})
+const wcEntry = Array.isArray(wcPayload) ? wcPayload.find((e) => e.id === 'glm-5.3') : undefined
+check('custom 路由存量裸 id 重存：物化目录参数（name/窗口/输出）', wcEntry !== undefined
+  && wcEntry.name === 'GLM-5.3' && wcEntry.contextWindow === 1000000 && wcEntry.maxTokens === 131072,
+  JSON.stringify(wcEntry))
+check('物化 reasoning:true + 目录档位表（off:null + low/high/max，与手写 glm-5.3-flash 同构）', wcEntry !== undefined
+  && wcEntry.reasoning === true && wcEntry.reasoningEfforts !== undefined
+  && wcEntry.reasoningEfforts.off === null && wcEntry.reasoningEfforts.low === 'low'
+  && wcEntry.reasoningEfforts.high === 'high' && wcEntry.reasoningEfforts.max === 'max'
+  && wcEntry.reasoningEfforts.medium === undefined,
+  JSON.stringify(wcEntry && wcEntry.reasoningEfforts))
+check('物化 input 按目录模态（glm-5.3 纯文本 → ["text"]）', wcEntry !== undefined
+  && JSON.stringify(wcEntry.input) === '["text"]')
+check('custom 路由未声明的候选行勾选保存：非推理目录条目物化（无 reasoning 字段、vision 带 image）', (() => {
+  const rows = buildEditRows({ id: 'zai-coding-cn-wc', baseUrl: zaiBase, deletable: true, models: [{ id: 'glm-5.3' }] }, [], wcDetails)
+    .map((r) => (r.id === 'glm-air' ? { ...r, enabled: true } : r))
+  const p = payloadFromRows(rows, { details: wcDetails, providerId: 'zai-coding-cn-wc' }, () => {})
+  const e = Array.isArray(p) ? p.find((x) => x.id === 'glm-air') : undefined
+  return e !== undefined && e.contextWindow === 128000 && e.maxTokens === 8192
+    && e.reasoning === undefined && e.reasoningEfforts === undefined
+    && JSON.stringify(e.input) === '["text","image"]'
+})())
+check('官方路由的裸 id 声明保持裸 {id}（参数以上游目录为准，回归保护）', (() => {
+  const p = payloadFromRows(buildEditRows({ id: 'deepseek', deletable: true, models: [{ id: 'deepseek-v4-flash' }] }, catalog, details), { details, providerId: 'deepseek' }, () => {})
+  const e = Array.isArray(p) ? p.find((x) => x.id === 'deepseek-v4-flash') : undefined
+  return e !== undefined && Object.keys(e).length === 1
+})())
 console.log(failures === 0 ? '\n逐模型清单编辑测试全部通过' : `\n${failures} 个失败`)
 process.exit(failures === 0 ? 0 : 1)
