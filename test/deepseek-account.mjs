@@ -42,29 +42,33 @@ if (typeof accountRowFromBalance !== 'function') {
   check('ready → kind balance、id 固定',
     ready !== undefined && ready.kind === 'balance' && ready.id === OFFICIAL_ACCOUNT_ID && ready.id === 'deepseek-account',
     JSON.stringify(ready))
-  check('ready → 余额合计充值+赠金', ready !== undefined
+  check('ready → 充值余额单列（拆分口径：hover 首行是充值余额，不是合计）', ready !== undefined
     && Array.isArray(ready.balances) && ready.balances.length === 2
-    && ready.balances[0].label === 'CNY' && ready.balances[0].value === '¥55.10',
+    && ready.balances[0].label === 'CNY 充值余额' && ready.balances[0].value === '¥45.20',
   JSON.stringify(ready && ready.balances))
   check('ready → 赠金单列明细行', ready !== undefined
     && ready.balances[1].label === 'CNY 赠金' && ready.balances[1].value === '¥9.90',
   JSON.stringify(ready && ready.balances))
+  check('ready → balanceTotal 带合计（chip / 短文案口径，用户 11-25 批注）', ready !== undefined
+    && ready.balanceTotal === '¥55.10', JSON.stringify(ready && ready.balanceTotal))
   check('ready → 不可删除（没有路由可删）', ready !== undefined && ready.deletable === false)
 
   const noGift = accountRowFromBalance(
     { status: 'ready', value: [{ currency: 'CNY', balance: '88.80' }], bonusWallets: [] },
     AT, undefined,
   )
-  check('仅充值无赠金 → 单行、不追加明细', noGift !== undefined
-    && noGift.balances.length === 1 && noGift.balances[0].value === '¥88.80',
+  check('仅充值无赠金 → 单行「充值余额」，合计即本身', noGift !== undefined
+    && noGift.balances.length === 1 && noGift.balances[0].label === 'CNY 充值余额'
+    && noGift.balances[0].value === '¥88.80' && noGift.balanceTotal === '¥88.80',
   JSON.stringify(noGift && noGift.balances))
 
   const giftOnly = accountRowFromBalance(
     { status: 'ready', value: [], bonusWallets: [{ currency: 'USD', balance: '0.50' }] },
     AT, undefined,
   )
-  check('仅赠金 → 合计即赠金、带明细行', giftOnly !== undefined
-    && giftOnly.balances.length === 2 && giftOnly.balances[0].value === '$0.50' && giftOnly.balances[1].label === 'USD 赠金',
+  check('仅赠金 → 只出赠金行（不补 ¥0.00 充值行），chip 合计=赠金', giftOnly !== undefined
+    && giftOnly.balances.length === 1 && giftOnly.balances[0].label === 'USD 赠金'
+    && giftOnly.balances[0].value === '$0.50' && giftOnly.balanceTotal === '$0.50',
   JSON.stringify(giftOnly && giftOnly.balances))
 
   const usd = accountRowFromBalance({ status: 'ready', value: [{ currency: 'USD', balance: '7' }] }, AT, undefined)

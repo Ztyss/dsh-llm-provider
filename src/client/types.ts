@@ -132,6 +132,9 @@ export interface PlanAccount {
   error?: unknown
   fetchedAt?: string
   balances?: BalanceRow[]
+  /** 余额合计（chip / 短文案口径）：balances 拆成钱包明细（充值余额/赠金）后合计单独带；
+   *  缺省时消费端回落 balances[0]（见 format.ts balanceTotalOf）。 */
+  balanceTotal?: string
   windows?: QuotaWindow[]
   /** 这条路由显式声明的模型清单（undefined = 没配，服务 pi-ai 目录全量）。 */
   models?: DeclaredModel[] | undefined

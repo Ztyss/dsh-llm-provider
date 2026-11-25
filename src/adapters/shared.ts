@@ -38,6 +38,9 @@ export interface AccountStatus {
   baseUrl?: string
   membership?: string
   balances: BalanceRow[]
+  /** 余额合计（chip / 短文案口径）：官方账号把 balances 拆成「充值余额 / 赠金」钱包明细后，
+   *  合计单独带；可缺省（缺省时消费端回落 balances[0]）。用户 11-25 批注。 */
+  balanceTotal?: string
   windows: QuotaWindow[]
   note?: string
   error?: string
