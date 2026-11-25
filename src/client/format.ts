@@ -117,8 +117,8 @@ export function summaryOf(account: PlanAccount | undefined | null): string {
   if (account.error !== undefined) return shortName(account) + ' ' + t('quota.queryFailed')
   if (account.kind === 'unsupported') return shortName(account) + ' ' + t('quota.seeConsole')
   if (account.kind === 'unknown-provider') return shortName(account) + ' ' + t('quota.noAdapter')
-  var balances = Array.isArray(account.balances) ? account.balances : []
-  if (balances.length > 0) return shortName(account) + ' ' + balances[0].value
+  var total = balanceTotalOf(account)
+  if (total !== undefined) return shortName(account) + ' ' + total
   var percent = worstPercent(account)
   if (typeof percent === 'number') return shortName(account) + ' ' + tf('quota.remaining', { percent: percent })
   var windows = Array.isArray(account.windows) ? account.windows : []
@@ -134,8 +134,7 @@ export function quotaShortOf(account: PlanAccount | undefined | null): string | 
   if (account === undefined || account === null) return undefined
   var percent = worstPercent(account)
   if (percent !== undefined) return String(percent) + '%'
-  var balances = Array.isArray(account.balances) ? account.balances : []
-  return balances.length > 0 ? balances[0].value : undefined
+  return balanceTotalOf(account)
 }
 
 /** 一行里的余额短文案（给模型行/过滤 chip 复用）。 */
@@ -147,9 +146,20 @@ export function quotaTextOf(account: PlanAccount | undefined | null): string | u
   if (account.kind === 'unknown-provider') return t('quota.noAdapter')
   var percent = worstPercent(account)
   if (typeof percent === 'number') return tf('quota.remaining', { percent: percent })
+  return balanceTotalOf(account)
+}
+
+/**
+ * 余额合计（chip / 短文案口径，用户 11-25 批注）。
+ *
+ * 官方账号把 balances 拆成「充值余额 / 赠金」钱包明细后，合计单独走 balanceTotal——模型
+ * 选择器的数字仍要含赠金；其它 provider 的钱包行本来就是合计，没有该字段，回落 balances[0]。
+ */
+export function balanceTotalOf(account: PlanAccount | undefined | null): string | undefined {
+  if (account === undefined || account === null) return undefined
+  if (typeof account.balanceTotal === 'string' && account.balanceTotal !== '') return account.balanceTotal
   var balances = Array.isArray(account.balances) ? account.balances : []
-  if (balances.length > 0) return balances[0].value
-  return undefined
+  return balances.length > 0 ? balances[0].value : undefined
 }
 
 /**
@@ -309,8 +319,8 @@ export function headlineChips(account: PlanAccount | undefined | null): Headline
     for (var c = 0; c < ordered[o].chips.length; c += 1) chips.push(ordered[o].chips[c])
   }
   if (chips.length > 0) return chips.concat(alertChips)
-  var balances = Array.isArray(account.balances) ? account.balances : []
-  if (balances.length > 0) chips.push({ text: String(balances[0].value), percent: undefined })
+  var balanceTotal = balanceTotalOf(account)
+  if (balanceTotal !== undefined) chips.push({ text: balanceTotal, percent: undefined })
   if (chips.length > 0) return chips.concat(alertChips)
   var summaryChip: HeadlineChip[] = [{ text: summaryOf(account), percent: undefined }]
   return summaryChip.concat(alertChips)

@@ -51,13 +51,22 @@ export function accountRowFromBalance(result: unknown, fetchedAt: string, usageU
   const normal = totalsOf(record['value'])
   const bonus = totalsOf(record['bonusWallets'])
   const balances: AccountStatus['balances'] = []
+  // 拆分口径（用户 11-25 批注）：明细行只放钱包本身——有赠金时「充值余额」+「赠金」两行，
+  // 不再拿「合计」当第一行（总额与赠金并列，读起来像要加两次）。合计单独走 balanceTotal，
+  // 给 chip / 短文案（模型选择器上的数字仍要含赠金）。只有赠金（无充值钱包）时只出赠金行。
+  let balanceTotal: string | undefined
   for (const currency of new Set([...normal.keys(), ...bonus.keys()])) {
+    const recharge = normal.get(currency) ?? 0
     const gift = bonus.get(currency) ?? 0
-    balances.push({ label: currency, value: formatAmount((normal.get(currency) ?? 0) + gift, currency) })
+    if (balanceTotal === undefined) balanceTotal = formatAmount(recharge + gift, currency)
+    if (gift === 0 || recharge > 0) {
+      balances.push({ label: `${currency} 充值余额`, value: formatAmount(recharge, currency) })
+    }
     if (gift > 0) balances.push({ label: `${currency} 赠金`, value: formatAmount(gift, currency) })
   }
   return accountSkeleton(OFFICIAL_ACCOUNT_ID, 'DeepSeek Account', 'balance', {
     ...shared,
     balances,
+    ...(balanceTotal === undefined ? {} : { balanceTotal }),
   })
 }

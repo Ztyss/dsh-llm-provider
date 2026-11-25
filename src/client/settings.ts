@@ -26,7 +26,7 @@ import {
   catalogCandidatesOf,
   pruneDeclaredDetails,
 } from './data.js'
-import { dotClass, formatContext, fuzzyMatch, headlineChips, linkTextOf, relativeTime, resetCountdownText, shortName, toneColor, worstPercent } from './format.js'
+import { balanceTotalOf, dotClass, formatContext, fuzzyMatch, headlineChips, linkTextOf, relativeTime, resetCountdownText, shortName, toneColor, worstPercent } from './format.js'
 import { caretSvg, checkSvg } from './icons.js'
 import { t, tf } from './i18n.js'
 import { addModelRow, buildModelEditor, modelListPayload, patchModelRow, validateModelRows } from './model-editor.js'
@@ -3115,7 +3115,8 @@ export function ProviderSettingsSection() {
   function refreshSummary(account: PlanAccount) {
     var percent = worstPercent(account)
     if (percent !== undefined) return tf('toast.refreshSummaryPct', { percent: percent })
-    if (Array.isArray(account.balances) && account.balances.length > 0) return tf('toast.refreshSummaryBalance', { value: account.balances[0].value })
+    var total = balanceTotalOf(account)
+    if (total !== undefined) return tf('toast.refreshSummaryBalance', { value: total })
     return ''
   }
 

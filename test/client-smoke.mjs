@@ -482,6 +482,26 @@ rowsCheck('刷新全部：空/脏 payload 不炸、回落全成功文案',
     && refreshAllSummary({ accounts: null }) === '已刷新全部 provider 的余量'
     && refreshAllSummary({ accounts: [null, 42, { id: 'x' }] }) === '已刷新全部 provider 的余量')
 
+// ---- 官方账号余额拆分后的取数口径（用户 11-25 批注：hover 显示「CNY 充值余额｜CNY 赠金」，
+//      chip / 短文案仍要充值+赠金合计）----
+// balances 拆成两条钱包明细；合计单独走 balanceTotal，五处取数口（headlineChips / quotaShortOf /
+// quotaTextOf / summaryOf / 保存密钥 toast）统一走 balanceTotalOf，缺省回落 balances[0]。
+const { quotaShortOf, quotaTipOf } = moduleExports
+const official = {
+  id: 'deepseek-account', kind: 'balance',
+  balances: [{ label: 'CNY 充值余额', value: '¥45.20' }, { label: 'CNY 赠金', value: '¥9.90' }],
+  balanceTotal: '¥55.10',
+}
+rowsCheck('余额拆分：hover 明细逐行列出充值余额与赠金',
+  quotaTipOf(official) === 'CNY 充值余额 ¥45.20 ｜ CNY 赠金 ¥9.90', quotaTipOf(official))
+rowsCheck('余额拆分：chip 短文案用合计（balanceTotal）', quotaShortOf(official) === '¥55.10', quotaShortOf(official))
+rowsCheck('余额拆分：headline chip 用合计', (() => {
+  const chips = headlineChips(official)
+  return chips.length === 1 && chips[0].text === '¥55.10'
+})(), JSON.stringify(headlineChips(official)))
+rowsCheck('余额拆分：无 balanceTotal 时回落 balances[0]（其它 provider 回归）',
+  quotaShortOf({ id: 'x', kind: 'balance', balances: [{ label: '余额', value: '¥1.00' }] }) === '¥1.00')
+
 
 // ---- 老 provider id 的别名（会话里记着 deepseek-official 的那些）----
 // 官方 llm-deepseek 时代的会话记的是 deepseek-official，那条路由已经被本插件接管掉了：
