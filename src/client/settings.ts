@@ -640,6 +640,28 @@ export function refreshFailure(result: unknown): string | undefined {
 }
 
 /**
+ * 「刷新全部」的完成提示（用户 11-25 再批注：toast 写详细些，带家数与失败家数）。
+ *
+ * 统计口径：payload.accounts 里每一行算一家；error 非空 = 失败（原因仍由卡片告警 chip
+ * 展示，提示条只报家数）。空/脏 payload 一律按 0 家，不抛。
+ */
+export function refreshAllSummary(payload: unknown): string {
+  var record = payload !== null && typeof payload === 'object' ? (payload as AnyRecord) : {}
+  var list = Array.isArray(record['accounts']) ? (record['accounts'] as unknown[]) : []
+  var total = 0
+  var failed = 0
+  for (var i = 0; i < list.length; i += 1) {
+    var account = list[i]
+    if (account === null || typeof account !== 'object') continue
+    total += 1
+    var error = (account as AnyRecord)['error']
+    if (error !== undefined && error !== null && String(error).trim() !== '') failed += 1
+  }
+  if (failed === 0) return tf('toast.refreshAllDone', { count: String(total) })
+  return tf('toast.refreshAllFailed', { count: String(total), failed: String(failed) })
+}
+
+/**
  * 添加 provider：选预设 → 填密钥/端点 → 测试 → 通过才能添加。
  * 测试走官方 llm/discoverModels 草稿探测（不落盘）；写入走官方同一套控制器
  * （settings/mutate 写 llm-pi-ai.providers 段 + credentials/set 存密钥），
@@ -2882,7 +2904,7 @@ export function ProviderSettingsSection() {
   var openMap = openState[0]
   var setOpenMap = openState[1]
 
-  var refresh = react.useCallback(function (force: boolean, done?: () => void) {
+  var refresh = react.useCallback(function (force: boolean, done?: (payload: unknown) => void) {
     loadProviderStatus()
       .then(function (payload) {
         setStatus(payload)
@@ -2905,8 +2927,8 @@ export function ProviderSettingsSection() {
       .then(function (payload) {
         setPlan(payload)
         setPlanRefreshing(false)
-        // 「全部刷新」的完成提示（用户 11-25 选型：简单提示，不统计家数）
-        if (typeof done === 'function') done()
+        // 「全部刷新」的完成提示（用户 11-25 再批注：写详细些，带家数与失败家数）
+        if (typeof done === 'function') done(payload)
       })
       .catch(function (cause) {
         setPlanRefreshing(false)
@@ -3080,7 +3102,7 @@ export function ProviderSettingsSection() {
   // 比循环 N 次单家请求稳；等待时按钮旋转，完成弹一条提示（2.6 秒后自动消失）。
   function refreshAll() {
     if (planRefreshing === true) return
-    refresh(true, function () { showToast(t('toast.refreshAllDone'), true) })
+    refresh(true, function (payload: unknown) { showToast(refreshAllSummary(payload), true) })
   }
   function showToast(text: string, ok: boolean) {
     setToast({ text: text, ok: ok })

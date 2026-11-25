@@ -127,9 +127,9 @@ const a = JSON.parse(allBtn)
 const b = JSON.parse(busy)
 const d = JSON.parse(done)
 const okA = cardSpins === 0
-const okB = a.exists === true && a.text.indexOf('刷新全部') !== -1
+const okB = a.exists === true && a.text === '↻刷新'
 const okC = clicked === true && b.disabled === true && b.spinning === true && b.calls >= 1
-const okD = d.disabled === false && d.spinning === false && typeof d.toast === 'string' && d.toast.indexOf('已刷新') !== -1 && d.calls >= 1
-console.log((okA ? 'PASS' : 'FAIL') + ': 卡片不再有 ↻；' + (okB ? 'PASS' : 'FAIL') + ': 头部「刷新全部」存在；'
-  + (okC ? 'PASS' : 'FAIL') + ': 点击后禁用+旋转且请求 refresh=1；' + (okD ? 'PASS' : 'FAIL') + ': 完成 toast + 按钮复位')
+const okD = d.disabled === false && d.spinning === false && typeof d.toast === 'string' && d.toast.indexOf('已刷新') !== -1 && d.toast.indexOf('家') !== -1 && d.calls >= 1
+console.log((okA ? 'PASS' : 'FAIL') + ': 卡片不再有 ↻；' + (okB ? 'PASS' : 'FAIL') + ': 头部「刷新」按钮存在；'
+  + (okC ? 'PASS' : 'FAIL') + ': 点击后禁用+旋转且请求 refresh=1；' + (okD ? 'PASS' : 'FAIL') + ': 完成 toast（含家数）+ 按钮复位')
 process.exit(okA && okB && okC && okD ? 0 : 1)

@@ -467,6 +467,19 @@ rowsCheck('没密钥时把原因带出来',
 rowsCheck('缺 ok 但有 account.error 也算失败', refreshFailure({ account: { error: '解析失败' } }) === '解析失败')
 rowsCheck('既没 ok 也没原因时给兜底文案', refreshFailure(undefined) === '未知错误')
 
+// ---- 「刷新全部」的完成提示（用户 11-25 再批注：toast 写详细些，带家数与失败家数）----
+// 统计口径：payload.accounts 里每一行算一家；error 非空 = 失败（原因仍看卡片告警 chip）。
+const { refreshAllSummary } = moduleExports
+const hasSummary = typeof refreshAllSummary === 'function'
+const okSummary = hasSummary ? refreshAllSummary({ accounts: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] }) : ''
+rowsCheck('刷新全部：全成功 → 提示带总家数', hasSummary && okSummary.indexOf('3') !== -1 && okSummary.indexOf('失败') === -1, okSummary)
+const badSummary = hasSummary ? refreshAllSummary({ accounts: [{ id: 'a' }, { id: 'b', error: 'HTTP 403' }, { id: 'c', error: '解析失败' }] }) : ''
+rowsCheck('刷新全部：有失败 → 提示带失败家数', hasSummary && badSummary.indexOf('3') !== -1 && badSummary.indexOf('2 家失败') !== -1, badSummary)
+rowsCheck('刷新全部：空/脏 payload 不炸、给 0 家',
+  hasSummary && refreshAllSummary(undefined).indexOf('0') !== -1 && refreshAllSummary({ accounts: null }).indexOf('0') !== -1
+    && refreshAllSummary({ accounts: [null, 42, { id: 'x' }] }).indexOf('1') !== -1)
+
+
 // ---- 老 provider id 的别名（会话里记着 deepseek-official 的那些）----
 // 官方 llm-deepseek 时代的会话记的是 deepseek-official，那条路由已经被本插件接管掉了：
 // 不折的话宿主 prompt() 会直接拒（no adapter serves provider …），连消息都发不出去。
