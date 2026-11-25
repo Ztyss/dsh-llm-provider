@@ -2778,8 +2778,6 @@ export function ProviderSettingsSection() {
   var delErrorState = react.useState(null)
   var delError = delErrorState[0] as string | null
   var setDelError = delErrorState[1] as (next: string | null) => void
-  var refreshingState = react.useState({})
-  var setRefreshing = refreshingState[1]
   // 协议自绘下拉的开合（编辑面互斥 → 同时最多一个表单开着下拉）＋外点/Escape 关闭
   var apiSelOpenState = react.useState(null as string | null)
   var apiSelOpenId = apiSelOpenState[0]
@@ -2884,7 +2882,7 @@ export function ProviderSettingsSection() {
   var openMap = openState[0]
   var setOpenMap = openState[1]
 
-  var refresh = react.useCallback(function (force: boolean) {
+  var refresh = react.useCallback(function (force: boolean, done?: () => void) {
     loadProviderStatus()
       .then(function (payload) {
         setStatus(payload)
@@ -2901,12 +2899,14 @@ export function ProviderSettingsSection() {
       .catch(function () {
         setStatus(statusUnavailable())
       })
-    // plan 快照重拉期间 ↻ 全部旋转（缓存命中时只有几十毫秒，肉眼无感）
+    // plan 快照重拉期间「全部刷新」按钮旋转（缓存命中时只有几十毫秒，肉眼无感）
     setPlanRefreshing(true)
     loadPlanStatus(force)
       .then(function (payload) {
         setPlan(payload)
         setPlanRefreshing(false)
+        // 「全部刷新」的完成提示（用户 11-25 选型：简单提示，不统计家数）
+        if (typeof done === 'function') done()
       })
       .catch(function (cause) {
         setPlanRefreshing(false)
@@ -3004,7 +3004,9 @@ export function ProviderSettingsSection() {
     function () {
       refresh(false)
     },
-    [refresh],
+    // refresh 是 useCallback([]) 的稳定实例：deps 写成 [] 语义等价，且不会在渲染
+    // 垫片（ui-harness 的 mini-react 不做 memo）里每次渲染重跑、把刷新态搅成死循环
+    [],
   )
 
   // 展开区要显示的模型列表：模型目录走官方同一条 RPC（catTick 触发重载，添加 provider 后用）
@@ -3073,12 +3075,12 @@ export function ProviderSettingsSection() {
     [],
   )
 
-  // 刷新单个 provider 的余量（卡片上的 ↻ 按钮）：宿主实查并回传新账户，本地替换。
-  // 等待时按钮旋转，完成弹一条成功/失败提示（2.6 秒后自动消失）。
-  function setRefreshingFlag(id: string, value: boolean) {
-    setRefreshing(function (prev: AnyRecord) {
-      return withKey(prev, id, value)
-    })
+  // 刷新全部 provider 的余量（头部「刷新全部」按钮，用户 11-25 需求：原先每卡一颗 ↻，
+  // 现统一成一次批量查询）。宿主 /plan/status?refresh=1 本来就是「实查全部账户」语义，
+  // 比循环 N 次单家请求稳；等待时按钮旋转，完成弹一条提示（2.6 秒后自动消失）。
+  function refreshAll() {
+    if (planRefreshing === true) return
+    refresh(true, function () { showToast(t('toast.refreshAllDone'), true) })
   }
   function showToast(text: string, ok: boolean) {
     setToast({ text: text, ok: ok })
@@ -3093,28 +3095,6 @@ export function ProviderSettingsSection() {
     if (percent !== undefined) return tf('toast.refreshSummaryPct', { percent: percent })
     if (Array.isArray(account.balances) && account.balances.length > 0) return tf('toast.refreshSummaryBalance', { value: account.balances[0].value })
     return ''
-  }
-  function refreshAccount(account: PlanAccount) {
-    setRefreshingFlag(account.id, true)
-    postJson('/provider/refresh', { providerId: account.id })
-      .then(function (res) {
-        if (res !== null && res !== undefined && res.account !== undefined) {
-          // 并进共享快照：广播会把新值同时送到本组件、座位指示器与 /model 命令。
-          mergePlanAccount(res.account)
-        }
-        var failure = refreshFailure(res)
-        if (failure === undefined) {
-          showToast('✓ ' + tf('toast.refreshed', { name: shortName(account) }) + refreshSummary(res.account), true)
-        } else {
-          showToast('✗ ' + tf('toast.refreshFailed', { name: shortName(account), reason: failure }), false)
-        }
-      })
-      .catch(function (cause) {
-        showToast('✗ ' + tf('toast.refreshFailed', { name: shortName(account), reason: cause && cause.message ? cause.message : cause }), false)
-      })
-      .then(function () {
-        setRefreshingFlag(account.id, false)
-      })
   }
 
   /**
@@ -3959,21 +3939,6 @@ export function ProviderSettingsSection() {
                       { className: 'pv_fresh', title: tf('prov.lastRefresh', { time: String(account.fetchedAt).slice(11, 19) }) },
                       '◷ ' + relativeTime(account.fetchedAt),
                     ),
-                react.createElement(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'pv_iconBtn' + (refreshingState[0][account.id] === true || planRefreshing === true ? ' pv_spin' : ''),
-                    disabled: refreshingState[0][account.id] === true || planRefreshing === true,
-                    title: refreshingState[0][account.id] === true || planRefreshing === true
-                      ? t('prov.refreshing')
-                      : (account.fetchedAt !== undefined
-                        ? tf('prov.refreshQuotaAt', { time: String(account.fetchedAt).slice(11, 19) })
-                        : t('prov.refreshQuota')),
-                    onClick: function () { refreshAccount(account) },
-                  },
-                  '↻',
-                ),
                 account.deletable === true
                   ? react.createElement(
                       'button',
@@ -4059,14 +4024,37 @@ export function ProviderSettingsSection() {
         react.createElement(
             'div',
             { style: { display: 'flex', flexDirection: 'column', gap: '10px' }, key: 'pane-providers' },
-            react.createElement(AddProviderPanel, {
-              presets: presets,
-              open: addPanelOpen,
-              onAdded: onProviderAdded,
-              // 打开添加面板时收起所有已展开的 provider 卡（编辑面互斥，用户批注）
-              onOpenChange: changeAddPanelOpen,
-              details: detailsById,
-            }),
+            // 工具行：添加 provider（收起态全宽虚线按钮）｜刷新全部（用户 11-25 需求：
+            // 原先每卡一颗 ↻，现统一成一次批量实查——/plan/status?refresh=1 宿主实查
+            // 全部账户。添加面板展开时它自带整卡，刷新按钮让位隐藏）
+            react.createElement(
+              'div',
+              { className: 'pv_tools', key: 'tools' },
+              react.createElement('div', { className: 'pv_toolsMain' },
+                react.createElement(AddProviderPanel, {
+                  presets: presets,
+                  open: addPanelOpen,
+                  onAdded: onProviderAdded,
+                  // 打开添加面板时收起所有已展开的 provider 卡（编辑面互斥，用户批注）
+                  onOpenChange: changeAddPanelOpen,
+                  details: detailsById,
+                }),
+              ),
+              addPanelOpen
+                ? null
+                : react.createElement(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'pv_refreshAll',
+                      disabled: planRefreshing === true,
+                      title: planRefreshing === true ? t('prov.refreshing') : t('prov.refreshAllTip'),
+                      onClick: function () { refreshAll() },
+                    },
+                    react.createElement('span', { className: 'pv_rfIcon' + (planRefreshing === true ? ' pv_spin' : '') }, '↻'),
+                    ' ' + t('prov.refreshAll'),
+                  ),
+            ),
             cards,
           ),
     toast === null
