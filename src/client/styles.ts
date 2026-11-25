@@ -247,6 +247,17 @@ var css =
   'border-radius:14px;background:0 0;cursor:pointer;font:inherit;font-size:14px;' +
   'color:var(--dsw-alias-label-secondary)}' +
   '.pv_addBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.03))}' +
+  // 工具行（用户 11-25 需求）：添加 provider 与「刷新全部」并排，左占满、右定宽
+  '.pv_tools{display:flex;align-items:stretch;gap:10px}' +
+  '.pv_toolsMain{flex:1;min-width:0;display:flex}' +
+  '.pv_refreshAll{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;padding:0 18px;' +
+  'border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.2));border-radius:14px;' +
+  'background:var(--dsw-alias-bg-layer-1,#fff);font:inherit;font-size:14px;white-space:nowrap;' +
+  'color:var(--dsw-alias-label-secondary);cursor:pointer}' +
+  '.pv_refreshAll:hover:not(:disabled){color:var(--dsw-alias-label-primary);' +
+  'background:var(--dsw-alias-interactive-bg-hover-solid,rgba(0,0,0,.03))}' +
+  '.pv_refreshAll:disabled{opacity:.65;cursor:default}' +
+  '.pv_rfIcon{display:inline-block}' +
   'input.pv_field{cursor:text}' +
   // 原生 select 已全部替换为自绘下拉（.pv_sel*，用户批注：原生弹层与页面视觉不协调）
   // ---- 本地版新增：自绘下拉（用户批注：原生弹层与页面视觉不协调）----
