@@ -657,7 +657,7 @@ export function refreshAllSummary(payload: unknown): string {
     var error = (account as AnyRecord)['error']
     if (error !== undefined && error !== null && String(error).trim() !== '') failed += 1
   }
-  if (failed === 0) return tf('toast.refreshAllDone', { count: String(total) })
+  if (failed === 0) return t('toast.refreshAllDone')
   return tf('toast.refreshAllFailed', { count: String(total), failed: String(failed) })
 }
 
